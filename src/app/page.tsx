@@ -17,7 +17,9 @@ export default function Home() {
         </div>
         
         {/* <!-- Right side --> */}
-        <EventsList/>
+        <div className="min-w-48 w-2/3">
+            <EventsList/>
+        </div>
     </div>
   );
 }
