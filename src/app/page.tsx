@@ -5,7 +5,7 @@ import TotalHoursCard from "./components/total_hours_card";
 
 export default function Home() {
   return (
-    <div className="flex flex-row h-full home_background">
+    <div className="flex flex-row h-full dark:bg-gradient-to-br dark:to-zinc-800 dark:from-zinc-900 bg-gradient-to-tr to-zinc-200 from-zinc-100">
         {/* <!-- Left side --> */}
         <div className="flex flex-col min-w-64 w-1/3 ml-2 my-2">
             {/* <!-- Top box --> */}
@@ -17,7 +17,7 @@ export default function Home() {
         </div>
         
         {/* <!-- Right side --> */}
-        <div className="min-w-48 w-2/3">
+        <div className="h-full min-w-48 w-2/3">
             <EventsList/>
         </div>
     </div>

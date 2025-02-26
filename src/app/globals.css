@@ -5,21 +5,3 @@
 :root {
   font-family: Arial, Helvetica, sans-serif;
 }
-
-.home_background {
-  @apply bg-gradient-to-br from-zinc-200 to-zinc-100
-}
-
-.add_button_fill {
-  
-}
-
-@media (prefers-color-scheme: dark) {
-  .home_background {
-    @apply bg-gradient-to-br from-zinc-900 to-zinc-800
-  }
-
-  .add_button_fill {
-
-  }
-}
