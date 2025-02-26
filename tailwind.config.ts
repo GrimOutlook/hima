@@ -10,22 +10,6 @@ export default {
   theme: {
     extend: {
       colors: {
-        light : {
-          from_color: "zinc-100",
-          to_color: "zinc-200",
-          element: "",
-          text: "",
-          button: "",
-          button_text: ""
-        },
-        dark : {
-          from_color: "zinc-800",
-          to_color: "zinc-900",
-          element: "",
-          text: "",
-          button: "",
-          button_text: ""
-        }
       },
     },
   },
