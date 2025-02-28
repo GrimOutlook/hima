@@ -7,7 +7,7 @@ import TotalHoursCard from "./components/total_hours_card";
 
 export default function Home() {
   return (
-    <div className="flex flex-row text-gray-700 bg-gradient-to-tl to-zinc-900 from-zinc-700">
+    <div className="flex flex-row text-gray-700 bg-gradient-to-tl to-zinc-900 from-zinc-700 w-full">
         {/* <!-- Left side --> */}
         <div className="flex flex-col min-w-64 w-1/3 ml-2 my-2">
             {/* <!-- Top box --> */}

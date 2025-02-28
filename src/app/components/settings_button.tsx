@@ -1,7 +1,6 @@
 export default function SettingsButton() {
     return (
-        <div className="h-24 bg-zinc-500 rounded-sm shadow-sm transition
-        duration-150 ease-in-out hover:-translate-y-1 hover:scale-102">
+        <div className="h-24 bg-zinc-500 rounded-lg shadow-sm content-center transition duration-150 ease-in-out hover:-translate-y-1 hover:scale-102">
             {/* <!-- Settings --> */}
             <div className="grid grid-cols-3 w-full h-18">
                 {/* <!-- Gear icon --> */}
