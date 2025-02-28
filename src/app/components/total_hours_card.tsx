@@ -1,6 +1,12 @@
-export default function TotalHoursCard() {
+import React from 'react';
+
+type TotalHoursCardProps = {
+    className?: string;
+}
+
+const TotalHoursCard: React.FC<TotalHoursCardProps> = ({className}) => {
     return (
-        <div className="bg-zinc-100 h-auto p-4 rounded-lg mb-2 shadow-sm flex flex-col ">
+        <div className={`${className} bg-zinc-100 h-auto p-4 rounded-lg shadow-sm flex flex-col`}>
             {/* Make a color gradient for the hours text */}
             <div className="text-transparent self-center bg-clip-text bg-gradient-to-tr from-sky-300 to-red-400">
                 {/* <!-- Hour --> */}
@@ -11,3 +17,5 @@ export default function TotalHoursCard() {
         </div>
     );
 }
+
+export default TotalHoursCard;

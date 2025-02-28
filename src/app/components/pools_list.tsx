@@ -1,8 +1,14 @@
+import React from 'react';
+
 import PoolListing from "./pool_listing";
 
-export default function PoolList() {
+type PoolListProps = {
+    className?: string;
+}
+
+const PoolList: React.FC<PoolListProps> = ({className}) => {
     return (
-        <div className="flex flex-col bg-zinc-100 rounded-lg py-4 mb-2 shadow-sm">
+        <div className={`${className} flex flex-col bg-zinc-100 rounded-lg py-4 shadow-sm`}>
             {/* <!-- Pool list top bar --> */}
             <div className="grid grid-cols-3 w-full h-18">
                 {/* <!-- Empty div for grid spacing --> */}
@@ -15,9 +21,11 @@ export default function PoolList() {
                 </svg>
             </div>
             {/* <!-- Pool list --> */}
-            <div className="flex flex-col h-full m-2 rounded-sm">
+            <div className="flex flex-col grow m-2 rounded-sm">
                 <PoolListing/>
             </div>
         </div>
     );
 }
+
+export default PoolList;

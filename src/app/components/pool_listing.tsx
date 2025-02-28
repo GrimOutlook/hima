@@ -1,4 +1,10 @@
-export default function PoolListing() {
+import React from 'react';
+
+type PoolListingProps = {
+    className?: string;
+}
+
+const PoolListing: React.FC<PoolListingProps> = ({className}) => {
     return (
         <div className="flex flex-row bg-blue-300 mt-2 mx-2 rounded-lg h-18 transition duration-150 ease-in-out hover:-translate-y-1 hover:scale-102 hover:drop-shadow-lg">
             <div className="flex flex-col w-full">
@@ -13,3 +19,5 @@ export default function PoolListing() {
         </div>
     );
 }
+
+export default PoolListing;

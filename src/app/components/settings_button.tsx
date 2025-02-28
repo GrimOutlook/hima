@@ -1,6 +1,12 @@
-export default function SettingsButton() {
+import React from 'react';
+
+type SettingsButtonProps = {
+    className?: string;
+}
+
+const SettingsButton: React.FC<SettingsButtonProps> = ({className}) => {
     return (
-        <div className="h-24 bg-zinc-500 rounded-lg shadow-sm content-center transition duration-150 ease-in-out hover:-translate-y-1 hover:scale-102">
+        <div className={`${className} bg-zinc-500 rounded-lg shadow-sm content-center transition duration-150 ease-in-out hover:-translate-y-1 hover:scale-102`}>
             {/* <!-- Settings --> */}
             <div className="grid grid-cols-3 w-full h-18">
                 {/* <!-- Gear icon --> */}
@@ -17,3 +23,5 @@ export default function SettingsButton() {
         </div>
     );
 }
+
+export default SettingsButton

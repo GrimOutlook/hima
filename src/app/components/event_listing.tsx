@@ -1,4 +1,10 @@
-export default function EventListing() {
+import React from 'react';
+
+type EventListingProps = {
+    className?: string;
+}
+
+const EventListing: React.FC<EventListingProps> = ({className}) => {
     return (
         <div className="flex flex-row bg-red-400 m-2 rounded-lg h-18 transition duration-150 ease-in-out hover:-translate-y-1 hover:scale-102 hover:drop-shadow-lg">
             {/* <!-- Hours --> */}
@@ -17,3 +23,5 @@ export default function EventListing() {
         </div>
     );
 }
+
+export default EventListing;

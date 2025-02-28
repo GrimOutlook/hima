@@ -9,18 +9,24 @@ export default function Home() {
   return (
     <div className="flex flex-row text-gray-700 bg-gradient-to-tl to-zinc-900 from-zinc-700 w-full">
         {/* <!-- Left side --> */}
-        <div className="flex flex-col min-w-64 w-1/3 ml-2 my-2">
+        <div className="flex flex-col min-w-64 max-w-100 ml-2 my-2">
             {/* <!-- Top box --> */}
-            <TotalHoursCard/>
+            <div className="flex-0">
+              <TotalHoursCard/>
+            </div>
             {/* <!-- Middle box --> */}
-            <PoolList/>
+            <div className="flex-1 h-full flex">
+              <PoolList className="mt-2 grow"/>
+            </div>
             {/* <!-- Bottom box --> */}
-            <SettingsButton/>
+            <div className="flex-0">
+              <SettingsButton className="mt-2"/>
+            </div>
         </div>
         
         {/* <!-- Right side --> */}
-        <div className="min-w-48 w-2/3">
-            <EventsList/>
+        <div className="min-w-48 grow flex">
+            <EventsList className="grow"/>
         </div>
     </div>
   );
