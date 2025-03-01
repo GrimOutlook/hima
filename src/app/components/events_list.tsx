@@ -1,3 +1,5 @@
+'use client'
+
 import React from 'react';
 
 import EventListing from "./event_listing";
@@ -8,7 +10,7 @@ type PoolListProps = {
 
 const EventsList: React.FC<PoolListProps> = ({className}) => {
     return (
-        <div className={`${className} flex flex-col bg-zinc-100 dark:bg-zinc-800 rounded-lg m-2 shadow-sm`}>
+        <div className={`${className} flex flex-col bg-zinc-100 dark:bg-zinc-800 rounded-lg m-2 shadow-sm cursor-pointer`}>
             {/* <!-- Events list top bar --> */}
             <div className="grid grid-cols-3 w-full h-18">
                 {/* <!-- Empty div for grid spacing --> */}
