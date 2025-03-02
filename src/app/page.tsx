@@ -29,7 +29,7 @@ export default function Home() {
         </div>
         {/* <!-- Bottom box --> */}
         <div className="flex-0">
-          <SettingsButton className="mt-2"/>
+          <SettingsButton className="mt-2 h-auto w-full"/>
         </div>
       </div>
       

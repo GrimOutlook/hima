@@ -6,7 +6,7 @@ type SettingsButtonProps = {
 
 const SettingsButton: React.FC<SettingsButtonProps> = ({className}) => {
     return (
-        <div className={`${className} bg-zinc-500 rounded-lg shadow-sm content-center transition duration-150 ease-in-out hover:-translate-y-1 hover:scale-102 cursor-pointer`}>
+        <div className={`${className} bg-zinc-500 rounded-lg shadow-sm content-center transition duration-150 ease-in-out hover:-translate-y-1 hover:scale-102 hover:shadow-sm cursor-pointer`}>
             {/* <!-- Settings --> */}
             <div className="grid grid-cols-3 w-full h-18">
                 {/* <!-- Gear icon --> */}
