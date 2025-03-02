@@ -22,7 +22,8 @@ const PoolList: React.FC<PoolListProps> = ({className}) => {
             </div>
             {/* <!-- Pool list --> */}
             <div className="flex flex-col grow m-2 rounded-sm">
-                <PoolListing/>
+                {/* This is where pool listings go */}
+                {/* <PoolListing/> */}
             </div>
         </div>
     );
