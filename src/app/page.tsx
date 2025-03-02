@@ -12,25 +12,12 @@ export default function Home() {
       <div className="flex flex-col min-w-64 max-w-100 ml-2 my-2">
         {/* Logo banner */}
         {/* Make a color gradient for the logo text */}
-        <div className="self-center w-full rounded-lg mb-2">
-          <svg className="h-40 w-full">
-            <defs>
-              <mask id="maskedText">
-                <rect className="h-full w-full" rx="10" fill="white"/>
-                <text className="text-[10rem] font-medium" x="50%" y="85%" text-anchor="middle">
-                  HIMA
-                </text>
-              </mask>
-            </defs>
-            <defs>
-              <linearGradient id="logoGradient" spreadMethod="pad" gradientUnits="userSpaceOnUse" gradientTransform="rotate(45)">
-                <stop offset="10%" stop-color="#7dd3fc"/>
-                <stop offset="90%" stop-color="#fb7185"/>
-              </linearGradient>
-            </defs>
-
-            <rect className="h-full w-full" fill="url(#logoGradient)" mask="url(#maskedText)"/>
-          </svg>
+        <div className="self-center w-full">
+            {/* Make a color gradient for the hours text */}
+            <div className="text-transparent self-center bg-clip-text bg-gradient-to-tr from-sky-300 to-red-400">
+                {/* <!-- Hour --> */}
+                <div className="text-[10rem] leading-none text-center font-black line-clamp-1">HIMA</div>
+            </div>
         </div>
         {/* <!-- Top box --> */}
         <div className="flex-0">
