@@ -5,3 +5,5 @@ enum Period {
     Monthly = "MONTHLY",
     Yearly = "YEARLY"
 }
+
+export default Period;

@@ -1,23 +1,22 @@
 import { Button, Description, Field, Fieldset, Input, Label, Legend, Listbox, ListboxButton, ListboxOption, ListboxOptions, Select } from "@headlessui/react";
 import { useState } from "react";
+import { CheckIcon, ChevronDownIcon } from '@heroicons/react/20/solid'
+import clsx from 'clsx'
 
+import { EnumToArray, ToTitleCase } from "@/lib/helpers"
 import { useAppDispatch, useAppSelector } from "@/lib/hooks";
 import { closePoolDialog } from "@/lib/features/poolDialogSlice";
+import Period from "@/lib/models/Period";
 
 type PoolFormProps = {
     className?: string;
 }
 
-const periods = [
-    "Daily",
-    "Weekly",
-    "Monthly",
-    "Yearly"
-]
+const periods = EnumToArray(Period).map((str: string) => ToTitleCase(str))
 
 const PoolForm: React.FC<PoolFormProps> = ({className}) => {
     const dispatch = useAppDispatch();
-    const [selectedPeriod, setSelectedPeriod] = useState(periods[1])
+    const [selectedPeriod, setSelectedPeriod] = useState(periods[2])
 
     return (
         <div className="bg-zinc-300 h-fit w-fit rounded-lg">
@@ -35,10 +34,17 @@ const PoolForm: React.FC<PoolFormProps> = ({className}) => {
                     </Field>
                     <Field className={"inline"}>
                         <Listbox value={selectedPeriod} onChange={setSelectedPeriod}>
-                            <ListboxButton className={"p-2 rounded-lg bg-black/10"}>{selectedPeriod}</ListboxButton>
-                            <ListboxOptions>
+                            <ListboxButton className={"relative w-40 p-2 pr-10 rounded-lg bg-black/10"}>
+                                {selectedPeriod}
+                                <ChevronDownIcon
+                                    className="group pointer-events-none absolute top-2.5 right-2.5 size-4 fill-black/60"
+                                    aria-hidden="true"
+                                />
+                            </ListboxButton>
+                            <ListboxOptions anchor="bottom" className={clsx('w-[var(--button-width)] rounded-xl border border-black/10 bg-zinc-300/95 p-1 [--anchor-gap:var(--spacing-1)] focus:outline-none transition duration-100 ease-in data-[leave]:data-[closed]:opacity-0')}>
                                 {periods.map((period) => (
-                                <ListboxOption key={period} value={period} className="data-[focus]:bg-blue-100">
+                                <ListboxOption key={period} value={period} className="group flex cursor-default items-center gap-2 rounded-lg py-1.5 px-3 select-none data-[focus]:bg-white/10">
+                                    <CheckIcon className="invisible size-4 fill-black group-data-[selected]:visible"/>
                                     {period}
                                 </ListboxOption>
                                 ))}

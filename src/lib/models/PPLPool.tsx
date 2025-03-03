@@ -1,3 +1,5 @@
+import Period from "./Period";
+
 type PPLPool = {
     // Name of the PPL pool
     name: string;
@@ -10,3 +12,5 @@ type PPLPool = {
     // Date that the accrual starts
     startDate: Date;
 }
+
+export default PPLPool;

@@ -10,3 +10,5 @@ type PPLEvent = {
     // PPL Pool that this event belongs to
     pool: string;
 }
+
+export default PPLEvent;
