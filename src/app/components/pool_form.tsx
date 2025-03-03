@@ -1,22 +1,61 @@
 import { Button, Description, Field, Fieldset, Input, Label, Legend, Listbox, ListboxButton, ListboxOption, ListboxOptions, Select } from "@headlessui/react";
-import { useState } from "react";
+import { ChangeEvent, useState } from "react";
 import { CheckIcon, ChevronDownIcon } from '@heroicons/react/20/solid'
 import clsx from 'clsx'
 
 import { EnumToArray, ToTitleCase } from "@/lib/helpers"
 import { useAppDispatch, useAppSelector } from "@/lib/hooks";
 import { closePoolDialog } from "@/lib/features/poolDialogSlice";
+import { addPool } from "@/lib/features/poolListSlice";
 import Period from "@/lib/models/Period";
+import PPLPool from '@/lib/models/PPLPool';
 
 type PoolFormProps = {
     className?: string;
 }
 
+type PoolFormData = {
+    name: string,
+    description: string,
+    amount: number,
+    period: Period,
+    startDate: string,
+}
+
 const periods = EnumToArray(Period).map((str: string) => ToTitleCase(str))
+const initialPoolFormData: PoolFormData = {
+    name: "",
+    description: "",
+    amount: 0,
+    period: Period.BiWeekly,
+    startDate: (new Date().toDateString())
+}
 
 const PoolForm: React.FC<PoolFormProps> = ({className}) => {
     const dispatch = useAppDispatch();
-    const [selectedPeriod, setSelectedPeriod] = useState(periods[2])
+    const [poolFormData, setPoolFormData] = useState(initialPoolFormData)
+    
+
+    const handleChange = (e: ChangeEvent<HTMLInputElement>) => {
+        setPoolFormData({
+            ...poolFormData,
+            [e.target.name]: e.target.value,
+        });
+    };
+
+    const handlePeriodChange = (period: Period) => {
+        setPoolFormData({
+            ...poolFormData,
+            period: period
+        })
+    }
+
+    const handleDateChange = (startDate: string) => {
+        setPoolFormData({
+            ...poolFormData,
+            startDate: startDate
+        })
+    }
 
     return (
         <div className="bg-zinc-300 h-fit w-fit rounded-lg">
@@ -25,17 +64,17 @@ const PoolForm: React.FC<PoolFormProps> = ({className}) => {
                     <Legend className={"text-6xl"}>New PPL Pool</Legend>
                     <Field>
                         <Label className={"block text-3xl"}>Pool Name</Label>
-                        <Input className={"w-50 rounded-lg border-none bg-black/10 p-2"} name="pool_name"/>
+                        <Input className={"w-50 rounded-lg border-none bg-black/10 p-2"} name="name" value={poolFormData.name} onChange={(e) => handleChange(e)}/>
                     </Field>
                     <Label className={"block text-3xl mt-2"}>Accrual Rate</Label>
                     <Field className={"inline mr-1"}>
-                        <Input className="w-20 rounded-lg border-none bg-black/10 mr-1 p-2" name="amount"/>
+                        <Input className="w-20 rounded-lg border-none bg-black/10 mr-1 p-2" name="amount" value={poolFormData.amount} onChange={(e) => handleChange(e)}/>
                         <Label>hours</Label>
                     </Field>
                     <Field className={"inline"}>
-                        <Listbox value={selectedPeriod} onChange={setSelectedPeriod}>
+                        <Listbox value={poolFormData.period} onChange={(e) => handlePeriodChange(e)}>
                             <ListboxButton className={"relative w-40 p-2 pr-10 rounded-lg bg-black/10"}>
-                                {selectedPeriod}
+                                {poolFormData.period}
                                 <ChevronDownIcon
                                     className="group pointer-events-none absolute top-2.5 right-2.5 size-4 fill-black/60"
                                     aria-hidden="true"
@@ -53,10 +92,22 @@ const PoolForm: React.FC<PoolFormProps> = ({className}) => {
                     </Field>
                     <Field className={"mt-2"}>
                         <Label className={"text-3xl"}>Starting on</Label>
-                        <Input className="rounded-lg bg-black/10 block p-2" type="date"/>
+                        <Input className="rounded-lg bg-black/10 block p-2" type="date" value={poolFormData.startDate} onChange={(e) => handleDateChange(e.target.value)}/>
                     </Field>
                     <Field className={"mt-2"}>
-                        <Button className={"w-full rounded-lg p-2 text-3xl bg-black/10 text-zinc-700"} onClick={() => {dispatch(closePoolDialog())}}>Create</Button>
+                        <Button className={"w-full rounded-lg p-2 text-3xl bg-black/10 text-zinc-700"} onClick={() => {
+                            let startDate: Date = new Date(poolFormData.startDate)
+
+                            let pool : PPLPool = {
+                                name: poolFormData.name,
+                                description: poolFormData.description,
+                                amount: poolFormData.amount,
+                                period: poolFormData.period,
+                                startDate
+                            }
+                            dispatch(addPool(pool))
+                            dispatch(closePoolDialog())
+                        }}>Create</Button>
                     </Field>
                 </Fieldset>
             </form>
