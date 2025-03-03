@@ -96,13 +96,13 @@ const PoolForm: React.FC<PoolFormProps> = ({className}) => {
                         </Listbox>
                     </Field>
                     <Field className={"mt-2"}>
-                        <Label className={"text-3xl"}>Starting on</Label>
-                        <Input className="rounded-lg bg-black/10 block p-2" type="date" value={poolFormData.startDate} onChange={(e) => handleDateChange(e.target.value)}/>
-                    </Field>
-                    <Field className={"mt-2"}>
-                        <Label className={"text-3xl block"}>With</Label>
+                        <Label className={"text-3xl block"}>Starting on</Label>
+                        <Input className="rounded-lg bg-black/10 p-2" type="date" value={poolFormData.startDate} onChange={(e) => handleDateChange(e.target.value)}/>
+                        <Label className={"mx-1"}>With</Label>
                         <Input className="w-20 rounded-lg border-none bg-black/10 mr-1 p-2" name="startAmount" value={poolFormData.startAmount} onChange={(e) => handleChange(e)}/>
                         <Label>hours</Label>
+                    </Field>
+                    <Field className={"mt-2"}>
                     </Field>
                     <Field className={"mt-2"}>
                         <Button className={"w-full rounded-lg p-2 text-3xl bg-black/10 text-zinc-700"} onClick={() => {
