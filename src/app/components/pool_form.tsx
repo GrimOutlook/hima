@@ -9,8 +9,9 @@ import { closePoolDialog } from "@/lib/features/poolDialogSlice";
 import { addPool } from "@/lib/features/poolListSlice";
 import Period from "@/lib/models/Period";
 import { PPLPool } from '@/lib/models/PPLPool';
-import { Serialize } from "@/lib/models/PPLPoolDto";
+import { SerializeToPoolDto } from "@/lib/models/PPLPoolDto";
 import { selectNextPoolID } from '@/lib/features/poolListSlice';
+import dayjs from "dayjs";
 
 type PoolFormProps = {
     className?: string;
@@ -106,18 +107,16 @@ const PoolForm: React.FC<PoolFormProps> = ({className}) => {
                     </Field>
                     <Field className={"mt-2"}>
                         <Button className={"w-full rounded-lg p-2 text-3xl bg-black/10 text-zinc-700"} onClick={() => {
-                            let startDate: Date = new Date(poolFormData.startDate)
-
                             let pool : PPLPool = {
                                 id: nextPoolID,
                                 name: poolFormData.name,
                                 description: poolFormData.description,
                                 amount: poolFormData.amount,
                                 period: poolFormData.period,
-                                startDate,
+                                startDate: dayjs(poolFormData.startDate),
                                 startAmount : poolFormData.startAmount,
                             }
-                            dispatch(addPool(Serialize(pool)))
+                            dispatch(addPool(SerializeToPoolDto(pool)))
                             dispatch(closePoolDialog())
                         }}>Create</Button>
                     </Field>

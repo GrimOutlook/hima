@@ -1,3 +1,4 @@
+import dayjs, { Dayjs } from "dayjs";
 import Period from "./Period";
 import { PPLPoolDto } from "./PPLPoolDto";
 
@@ -13,18 +14,18 @@ export type PPLPool = {
     // Period of time between when amounts of PPL accrue
     period: Period;
     // Date that the accrual starts
-    startDate: Date;
+    startDate: Dayjs;
     // Amount of PPL that was in the pool at startDate
     startAmount: number;
 }
 
 
-export const Deserialize = (pool: PPLPoolDto): PPLPool => ({
+export const DeserializeToPool = (pool: PPLPoolDto): PPLPool => ({
     id: pool.id,
     name: pool.name,
     description: pool.description,
     amount: pool.amount,
     period: pool.period,
-    startDate: new Date(pool.startDate),
+    startDate: dayjs(pool.startDate),
     startAmount: pool.startAmount
 })

@@ -2,10 +2,11 @@ import type { Action, ThunkAction } from "@reduxjs/toolkit";
 import { combineSlices, configureStore } from "@reduxjs/toolkit";
 import { poolDialogSlice } from "./features/poolDialogSlice";
 import { poolListSlice } from "./features/poolListSlice";
+import { eventListSlice } from "./features/eventListSlice";
 
 // `combineSlices` automatically combines the reducers using
 // their `reducerPath`s, therefore we no longer need to call `combineReducers`.
-const rootReducer = combineSlices(poolDialogSlice, poolListSlice);
+const rootReducer = combineSlices(poolDialogSlice, poolListSlice, eventListSlice);
 // Infer the `RootState` type from the root reducer
 export type RootState = ReturnType<typeof rootReducer>;
 

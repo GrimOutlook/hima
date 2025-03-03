@@ -19,8 +19,8 @@ export const poolListSlice = createSlice({
             console.log(`Adding pool with ID ${action.payload.id}`)
             state.pools.push(action.payload);
         }),
-        removePool: create.reducer((state, action: PayloadAction<string>) => {
-            state.pools = state.pools.filter((pool: PPLPoolDto) => action.payload != pool.name)
+        removePool: create.reducer((state, action: PayloadAction<number>) => {
+            state.pools = state.pools.filter((pool: PPLPoolDto) => action.payload != pool.id)
         })
     }),
     selectors: {
@@ -29,7 +29,7 @@ export const poolListSlice = createSlice({
             let next_id = 0
             do {
                 next_id = randomInt(0, (2**48)-1)
-            } while ( state.pools.some((pools) => pools.id == next_id) )
+            } while ( state.pools.some((pool) => pool.id == next_id) )
             return next_id
         },
     },

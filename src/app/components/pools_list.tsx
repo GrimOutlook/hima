@@ -9,7 +9,11 @@ import {
 import { useAppDispatch, useAppSelector } from "@/lib/hooks";
 import { selectPools } from '@/lib/features/poolListSlice';
 import { PPLPool } from '@/lib/models/PPLPool';
-import { Deserialize } from '@/lib/models/PPLPool';
+import { DeserializeToPool as DeserializeToPool } from '@/lib/models/PPLPool';
+import { selectEvents } from '@/lib/features/eventListSlice';
+import { DeserializeToEvent } from '@/lib/models/PPLEvent';
+import { calculateAmount } from '@/logic';
+import dayjs from 'dayjs';
 
 type PoolListProps = {
     className?: string;
@@ -17,7 +21,8 @@ type PoolListProps = {
 
 const PoolList: React.FC<PoolListProps> = ({className}) => {
     const dispatch = useAppDispatch();
-    const pools = useAppSelector(selectPools).map((pool) => Deserialize(pool));
+    const pools = useAppSelector(selectPools).map((pool) => DeserializeToPool(pool));
+    const events = useAppSelector(selectEvents).map((event) => DeserializeToEvent(event));
 
     return (
         <div className={`${className} flex flex-col bg-zinc-100 rounded-lg py-4 shadow-sm`}>
@@ -36,7 +41,7 @@ const PoolList: React.FC<PoolListProps> = ({className}) => {
             <div className="flex flex-col grow m-2 rounded-sm">
                 {/* This is where pool listings go */}
                 {pools.map((pool: PPLPool) =>(
-                    <PoolListing key={pool.id} name={pool.name} amount={pool.amount}/>
+                    <PoolListing key={pool.id} name={pool.name} amount={calculateAmount(dayjs(), pool, events.filter((event) => event.pool == pool.id))}/>
                 ))}
             </div>
         </div>

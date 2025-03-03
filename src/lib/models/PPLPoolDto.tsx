@@ -11,7 +11,7 @@ export type PPLPoolDto = {
     startAmount: number;
 }
 
-export const Serialize = (pool: PPLPool): PPLPoolDto => ({
+export const SerializeToPoolDto = (pool: PPLPool): PPLPoolDto => ({
     id: pool.id,
     name: pool.name,
     description: pool.description,
