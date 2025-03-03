@@ -9,7 +9,6 @@ import TotalHoursCard from "./components/total_hours_card";
 import PoolForm from "./components/pool_form";
 
 export default function Home() {
-  let [poolFormIsOpen, setPoolFormIsOpen] = useState(false)
 
   return (
     <>
@@ -29,7 +28,6 @@ export default function Home() {
           <div className="flex-0">
             <TotalHoursCard/>
           </div>
-          <button className="h-10 bg-white" onClick={() => setPoolFormIsOpen(true)}/>
           {/* <!-- Middle box --> */}
           <div className="flex-1 h-full flex">
             <PoolList className="mt-2 grow"/>
@@ -46,10 +44,10 @@ export default function Home() {
         </div>
       </div>
       
-      <Transition appear show={poolFormIsOpen} as={Fragment}>
+      <Transition appear show={false/*poolFormIsOpen*/} as={Fragment}>
         <Dialog 
-          open={poolFormIsOpen}
-          onClose={() => setPoolFormIsOpen(false)}
+          /*open={poolFormIsOpen}*/
+          onClose={() => {}/*setPoolFormIsOpen(false)*/}
           as="div" className="relative z-10">
             
           <TransitionChild
@@ -61,7 +59,7 @@ export default function Home() {
             leaveFrom="opacity-100"
             leaveTo="opacity-0"
           >
-            <div className="fixed inset-0 bg-black bg-opacity-50" />
+            <div className="fixed inset-0 bg-black bg-opacity-50" /*onClick={close pool form}*/ />
           </TransitionChild>
 
           <div className="fixed inset-0 self-center justify-self-center">
