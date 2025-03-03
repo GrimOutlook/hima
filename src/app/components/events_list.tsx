@@ -1,6 +1,14 @@
 'use client'
 
 import React from 'react';
+import { useState } from "react";
+
+import {
+    openPoolDialog,
+    closePoolDialog,
+    selectPoolDialogOpenState
+} from "@/lib/features/poolDialogSlice";
+import { useAppDispatch, useAppSelector } from "@/lib/hooks";
 
 import EventListing from "./event_listing";
 
@@ -9,6 +17,7 @@ type PoolListProps = {
 }
 
 const EventsList: React.FC<PoolListProps> = ({className}) => {
+
     return (
         <div className={`${className} flex flex-col bg-zinc-100 dark:bg-zinc-800 rounded-lg m-2 shadow-sm`}>
             {/* <!-- Events list top bar --> */}

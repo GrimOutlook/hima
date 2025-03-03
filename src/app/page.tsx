@@ -7,8 +7,12 @@ import PoolList from "./components/pools_list";
 import SettingsButton from "./components/settings_button";
 import TotalHoursCard from "./components/total_hours_card";
 import PoolForm from "./components/pool_form";
+import { useAppDispatch, useAppSelector } from "@/lib/hooks";
+import { closePoolDialog, selectPoolDialogOpenState } from "@/lib/features/poolDialogSlice";
 
 export default function Home() {
+  const dispatch = useAppDispatch();
+  const poolDialogOpenState = useAppSelector(selectPoolDialogOpenState);
 
   return (
     <>
@@ -44,10 +48,10 @@ export default function Home() {
         </div>
       </div>
       
-      <Transition appear show={false/*poolFormIsOpen*/} as={Fragment}>
+      <Transition appear show={poolDialogOpenState} as={Fragment}>
         <Dialog 
-          /*open={poolFormIsOpen}*/
-          onClose={() => {}/*setPoolFormIsOpen(false)*/}
+          open={poolDialogOpenState}
+          onClose={() => dispatch(closePoolDialog())}
           as="div" className="relative z-10">
             
           <TransitionChild
@@ -59,7 +63,7 @@ export default function Home() {
             leaveFrom="opacity-100"
             leaveTo="opacity-0"
           >
-            <div className="fixed inset-0 bg-black bg-opacity-50" /*onClick={close pool form}*/ />
+            <div className="fixed inset-0 bg-black bg-opacity-50" onClick={() => dispatch(closePoolDialog())} />
           </TransitionChild>
 
           <div className="fixed inset-0 self-center justify-self-center">

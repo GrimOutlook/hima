@@ -1,6 +1,9 @@
 import { Button, Description, Field, Fieldset, Input, Label, Legend, Listbox, ListboxButton, ListboxOption, ListboxOptions, Select } from "@headlessui/react";
 import { useState } from "react";
 
+import { useAppDispatch, useAppSelector } from "@/lib/hooks";
+import { closePoolDialog } from "@/lib/features/poolDialogSlice";
+
 type PoolFormProps = {
     className?: string;
 }
@@ -13,13 +16,14 @@ const periods = [
 ]
 
 const PoolForm: React.FC<PoolFormProps> = ({className}) => {
+    const dispatch = useAppDispatch();
     const [selectedPeriod, setSelectedPeriod] = useState(periods[1])
 
     return (
         <div className="bg-zinc-300 h-fit w-fit rounded-lg">
             <form>
                 <Fieldset className={"p-6"}>
-                    <Legend className={"text-6xl m-5"}>New Pool</Legend>
+                    <Legend className={"text-6xl"}>New PPL Pool</Legend>
                     <Field>
                         <Label className={"block text-3xl"}>Pool Name</Label>
                         <Input className={"w-50 rounded-lg border-none bg-black/10 p-2"} name="pool_name"/>
@@ -46,7 +50,7 @@ const PoolForm: React.FC<PoolFormProps> = ({className}) => {
                         <Input className="rounded-lg bg-black/10 block p-2" type="date"/>
                     </Field>
                     <Field className={"mt-2"}>
-                        <Button className={"w-full rounded-lg p-2 text-3xl bg-black/10 text-zinc-700"}>Create</Button>
+                        <Button className={"w-full rounded-lg p-2 text-3xl bg-black/10 text-zinc-700"} onClick={() => {dispatch(closePoolDialog())}}>Create</Button>
                     </Field>
                 </Fieldset>
             </form>
