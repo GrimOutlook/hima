@@ -8,7 +8,8 @@ import { useAppDispatch, useAppSelector } from "@/lib/hooks";
 import { closePoolDialog } from "@/lib/features/poolDialogSlice";
 import { addPool } from "@/lib/features/poolListSlice";
 import Period from "@/lib/models/Period";
-import PPLPool from '@/lib/models/PPLPool';
+import { PPLPool } from '@/lib/models/PPLPool';
+import { Serialize } from "@/lib/models/PPLPoolDto";
 
 type PoolFormProps = {
     className?: string;
@@ -20,6 +21,7 @@ type PoolFormData = {
     amount: number,
     period: Period,
     startDate: string,
+    startAmount: number,
 }
 
 const periods = EnumToArray(Period).map((str: string) => ToTitleCase(str))
@@ -28,7 +30,8 @@ const initialPoolFormData: PoolFormData = {
     description: "",
     amount: 0,
     period: Period.BiWeekly,
-    startDate: (new Date().toDateString())
+    startDate: (new Date().toDateString()),
+    startAmount: 0
 }
 
 const PoolForm: React.FC<PoolFormProps> = ({className}) => {
@@ -95,6 +98,11 @@ const PoolForm: React.FC<PoolFormProps> = ({className}) => {
                         <Input className="rounded-lg bg-black/10 block p-2" type="date" value={poolFormData.startDate} onChange={(e) => handleDateChange(e.target.value)}/>
                     </Field>
                     <Field className={"mt-2"}>
+                        <Label className={"text-3xl block"}>With</Label>
+                        <Input className="w-20 rounded-lg border-none bg-black/10 mr-1 p-2" name="startAmount" value={poolFormData.startAmount} onChange={(e) => handleChange(e)}/>
+                        <Label>hours</Label>
+                    </Field>
+                    <Field className={"mt-2"}>
                         <Button className={"w-full rounded-lg p-2 text-3xl bg-black/10 text-zinc-700"} onClick={() => {
                             let startDate: Date = new Date(poolFormData.startDate)
 
@@ -103,9 +111,10 @@ const PoolForm: React.FC<PoolFormProps> = ({className}) => {
                                 description: poolFormData.description,
                                 amount: poolFormData.amount,
                                 period: poolFormData.period,
-                                startDate
+                                startDate,
+                                startAmount : poolFormData.startAmount,
                             }
-                            dispatch(addPool(pool))
+                            dispatch(addPool(Serialize(pool)))
                             dispatch(closePoolDialog())
                         }}>Create</Button>
                     </Field>

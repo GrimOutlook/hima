@@ -8,7 +8,8 @@ import {
 } from "@/lib/features/poolDialogSlice";
 import { useAppDispatch, useAppSelector } from "@/lib/hooks";
 import { selectPools } from '@/lib/features/poolListSlice';
-import PPLPool from '@/lib/models/PPLPool';
+import { PPLPool } from '@/lib/models/PPLPool';
+import { Deserialize } from '@/lib/models/PPLPool';
 
 type PoolListProps = {
     className?: string;
@@ -17,7 +18,7 @@ type PoolListProps = {
 const PoolList: React.FC<PoolListProps> = ({className}) => {
     const dispatch = useAppDispatch();
     const poolDialogState = useAppSelector(selectPoolDialogOpenState);
-    const pools = useAppSelector(selectPools);
+    const pools = useAppSelector(selectPools).map((pool) => Deserialize(pool));
 
     return (
         <div className={`${className} flex flex-col bg-zinc-100 rounded-lg py-4 shadow-sm`}>
@@ -36,7 +37,7 @@ const PoolList: React.FC<PoolListProps> = ({className}) => {
             <div className="flex flex-col grow m-2 rounded-sm">
                 {/* This is where pool listings go */}
                 {pools.map((pool: PPLPool) =>(
-                    <PoolListing name={pool.name} amount={pool.amount}/>
+                    <PoolListing key={pool.name} name={pool.name} amount={pool.amount}/>
                 ))}
             </div>
         </div>

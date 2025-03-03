@@ -1,6 +1,7 @@
 import Period from "./Period";
+import { PPLPoolDto } from "./PPLPoolDto";
 
-type PPLPool = {
+export type PPLPool = {
     // Name of the PPL pool
     name: string;
     // More detailed description of 
@@ -11,6 +12,16 @@ type PPLPool = {
     period: Period;
     // Date that the accrual starts
     startDate: Date;
+    // Amount of PPL that was in the pool at startDate
+    startAmount: number;
 }
 
-export default PPLPool;
+
+export const Deserialize = (pool: PPLPoolDto): PPLPool => ({
+    name: pool.name,
+    description: pool.description,
+    amount: pool.amount,
+    period: pool.period,
+    startDate: new Date(pool.startDate),
+    startAmount: pool.startAmount
+})
