@@ -10,6 +10,7 @@ import { addPool } from "@/lib/features/poolListSlice";
 import Period from "@/lib/models/Period";
 import { PPLPool } from '@/lib/models/PPLPool';
 import { Serialize } from "@/lib/models/PPLPoolDto";
+import { selectNextPoolID } from '@/lib/features/poolListSlice';
 
 type PoolFormProps = {
     className?: string;
@@ -37,6 +38,7 @@ const initialPoolFormData: PoolFormData = {
 const PoolForm: React.FC<PoolFormProps> = ({className}) => {
     const dispatch = useAppDispatch();
     const [poolFormData, setPoolFormData] = useState(initialPoolFormData)
+    const nextPoolID = useAppSelector(selectNextPoolID);
     
 
     const handleChange = (e: ChangeEvent<HTMLInputElement>) => {
@@ -107,6 +109,7 @@ const PoolForm: React.FC<PoolFormProps> = ({className}) => {
                             let startDate: Date = new Date(poolFormData.startDate)
 
                             let pool : PPLPool = {
+                                id: nextPoolID,
                                 name: poolFormData.name,
                                 description: poolFormData.description,
                                 amount: poolFormData.amount,

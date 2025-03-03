@@ -2,6 +2,8 @@ import Period from "./Period";
 import { PPLPoolDto } from "./PPLPoolDto";
 
 export type PPLPool = {
+    // Unique identifier for the pool
+    id: number;
     // Name of the PPL pool
     name: string;
     // More detailed description of 
@@ -18,6 +20,7 @@ export type PPLPool = {
 
 
 export const Deserialize = (pool: PPLPoolDto): PPLPool => ({
+    id: pool.id,
     name: pool.name,
     description: pool.description,
     amount: pool.amount,

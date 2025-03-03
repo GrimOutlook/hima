@@ -1,6 +1,7 @@
 import { createSlice } from "@reduxjs/toolkit/react";
 import type { PayloadAction } from "@reduxjs/toolkit";
 import { PPLPoolDto } from "../models/PPLPoolDto";
+import { randomInt } from "../helpers";
 
 export interface PoolListState {
     pools: PPLPoolDto[];
@@ -15,6 +16,7 @@ export const poolListSlice = createSlice({
     initialState,
     reducers: (create) => ({
         addPool: create.reducer((state, action: PayloadAction<PPLPoolDto>) => {
+            console.log(`Adding pool with ID ${action.payload.id}`)
             state.pools.push(action.payload);
         }),
         removePool: create.reducer((state, action: PayloadAction<string>) => {
@@ -23,9 +25,16 @@ export const poolListSlice = createSlice({
     }),
     selectors: {
         selectPools: (state) => state.pools,
+        selectNextPoolID: (state) => {
+            let next_id = 0
+            do {
+                next_id = randomInt(0, (2**48)-1)
+            } while ( state.pools.some((pools) => pools.id == next_id) )
+            return next_id
+        },
     },
 });
 
 export const { addPool, removePool } = poolListSlice.actions;
 
-export const { selectPools } = poolListSlice.selectors;
+export const { selectPools, selectNextPoolID } = poolListSlice.selectors;

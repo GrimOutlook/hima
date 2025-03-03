@@ -2,6 +2,7 @@ import Period from "./Period";
 import { PPLPool } from "./PPLPool";
 
 export type PPLPoolDto = {
+    id: number;
     name: string;
     description: string;
     amount: number;
@@ -11,6 +12,7 @@ export type PPLPoolDto = {
 }
 
 export const Serialize = (pool: PPLPool): PPLPoolDto => ({
+    id: pool.id,
     name: pool.name,
     description: pool.description,
     amount: pool.amount,

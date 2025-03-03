@@ -17,7 +17,6 @@ type PoolListProps = {
 
 const PoolList: React.FC<PoolListProps> = ({className}) => {
     const dispatch = useAppDispatch();
-    const poolDialogState = useAppSelector(selectPoolDialogOpenState);
     const pools = useAppSelector(selectPools).map((pool) => Deserialize(pool));
 
     return (
@@ -37,7 +36,7 @@ const PoolList: React.FC<PoolListProps> = ({className}) => {
             <div className="flex flex-col grow m-2 rounded-sm">
                 {/* This is where pool listings go */}
                 {pools.map((pool: PPLPool) =>(
-                    <PoolListing key={pool.name} name={pool.name} amount={pool.amount}/>
+                    <PoolListing key={pool.id} name={pool.name} amount={pool.amount}/>
                 ))}
             </div>
         </div>
