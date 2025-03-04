@@ -1,3 +1,4 @@
+"use client"
 import React from 'react';
 
 import PoolListing from "./pool_listing";
