@@ -1,7 +1,7 @@
 import dayjs, { Dayjs } from "dayjs";
 import { PPLEventDto } from "./PPLEventDto";
 
-type PPLEvent = {
+export type PPLEvent = {
     // Unique identifier for this event
     id: number
     // Title of the PPL event
@@ -15,8 +15,6 @@ type PPLEvent = {
     // ID of the PPL Pool that this event belongs to
     pool: number;
 }
-
-export default PPLEvent;
 
 export const DeserializeToEvent = (event: PPLEventDto): PPLEvent => ({
     id: event.id,

@@ -75,16 +75,16 @@ const PoolForm: React.FC<PoolFormProps> = ({className}) => {
                         <Legend className={"text-6xl"}>New PPL Pool</Legend>
                         <Field>
                             <Label className={"block text-3xl"}>Pool Name</Label>
-                            <Input className={"w-50 rounded-lg border-none bg-black/10 p-2"} name="name" value={poolFormData.name} onChange={(e) => handleChange(e)}/>
+                            <Input className={"h-10 w-50 rounded-lg border-none bg-black/10 p-2"} name="name" value={poolFormData.name} onChange={(e) => handleChange(e)}/>
                         </Field>
                         <Label className={"block text-3xl mt-2"}>Accrual Rate</Label>
                         <Field className={"inline mr-1"}>
-                            <Input className="w-20 rounded-lg border-none bg-black/10 mr-1 p-2" name="amount" value={poolFormData.amount} onChange={(e) => handleChange(e)}/>
+                            <Input className="h-10 w-20 rounded-lg border-none bg-black/10 mr-1 p-2" name="amount" value={poolFormData.amount} onChange={(e) => handleChange(e)}/>
                             <Label>hours</Label>
                         </Field>
                         <Field className={"inline"}>
                             <Listbox value={poolFormData.period} onChange={(e) => handlePeriodChange(e)}>
-                                <ListboxButton className={"relative w-40 p-2 pr-10 rounded-lg bg-black/10"}>
+                                <ListboxButton className={"relative h-10 w-40 p-2 pr-10 rounded-lg bg-black/10"}>
                                     {poolFormData.period}
                                     <ChevronDownIcon
                                         className="group pointer-events-none absolute top-2.5 right-2.5 size-4 fill-black/60"
@@ -103,14 +103,12 @@ const PoolForm: React.FC<PoolFormProps> = ({className}) => {
                         </Field>
                         <Field className={"mt-2"}>
                             <Label className={"text-3xl block"}>Starting on</Label>
-                            <Input className="rounded-lg bg-black/10 p-2" type="date" value={poolFormData.startDate} onChange={(e) => handleDateChange(e.target.value)}/>
+                            <Input className="h-10 rounded-lg bg-black/10 p-2" type="date" value={poolFormData.startDate} onChange={(e) => handleDateChange(e.target.value)}/>
                             <Label className={"mx-1"}>With</Label>
-                            <Input className="w-20 rounded-lg border-none bg-black/10 mr-1 p-2" name="startAmount" value={poolFormData.startAmount} onChange={(e) => handleChange(e)}/>
+                            <Input className="h-10 w-20 rounded-lg border-none bg-black/10 mr-1 p-2" name="startAmount" value={poolFormData.startAmount} onChange={(e) => handleChange(e)}/>
                             <Label>hours</Label>
                         </Field>
-                        <Field className={"mt-2"}>
-                        </Field>
-                        <Field className={"mt-2"}>
+                        <Field className={"mt-4"}>
                             <Button className={"w-full rounded-lg p-2 text-3xl bg-black/10 text-zinc-700"} onClick={() => {
                                 let pool : PPLPool = {
                                     id: nextPoolID,

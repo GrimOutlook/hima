@@ -10,6 +10,7 @@ import { calculateAmount } from "@/lib/logic";
 import dayjs from "dayjs";
 import OverlayDialog from "./components/overlay_dialog";
 import PoolForm from "./components/pool_form";
+import EventForm from "./components/event_form";
 
 export default function Home() {
   const pools = useAppSelector(selectPools).map((pool) => DeserializeToPool(pool));
@@ -55,7 +56,9 @@ export default function Home() {
             <EventsList className="grow"/>
         </div>
       </div>
-      <PoolForm />
+      <PoolForm/>
+      <EventForm/>
+      {/* <SettingsMenu/> */}
     </>
   );
 }
