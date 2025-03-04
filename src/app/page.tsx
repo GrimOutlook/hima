@@ -29,12 +29,12 @@ export default function Home() {
 
   return (
     <>
-      <div className="flex flex-row text-gray-700 bg-gradient-to-tl to-zinc-900 from-zinc-700 w-full max-h-full">
+      <div className="flex flex-row text-gray-700 bg-gradient-to-tl to-zinc-900 from-zinc-700 w-full max-h-dvh">
         {/* <!-- Left side --> */}
-        <div className="flex flex-col min-w-64 max-w-100 ml-2 my-2 max-h-dvh">
+        <div className="flex flex-col min-w-64 max-w-100 ml-2 mb-2 max-h-dvh">
           {/* Logo banner */}
           {/* Make a color gradient for the logo text */}
-          <div className="self-center w-full max-h-48">
+          <div className="self-center w-full max-h-36">
               {/* Make a color gradient for the hours text */}
               <div className="text-transparent self-center bg-clip-text bg-gradient-to-tr from-sky-300 to-red-400">
                   {/* <!-- Hour --> */}
@@ -43,11 +43,11 @@ export default function Home() {
           </div>
           {/* <!-- Top box --> */}
           <div className="flex-none">
-            <TotalHoursCard className="h-36" hours={calculateTotal(pools)}/>
+            <TotalHoursCard className="mt-2 h-36" hours={calculateTotal(pools)}/>
           </div>
           {/* <!-- Middle box --> */}
-          <div className="grow flex flex-col">
-            <PoolList className="mt-2 max-h-[calc(100dvh-12rem-9rem-6rem)] min-h-[calc(100dvh-12rem-9rem-6rem)]"/>
+          <div className="grow min-h-0 flex flex-col">
+            <PoolList className="mt-2 grow"/>
           </div>
           {/* <!-- Bottom box --> */}
           <div className="flex-none">
