@@ -32,7 +32,7 @@ const EventsList: React.FC<PoolListProps> = ({className}) => {
                 </svg>
             </div>
             {/* <!-- Event list --> */}
-            <div className="m-2">
+            <div className="m-2 scroll-smooth">
                 {/* This is where event listings go */}
                 {/* <EventListing/> */}
             </div>

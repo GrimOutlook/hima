@@ -17,7 +17,7 @@ export default function RootLayout({ children }: Props) {
   return (
     <StoreProvider>
       <html lang="en">
-        <body className="flex h-screen">
+        <body className="flex max-h-dvh h-dvh overflow-hidden">
           {children}
         </body>
       </html>

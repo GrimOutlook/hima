@@ -1,11 +1,7 @@
 import React from 'react';
 
 import PoolListing from "./pool_listing";
-import {
-    openPoolDialog,
-    closePoolDialog,
-    selectPoolDialogOpenState
-} from "@/lib/features/poolDialogSlice";
+import { openPoolDialog } from "@/lib/features/poolDialogSlice";
 import { useAppDispatch, useAppSelector } from "@/lib/hooks";
 import { selectPools } from '@/lib/features/poolListSlice';
 import { PPLPool } from '@/lib/models/PPLPool';
@@ -25,7 +21,7 @@ const PoolList: React.FC<PoolListProps> = ({className}) => {
     const events = useAppSelector(selectEvents).map((event) => DeserializeToEvent(event));
 
     return (
-        <div className={`${className} flex flex-col bg-zinc-100 rounded-lg py-4 shadow-sm`}>
+        <div className={`${className} flex flex-col bg-zinc-100 rounded-lg py-4 shadow-sm max-h-full`}>
             {/* <!-- Pool list top bar --> */}
             <div className="grid grid-cols-3 w-full h-18">
                 {/* <!-- Empty div for grid spacing --> */}
@@ -38,7 +34,7 @@ const PoolList: React.FC<PoolListProps> = ({className}) => {
                 </svg>
             </div>
             {/* <!-- Pool list --> */}
-            <div className="flex flex-col grow m-2 rounded-sm">
+            <div className="grow-0 max-h-full m-2 rounded-sm scroll-smooth overflow-y-auto">
                 {/* This is where pool listings go */}
                 {pools.map((pool: PPLPool) =>(
                     <PoolListing key={pool.id} name={pool.name} amount={calculateAmount(dayjs(), pool, events.filter((event) => event.pool == pool.id))}/>
