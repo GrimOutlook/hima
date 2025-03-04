@@ -8,7 +8,8 @@ import { DeserializeToPool, PPLPool } from "@/lib/models/PPLPool";
 import { selectPools } from "@/lib/features/poolListSlice";
 import { calculateAmount } from "@/lib/logic";
 import dayjs from "dayjs";
-import AddPoolDialog from "./components/add_pool_dialog";
+import OverlayDialog from "./components/overlay_dialog";
+import PoolForm from "./components/pool_form";
 
 export default function Home() {
   const pools = useAppSelector(selectPools).map((pool) => DeserializeToPool(pool));
@@ -54,8 +55,7 @@ export default function Home() {
             <EventsList className="grow"/>
         </div>
       </div>
-      
-      <AddPoolDialog />
+      <PoolForm />
     </>
   );
 }
