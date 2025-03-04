@@ -21,7 +21,7 @@ export default function Home() {
         <div className="flex flex-col min-w-64 max-w-100 ml-2 my-2 max-h-dvh">
           {/* Logo banner */}
           {/* Make a color gradient for the logo text */}
-          <div className="self-center w-full">
+          <div className="self-center w-full max-h-48">
               {/* Make a color gradient for the hours text */}
               <div className="text-transparent self-center bg-clip-text bg-gradient-to-tr from-sky-300 to-red-400">
                   {/* <!-- Hour --> */}
@@ -29,15 +29,15 @@ export default function Home() {
               </div>
           </div>
           {/* <!-- Top box --> */}
-          <div className="flex-none grow-0 basis-0">
-            <TotalHoursCard hours={26}/>
+          <div className="flex-none">
+            <TotalHoursCard className="h-36" hours={26}/>
           </div>
           {/* <!-- Middle box --> */}
-          <div className="flex-none grow flex flex-col">
-            <PoolList className="mt-2 grow"/>
+          <div className="grow flex flex-col">
+            <PoolList className="mt-2 max-h-[calc(100dvh-12rem-9rem-6rem)] min-h-[calc(100dvh-12rem-9rem-6rem)]"/>
           </div>
           {/* <!-- Bottom box --> */}
-          <div className="flex-none grow-0 basis-0">
+          <div className="flex-none">
             <SettingsButton className="mt-2 h-24 w-full"/>
           </div>
         </div>

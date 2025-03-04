@@ -12,7 +12,7 @@ const TotalHoursCard: React.FC<TotalHoursCardProps> = ({className, hours}) => {
     }
     
     return (
-        <div className={`${className} bg-zinc-100 h-auto p-4 rounded-lg shadow-sm flex flex-col ${color}`}>
+        <div className={`${className} bg-zinc-100 p-4 rounded-lg shadow-sm flex flex-col ${color}`}>
             {/* <!-- Hour --> */}
             <div className="text-8xl text-center font-black">26</div>
             {/* <!-- Unit --> */}
