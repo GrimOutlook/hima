@@ -1,22 +1,16 @@
 'use client'
-import { Dialog, Transition, TransitionChild } from "@headlessui/react";
-import { Fragment, useState } from "react";
-
 import EventsList from "./components/events_list";
 import PoolList from "./components/pools_list";
 import SettingsButton from "./components/settings_button";
 import TotalHoursCard from "./components/total_hours_card";
-import PoolForm from "./components/pool_form";
-import { useAppDispatch, useAppSelector } from "@/lib/hooks";
-import { closePoolDialog, selectPoolDialogOpenState } from "@/lib/features/poolDialogSlice";
+import { useAppSelector } from "@/lib/hooks";
 import { DeserializeToPool, PPLPool } from "@/lib/models/PPLPool";
 import { selectPools } from "@/lib/features/poolListSlice";
 import { calculateAmount } from "@/lib/logic";
 import dayjs from "dayjs";
+import AddPoolDialog from "./components/add_pool_dialog";
 
 export default function Home() {
-  const dispatch = useAppDispatch();
-  const poolDialogOpenState = useAppSelector(selectPoolDialogOpenState);
   const pools = useAppSelector(selectPools).map((pool) => DeserializeToPool(pool));
 
   const calculateTotal = (pools: PPLPool[]) => {
@@ -61,29 +55,7 @@ export default function Home() {
         </div>
       </div>
       
-      <Transition appear show={poolDialogOpenState} as={Fragment}>
-        <Dialog 
-          open={poolDialogOpenState}
-          onClose={() => dispatch(closePoolDialog())}
-          as="div" className="relative z-10">
-            
-          <TransitionChild
-            as={Fragment}
-            enter="ease-out duration-300"
-            enterFrom="opacity-0"
-            enterTo="opacity-100"
-            leave="ease-in duration-200"
-            leaveFrom="opacity-100"
-            leaveTo="opacity-0"
-          >
-            <div className="fixed inset-0 bg-black bg-opacity-50" onClick={() => dispatch(closePoolDialog())} />
-          </TransitionChild>
-
-          <div className="fixed inset-0 self-center justify-self-center">
-            <PoolForm/>
-          </div>
-        </Dialog>
-      </Transition>
+      <AddPoolDialog />
     </>
   );
 }
