@@ -7,7 +7,7 @@ import { EnumToArray, ToTitleCase } from "@/lib/helpers"
 import { useAppDispatch, useAppSelector } from "@/lib/hooks";
 import { closePoolDialog } from "@/lib/features/poolDialogSlice";
 import { addPool } from "@/lib/features/poolListSlice";
-import Period from "@/lib/models/Period";
+import { Period } from "@/lib/models/Period";
 import { PPLPool } from '@/lib/models/PPLPool';
 import { SerializeToPoolDto } from "@/lib/models/PPLPoolDto";
 import { selectNextPoolID } from '@/lib/features/poolListSlice';

@@ -1,5 +1,5 @@
 import dayjs, { Dayjs } from "dayjs";
-import Period from "./Period";
+import { Period, DeserializeToPeriod } from "./Period";
 import { PPLPoolDto } from "./PPLPoolDto";
 
 export type PPLPool = {
@@ -25,7 +25,7 @@ export const DeserializeToPool = (pool: PPLPoolDto): PPLPool => ({
     name: pool.name,
     description: pool.description,
     amount: pool.amount,
-    period: pool.period,
+    period: DeserializeToPeriod(pool.period),
     startDate: dayjs(pool.startDate),
     startAmount: pool.startAmount
 })

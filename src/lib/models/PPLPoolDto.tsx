@@ -1,4 +1,4 @@
-import Period from "./Period";
+import { Period } from "./Period";
 import { PPLPool } from "./PPLPool";
 
 export type PPLPoolDto = {
@@ -6,7 +6,7 @@ export type PPLPoolDto = {
     name: string;
     description: string;
     amount: number;
-    period: Period;
+    period: string;
     startDate: string;
     startAmount: number;
 }
@@ -16,7 +16,7 @@ export const SerializeToPoolDto = (pool: PPLPool): PPLPoolDto => ({
     name: pool.name,
     description: pool.description,
     amount: pool.amount,
-    period: pool.period,
+    period: pool.period.toString(),
     startDate: pool.startDate.toJSON(),
     startAmount: pool.startAmount
 })

@@ -1,14 +1,10 @@
-// import wLogger from "../lib/logger"
-
 import { Dayjs } from "dayjs";
-import Period from "./models/Period";
+import { Period } from "./models/Period";
 import PPLEvent from "./models/PPLEvent";
 import { PPLPool } from "./models/PPLPool";
 
-// const log = wLogger({ logName: "logic", level: "debug" })
-
 export function calculateAmount(targetDate: Dayjs, pool: PPLPool, events: PPLEvent[]) {
-    // log.verbose(`Calculating amount from start date ${pool.startDate} to target date ${targetDate} with a period of ${pool.period} and an accrual amount of ${pool.amount}`)
+    console.debug(`Calculating amount from start date ${pool.startDate} to target date ${targetDate} with a period of ${pool.period} and an accrual amount of ${pool.amount}`)
     let gross_accrued_hours = elapsedPeriods(pool.startDate, targetDate, pool.period) * pool.amount
     let event_hours = events
         .filter((ev) => targetDate.diff(ev.date).valueOf() >= 0)
@@ -28,7 +24,7 @@ export function calculateAmount(targetDate: Dayjs, pool: PPLPool, events: PPLEve
 }
 
 export function elapsedPeriods(startDate: Dayjs, targetDate: Dayjs, period: Period) {
-    var result = 0;
+    var result;
     switch(period) {
         case Period.Daily:
             result = targetDate.diff(startDate, 'day')
@@ -47,6 +43,9 @@ export function elapsedPeriods(startDate: Dayjs, targetDate: Dayjs, period: Peri
             // would also disregard leap seconds.
             result = targetDate.diff(startDate, 'year')
             break
+        default:
+            console.log("Wtf. This shouldn't be hit.")
+            result = 0;
     }
     result = Math.floor(result)
     console.log(`Got elapsed periods of ${result} for: period [${period}] start [${startDate.toISOString()}] end [${targetDate.toISOString()}]`)
