@@ -12,8 +12,8 @@ import { PPLEvent } from '@/lib/models/PPLEvent';
 import { SerializeToEventDto } from "@/lib/models/PPLEventDto";
 import { selectNextEventID } from '@/lib/features/eventListSlice';
 import dayjs from "dayjs";
-import OverlayDialog from "./overlay_dialog";
-import { DeserializeToPool, PPLPool } from "@/lib/models/PPLPool";
+import { OverlayDialog } from "./overlay_dialog";
+import { DeserializeToPool } from "@/lib/models/PPLPool";
 import { selectPools } from "@/lib/features/poolListSlice";
 
 type EventFormData = {
@@ -80,7 +80,7 @@ const EventForm: React.FC = () => {
                         <Legend className={"text-6xl"}>New PPL Event</Legend>
                         <Field>
                             <Label className={"block text-3xl"}>Title</Label>
-                            <Input className={"w-50 h-10 rounded-lg border-none bg-black/10 p-2"} name="title" value={eventFormData.title} onChange={(e) => handleChange(e)}/>
+                            <Input autoFocus className={"w-50 h-10 rounded-lg border-none bg-black/10 p-2"} name="title" value={eventFormData.title} onChange={(e) => handleChange(e)}/>
                         </Field>
                         <Label className={"block text-3xl mt-2"}>Hours</Label>
                         <Field className={"inline mr-1"}>

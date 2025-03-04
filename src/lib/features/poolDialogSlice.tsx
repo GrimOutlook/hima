@@ -1,3 +1,4 @@
+'use client'
 import { createSlice } from "@reduxjs/toolkit/react";
 
 export interface PoolDialogState {

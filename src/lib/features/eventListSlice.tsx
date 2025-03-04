@@ -1,3 +1,4 @@
+'use client'
 import { createSlice } from "@reduxjs/toolkit/react";
 import type { PayloadAction } from "@reduxjs/toolkit";
 import { randomInt } from "../helpers";

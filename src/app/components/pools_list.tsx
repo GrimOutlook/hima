@@ -40,7 +40,7 @@ const PoolList: React.FC<PoolListProps> = ({className}) => {
             <div className="m-2 rounded-sm scroll-smooth overflow-y-auto">
                 {/* This is where pool listings go */}
                 {pools.map((pool: PPLPool) =>(
-                    <PoolListing key={pool.id} name={pool.name} amount={calculateAmount(dayjs(), pool, events.filter((event) => event.pool == pool.id))}/>
+                    <PoolListing key={pool.id} name={pool.name} amount={calculateAmount(dayjs(), pool, events.filter((event) => event.pool == pool.id))} id={pool.id}/>
                 ))}
             </div>
         </div>

@@ -3,16 +3,19 @@ import EventsList from "./components/events_list";
 import PoolList from "./components/pools_list";
 import SettingsButton from "./components/settings_button";
 import TotalHoursCard from "./components/total_hours_card";
-import { useAppSelector } from "@/lib/hooks";
+import { useAppDispatch, useAppSelector } from "@/lib/hooks";
 import { DeserializeToPool, PPLPool } from "@/lib/models/PPLPool";
 import { selectPools } from "@/lib/features/poolListSlice";
 import { calculateAmount } from "@/lib/logic";
 import dayjs from "dayjs";
-import OverlayDialog from "./components/overlay_dialog";
 import PoolForm from "./components/pool_form";
 import EventForm from "./components/event_form";
+import { PoolDetailsOverlay } from "./components/pool_details_overlay";
+import { useEffect } from "react";
+import { setMousePosition } from "@/lib/features/trackMouse";
 
 export default function Home() {
+  const dispatch = useAppDispatch();
   const pools = useAppSelector(selectPools).map((pool) => DeserializeToPool(pool));
 
   const calculateTotal = (pools: PPLPool[]) => {
@@ -22,6 +25,18 @@ export default function Home() {
 
     return pools.map((pool) => calculateAmount(dayjs(), pool, [])).reduce((acc, curr) => acc + curr)
   }
+  
+  useEffect(() => {
+    const handleMouseMove = (e: MouseEvent) => {
+        dispatch(setMousePosition({x: e.clientX, y: e.clientY}));
+    };
+
+    window.addEventListener('mousemove', handleMouseMove);
+
+    return () => {
+      window.removeEventListener('mousemove', handleMouseMove);
+    };
+  }, []);
 
   return (
     <>
@@ -58,6 +73,7 @@ export default function Home() {
       </div>
       <PoolForm/>
       <EventForm/>
+      <PoolDetailsOverlay/>
       {/* <SettingsMenu/> */}
     </>
   );
