@@ -15,11 +15,11 @@ export function calculateAmount(targetDate: Dayjs, pool: PPLPool, events: PPLEve
     if (event_hours.length > 0) {
         let total_event_hours = event_hours.reduce((acc, current) => acc + current)
         let result = gross_accrued_hours - total_event_hours
-        console.log(`Event hours present. GAH: [${gross_accrued_hours}] TEH: [${total_event_hours}]`)
+        console.debug(`Event hours present. GAH: [${gross_accrued_hours}] TEH: [${total_event_hours}]`)
         return result
     }
 
-    console.log(`No event hours. GAH: [${gross_accrued_hours}]`)
+    console.debug(`No event hours. GAH: [${gross_accrued_hours}]`)
     return gross_accrued_hours
 }
 
@@ -44,10 +44,10 @@ export function elapsedPeriods(startDate: Dayjs, targetDate: Dayjs, period: Peri
             result = targetDate.diff(startDate, 'year')
             break
         default:
-            console.log("Wtf. This shouldn't be hit.")
+            console.error("Wtf. This shouldn't be hit.")
             result = 0;
     }
     result = Math.floor(result)
-    console.log(`Got elapsed periods of ${result} for: period [${period}] start [${startDate.toISOString()}] end [${targetDate.toISOString()}]`)
+    console.debug(`Got elapsed periods of ${result} for: period [${period}] start [${startDate.toISOString()}] end [${targetDate.toISOString()}]`)
     return result
 }

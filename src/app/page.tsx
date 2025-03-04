@@ -9,10 +9,23 @@ import TotalHoursCard from "./components/total_hours_card";
 import PoolForm from "./components/pool_form";
 import { useAppDispatch, useAppSelector } from "@/lib/hooks";
 import { closePoolDialog, selectPoolDialogOpenState } from "@/lib/features/poolDialogSlice";
+import { DeserializeToPool, PPLPool } from "@/lib/models/PPLPool";
+import { selectPools } from "@/lib/features/poolListSlice";
+import { calculateAmount } from "@/lib/logic";
+import dayjs from "dayjs";
 
 export default function Home() {
   const dispatch = useAppDispatch();
   const poolDialogOpenState = useAppSelector(selectPoolDialogOpenState);
+  const pools = useAppSelector(selectPools).map((pool) => DeserializeToPool(pool));
+
+  const calculateTotal = (pools: PPLPool[]) => {
+    if (pools.length <= 0) {
+      return 0
+    }
+
+    return pools.map((pool) => calculateAmount(dayjs(), pool, [])).reduce((acc, curr) => acc + curr)
+  }
 
   return (
     <>
@@ -30,7 +43,7 @@ export default function Home() {
           </div>
           {/* <!-- Top box --> */}
           <div className="flex-none">
-            <TotalHoursCard className="h-36" hours={26}/>
+            <TotalHoursCard className="h-36" hours={calculateTotal(pools)}/>
           </div>
           {/* <!-- Middle box --> */}
           <div className="grow flex flex-col">

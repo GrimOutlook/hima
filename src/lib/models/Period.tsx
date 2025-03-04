@@ -8,7 +8,7 @@ export enum Period {
 
 export function DeserializeToPeriod(period: string) {
     
-    switch(period) {
+    switch(period.toUpperCase()) {
         case "DAILY":
             return Period.Daily
         case "WEEKLY":
@@ -20,7 +20,7 @@ export function DeserializeToPeriod(period: string) {
         case "YEARLY":
             return Period.Yearly
         default:
-            console.log(`Error deserializing period ${period}. Defaulting to daily.`)
+            console.error(`Error deserializing period ${period}. Defaulting to daily.`)
             return Period.Daily
     }
 }
