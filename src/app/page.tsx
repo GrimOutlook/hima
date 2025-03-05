@@ -12,7 +12,6 @@ import PoolForm from "./components/pool_form";
 import EventForm from "./components/event_form";
 import { PoolDetailsOverlay } from "./components/pool_details_overlay";
 import { useEffect } from "react";
-import { setMousePosition } from "@/lib/features/trackMouse";
 
 export default function Home() {
   const dispatch = useAppDispatch();
@@ -25,18 +24,6 @@ export default function Home() {
 
     return pools.map((pool) => calculateAmount(dayjs(), pool, [])).reduce((acc, curr) => acc + curr)
   }
-  
-  useEffect(() => {
-    const handleMouseMove = (e: MouseEvent) => {
-        dispatch(setMousePosition({x: e.clientX, y: e.clientY}));
-    };
-
-    window.addEventListener('mousemove', handleMouseMove);
-
-    return () => {
-      window.removeEventListener('mousemove', handleMouseMove);
-    };
-  }, []);
 
   return (
     <>
