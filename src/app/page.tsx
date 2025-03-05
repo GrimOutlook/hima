@@ -44,7 +44,7 @@ export default function Home() {
             <TotalHoursCard className="mt-2 h-36" hours={calculateTotal(pools)}/>
           </div>
           {/* <!-- Middle box --> */}
-          <div className="grow min-h-0 flex flex-col">
+          <div className="grow flex flex-col min-h-0">
             <PoolList className="mt-2 grow"/>
           </div>
           {/* <!-- Bottom box --> */}

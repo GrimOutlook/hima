@@ -2,7 +2,7 @@
 
 import React, { useState } from 'react';
 import { PoolDetailsOverlay } from './pool_details_overlay';
-import { flip, shift, useClientPoint, useFloating, useInteractions } from '@floating-ui/react';
+import { flip, safePolygon, shift, useClientPoint, useFloating, useHover, useInteractions } from '@floating-ui/react';
 
 type PoolListingProps = {
     className?: string;
@@ -23,8 +23,16 @@ const PoolListing: React.FC<PoolListingProps> = ({className, name, amount, id}) 
     });
     
     const clientPoint = useClientPoint(context);
+    const hover = useHover(context, {
+        restMs: 500,
+        // If their cursor never rests, open it after 1000ms as a
+        // fallback.
+        delay: {open: 1000},
+        handleClose: safePolygon(),
+    });
     
     const {getReferenceProps, getFloatingProps} = useInteractions([
+        hover,
         clientPoint,
     ]);
 
@@ -33,8 +41,9 @@ const PoolListing: React.FC<PoolListingProps> = ({className, name, amount, id}) 
             <div className={`${className} flex flex-row bg-blue-300 mt-2 mx-2 rounded-lg h-18
             transition duration-150 ease-in-out hover:-translate-y-1 hover:scale-102
             hover:drop-shadow-lg cursor-pointer`}
-            onMouseEnter={() => setIsDetailsOpen(true)}
-            onMouseLeave={() => setIsDetailsOpen(false)}>
+            ref={refs.setReference}
+            {...getReferenceProps()}
+            >
                 <div className="flex flex-col w-full">
                     {/* <!-- Name --> */}
                     <div className="text-2xl h-full w-full p-2 line-clamp-1 font-bold">{name}</div>

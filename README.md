@@ -26,6 +26,8 @@
   - Click on pool and only that pool's events show in the events list.
 - [ ] Allow user to delete multiple events by clicking each then clicking trash.
 - [ ] Allow user to show total in days.
+- [ ] Allow user to change amount thresholds for colors in total PPL hours.
+- [ ] Allow user to change amount thresholds for colors in individual pools.
 
 ### Getting Started
 
