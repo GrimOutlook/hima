@@ -45,10 +45,10 @@ Open [http://localhost:3000](http://localhost:3000) with your browser to see the
 
 ### Resources
 
-To learn more about Next.js, take a look at the following resources:
-
 - [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
-
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback
 and contributions are welcome!
+- [Floating UI Documentation](https://floating-ui.com/docs/getting-started)
+- [React Documentation](https://react.dev/reference/react)
+- [Redux Documentation](https://redux.js.org/api/api-reference)
+- [TailwindCSS Documentation](https://tailwindcss.com/docs/installation/framework-guides)
+- [HeadlessUI Documentation](https://headlessui.com/)

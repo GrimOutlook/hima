@@ -7,6 +7,6 @@ type PoolDetailsOverlayProps = {
 export const PoolDetailsOverlay: React.FC<PoolDetailsOverlayProps> = ({pool}) => {
 
     return (
-        <div className="size-32 bg-red-500"/>
+        <div className="size-96 bg-zinc-100 rounded-lg drop-shadow-lg"/>
     )
 }

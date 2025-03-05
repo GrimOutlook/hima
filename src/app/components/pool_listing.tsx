@@ -2,7 +2,7 @@
 
 import React, { useState } from 'react';
 import { PoolDetailsOverlay } from './pool_details_overlay';
-import { useClientPoint, useFloating, useInteractions } from '@floating-ui/react';
+import { flip, shift, useClientPoint, useFloating, useInteractions } from '@floating-ui/react';
 
 type PoolListingProps = {
     className?: string;
@@ -16,8 +16,10 @@ const PoolListing: React.FC<PoolListingProps> = ({className, name, amount, id}) 
     const [isDetailsOpen, setIsDetailsOpen] = useState(false);
    
     const {refs, floatingStyles, context} = useFloating({
-      open: isDetailsOpen,
-      onOpenChange: setIsDetailsOpen,
+        open: isDetailsOpen,
+        onOpenChange: setIsDetailsOpen,
+        placement: 'top',
+        middleware: [flip(), shift()],
     });
     
     const clientPoint = useClientPoint(context);
