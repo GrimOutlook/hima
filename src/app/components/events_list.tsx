@@ -21,7 +21,7 @@ const EventsList: React.FC<PoolListProps> = ({className}) => {
     const pools = useAppSelector(selectPools).map((pool) => DeserializeToPool(pool));
 
     return (
-        <div className={`${className} flex flex-col rounded-lg m-2 shadow-sm bg-gradient-to-tr from-sky-300 to-red-400`}>
+        <div className={`${className} flex flex-col rounded-lg m-2 shadow-xs bg-linear-to-tr from-sky-300 to-red-400`}>
             <div className='bg-zinc-100 flex flex-col grow rounded-lg m-2 min-h-0'>
                 {/* <!-- Events list top bar --> */}
                 <div className="grid grid-cols-3 w-full h-18">

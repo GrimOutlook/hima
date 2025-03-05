@@ -27,14 +27,14 @@ export default function Home() {
 
   return (
     <>
-      <div className="flex flex-row text-gray-700 bg-gradient-to-tl to-zinc-900 from-zinc-700 w-full max-h-dvh">
+      <div className="flex flex-row text-gray-700 bg-linear-to-tl to-zinc-900 from-zinc-700 w-full max-h-dvh">
         {/* <!-- Left side --> */}
         <div className="flex flex-col min-w-64 max-w-100 ml-2 mb-2 max-h-dvh">
           {/* Logo banner */}
           {/* Make a color gradient for the logo text */}
           <div className="self-center w-full max-h-36">
               {/* Make a color gradient for the hours text */}
-              <div className="text-transparent self-center bg-clip-text bg-gradient-to-tr from-sky-300 to-red-400">
+              <div className="text-transparent self-center bg-clip-text bg-linear-to-tr from-sky-300 to-red-400">
                   {/* <!-- Hour --> */}
                   <div className="text-[10rem] leading-none text-center font-black line-clamp-1">HIMA</div>
               </div>

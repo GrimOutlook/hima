@@ -24,7 +24,7 @@ const PoolList: React.FC<PoolListProps> = ({className}) => {
     return (
         // Don't ask why min-h-0 needs to be here but it makes the list not overflow when it needs
         // to add scroll bars. Thank this guy -> https://stackoverflow.com/questions/36230944/prevent-flex-items-from-overflowing-a-container
-        <div className={`${className} flex flex-col bg-zinc-100 rounded-lg py-4 shadow-sm min-h-0`}>
+        <div className={`${className} flex flex-col bg-zinc-100 rounded-lg py-4 shadow-xs min-h-0`}>
             {/* <!-- Pool list top bar --> */}
             <div className="grid grid-cols-3 w-full h-18">
                 {/* <!-- Empty div for grid spacing --> */}
@@ -37,7 +37,7 @@ const PoolList: React.FC<PoolListProps> = ({className}) => {
                 </svg>
             </div>
             {/* <!-- Pool list --> */}
-            <div className="m-2 rounded-sm scroll-smooth overflow-y-auto">
+            <div className="m-2 rounded-xs scroll-smooth overflow-y-auto">
                 {/* This is where pool listings go */}
                 {pools.map((pool: PPLPool) =>(
                     <PoolListing key={pool.id} name={pool.name} amount={calculateAmount(dayjs(), pool, events.filter((event) => event.pool == pool.id))} id={pool.id}/>
