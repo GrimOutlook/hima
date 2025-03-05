@@ -28,6 +28,8 @@
 - [ ] Allow user to show total in days.
 - [ ] Allow user to change amount thresholds for colors in total PPL hours.
 - [ ] Allow user to change amount thresholds for colors in individual pools.
+- [ ] Shrink logo after a couple of seconds after page load.
+  - Maybe add a menu bar that can contain the logo as well as quickly accessible options.
 
 ### Getting Started
 

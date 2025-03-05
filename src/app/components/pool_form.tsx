@@ -75,7 +75,12 @@ const PoolForm: React.FC<PoolFormProps> = ({className}) => {
                         <Legend className={"text-6xl"}>New PPL Pool</Legend>
                         <Field>
                             <Label className={"block text-3xl"}>Pool Name</Label>
-                            <Input autoFocus className={"h-10 w-50 rounded-lg border-none bg-black/10 p-2"} name="name" value={poolFormData.name} onChange={(e) => handleChange(e)}/>
+                            <Input autoFocus 
+                                className={"h-10 w-50 rounded-lg border-none bg-black/10 p-2"}
+                                name="name"
+                                value={poolFormData.name}
+                                onChange={(e) => handleChange(e)}>
+                            </Input>
                         </Field>
                         <Label className={"block text-3xl mt-2"}>Accrual Rate</Label>
                         <Field className={"inline mr-1"}>

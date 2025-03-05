@@ -27,7 +27,7 @@ export const OverlayDialog: React.FC<OverlayDialogProps> = ({children, show, onC
                     leaveFrom="opacity-100"
                     leaveTo="opacity-0"
                 >
-                    <div className="fixed inset-0 bg-black bg-opacity-50" onClick={onClose} />
+                    <div className="fixed inset-0 bg-black/50" onClick={onClose} />
                 </TransitionChild>
                 <div className="fixed inset-0 self-center justify-self-center">
                     {children}
