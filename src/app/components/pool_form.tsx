@@ -83,12 +83,19 @@ const PoolForm: React.FC<PoolFormProps> = ({className}) => {
                                 onChange: (e) => handleChange(e),
                             }}
                             className="h-10 w-60"
-                            focusClassName="bg-linear-to-tr from-sky-300 to-red-400"
+                            focusClassName="bg-linear-to-tr from-sky-300 to-red-400 shadow-lg"
                             unfocusedClassName="bg-zinc-300"/>
                         </Field>
                         <Label className={"block text-3xl mt-2"}>Accrual Rate</Label>
                         <Field className={"inline mr-1"}>
-                            <Input className="h-10 w-20 rounded-lg border-none bg-black/10 mr-1 p-2" name="amount" value={poolFormData.amount} onChange={(e) => handleChange(e)}/>
+                            <GradientInput inputProps={{
+                                name: "amount",
+                                value: poolFormData.amount,
+                                onChange: (e) => handleChange(e),
+                            }}
+                            className="h-10 w-20 mr-1 inline-block"
+                            focusClassName="bg-linear-to-tr from-sky-300 to-red-400 shadow-lg"
+                            unfocusedClassName="bg-zinc-300"/>
                             <Label>hours</Label>
                         </Field>
                         <Field className={"inline"}>
@@ -112,9 +119,24 @@ const PoolForm: React.FC<PoolFormProps> = ({className}) => {
                         </Field>
                         <Field className={"mt-2"}>
                             <Label className={"text-3xl block"}>Starting on</Label>
-                            <Input className="h-10 rounded-lg bg-black/10 p-2" type="date" value={poolFormData.startDate} onChange={(e) => handleDateChange(e.target.value)}/>
+                            <GradientInput inputProps={{
+                                name: "startAmount",
+                                type: "date",
+                                value: poolFormData.startDate,
+                                onChange: (e) => handleDateChange(e.target.value),
+                            }}
+                            className="h-10 w-auto mr-1 inline-block"
+                            focusClassName="bg-linear-to-tr from-sky-300 to-red-400 shadow-lg"
+                            unfocusedClassName="bg-zinc-300"/>
                             <Label className={"mx-1"}>With</Label>
-                            <Input className="h-10 w-20 rounded-lg border-none bg-black/10 mr-1 p-2" name="startAmount" value={poolFormData.startAmount} onChange={(e) => handleChange(e)}/>
+                            <GradientInput inputProps={{
+                                name: "startAmount",
+                                value: poolFormData.startAmount,
+                                onChange: (e) => handleChange(e),
+                            }}
+                            className="h-10 w-20 mr-1 inline-block"
+                            focusClassName="bg-linear-to-tr from-sky-300 to-red-400 shadow-lg"
+                            unfocusedClassName="bg-zinc-300"/>
                             <Label>hours</Label>
                         </Field>
                         <Field className={"mt-4"}>

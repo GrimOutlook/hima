@@ -14,11 +14,13 @@ const TotalHoursCard: React.FC<TotalHoursCardProps> = ({className, hours}) => {
     }
     
     return (
-        <div className={`${className} bg-zinc-100 p-4 rounded-lg shadow-xs flex flex-col ${color}`}>
-            {/* <!-- Hour --> */}
-            <div className="text-8xl text-center font-black">{hours}</div>
-            {/* <!-- Unit --> */}
-            <div className="text-lg text-center font-bold">hours</div>
+        <div className={`${className} flex flex-col rounded-lg shadow-xs bg-linear-to-tr from-sky-300 to-red-400`}>
+            <div className={`bg-zinc-100 m-2 p-2 rounded-lg shadow-xs flex flex-col grow ${color}`}>
+                {/* <!-- Hour --> */}
+                <div className="text-8xl text-center font-black">{hours}</div>
+                {/* <!-- Unit --> */}
+                <div className="text-lg text-center font-bold">hours</div>
+            </div>
         </div>
     );
 }

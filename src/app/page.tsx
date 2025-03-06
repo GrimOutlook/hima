@@ -41,7 +41,7 @@ export default function Home() {
           </div>
           {/* <!-- Top box --> */}
           <div className="flex-none">
-            <TotalHoursCard className="mt-2 h-36" hours={calculateTotal(pools)}/>
+            <TotalHoursCard className="mt-2 h-auto" hours={calculateTotal(pools)}/>
           </div>
           {/* <!-- Middle box --> */}
           <div className="grow flex flex-col min-h-0">

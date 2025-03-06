@@ -35,7 +35,7 @@ const EventsList: React.FC<PoolListProps> = ({className}) => {
                     </svg>
                 </div>
                 {/* <!-- Event list --> */}
-                <div className="m-2 scroll-smooth overflow-y-auto">
+                <div className="m-2 scroll-smooth p-2 overflow-x-hidden overflow-y-auto">
                     {/* This is where event listings go */}
                     {events.map((event: PPLEvent) =>(
                         <EventListing key={event.id} title={event.title} hours={event.hours} date={event.date} pool={pools.find((pool) => pool.id == event.pool)!.name}/>
