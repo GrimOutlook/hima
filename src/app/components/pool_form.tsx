@@ -15,6 +15,7 @@ import { SerializeToPoolDto } from "@/lib/models/PPLPoolDto";
 import { selectNextPoolID } from '@/lib/features/poolListSlice';
 import dayjs from "dayjs";
 import { OverlayDialog } from "./overlay_dialog";
+import { GradientInput } from "./gradient_focus_input";
 
 type PoolFormProps = {
     className?: string;
@@ -75,12 +76,15 @@ const PoolForm: React.FC<PoolFormProps> = ({className}) => {
                         <Legend className={"text-6xl"}>New PPL Pool</Legend>
                         <Field>
                             <Label className={"block text-3xl"}>Pool Name</Label>
-                            <Input autoFocus 
-                                className={"h-10 w-50 rounded-lg border-none bg-black/10 p-2"}
-                                name="name"
-                                value={poolFormData.name}
-                                onChange={(e) => handleChange(e)}>
-                            </Input>
+                            <GradientInput inputProps={{
+                                autoFocus: true,
+                                name: "name",
+                                value: poolFormData.name,
+                                onChange: (e) => handleChange(e),
+                            }}
+                            className="h-10 w-60"
+                            focusClassName="bg-linear-to-tr from-sky-300 to-red-400"
+                            unfocusedClassName="bg-zinc-300"/>
                         </Field>
                         <Label className={"block text-3xl mt-2"}>Accrual Rate</Label>
                         <Field className={"inline mr-1"}>
