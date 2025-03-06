@@ -122,6 +122,7 @@ const EventForm: React.FC = () => {
                                     pool : eventFormData.pool!,
                                 }
                                 dispatch(addEvent(SerializeToEventDto(even)))
+                                setEventFormData(initialEventFormData)
                                 dispatch(closeEventDialog())
                             }}>Create</Button>
                         </Field>

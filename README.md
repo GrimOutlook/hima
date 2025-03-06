@@ -13,7 +13,7 @@
 - [x] Do the above but add events into the equation.
 - [ ] Show details on hover.
 - [ ] Allow deletion of events.
-- [ ] Allow deletion of pools.
+- [x] Allow deletion of pools.
 - [ ] Validate inputs before creating pool (Can currently add pool without a name or a date).
 - [ ] Validate inputs before creating event.
 - [ ] Create settings menu.
@@ -30,6 +30,8 @@
 - [ ] Allow user to change amount thresholds for colors in individual pools.
 - [ ] Shrink logo after a couple of seconds after page load.
   - Maybe add a menu bar that can contain the logo as well as quickly accessible options.
+- [ ] Allow user to reorder pools by dragging
+- [ ] Restrict only one element to having the action panel opened at any given time.
 
 ### Getting Started
 
@@ -56,3 +58,5 @@ and contributions are welcome!
 - [Redux Documentation](https://redux.js.org/api/api-reference)
 - [TailwindCSS Documentation](https://tailwindcss.com/docs/installation/framework-guides)
 - [HeadlessUI Documentation](https://headlessui.com/)
+
+- [Hero Icons](https://heroicons.com/solid)

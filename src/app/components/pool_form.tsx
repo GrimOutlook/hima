@@ -109,8 +109,10 @@ const PoolForm: React.FC<PoolFormProps> = ({className}) => {
                                 </ListboxButton>
                                 <ListboxOptions anchor="bottom" className={clsx('w-[var(--button-width)] rounded-xl border border-black/10 bg-zinc-300/95 p-1 [--anchor-gap:var(--spacing-1)] focus:outline-hidden transition duration-100 ease-in data-leave:data-closed:opacity-0')}>
                                     {periods.map((period) => (
-                                    <ListboxOption key={period} value={period} className="group flex cursor-default items-center gap-2 rounded-lg py-1.5 px-3 select-none data-focus:bg-white/10">
-                                        <CheckIcon className="invisible size-4 fill-black group-data-selected:visible"/>
+                                    <ListboxOption key={period}
+                                    value={period}
+                                    className="group flex cursor-default items-center gap-2 rounded-lg py-1.5 px-3 select-none data-focus:bg-white/10">
+                                        <CheckIcon className={"invisible size-6 fill-black group-data-selected:visible"}/>
                                         {period}
                                     </ListboxOption>
                                     ))}
@@ -130,8 +132,11 @@ const PoolForm: React.FC<PoolFormProps> = ({className}) => {
                             unfocusedClassName="bg-zinc-300"/>
                             <Label className={"mx-1"}>With</Label>
                             <GradientInput inputProps={{
-                                name: "startAmount",
+                               
+                                name: "startAmount"
+                               ,
                                 value: poolFormData.startAmount,
+                               
                                 onChange: (e) => handleChange(e),
                             }}
                             className="h-10 w-20 mr-1 inline-block"
@@ -140,7 +145,9 @@ const PoolForm: React.FC<PoolFormProps> = ({className}) => {
                             <Label>hours</Label>
                         </Field>
                         <Field className={"mt-4"}>
-                            <Button className={"w-full rounded-lg p-2 text-3xl bg-black/10 text-zinc-700"} onClick={() => {
+                            <Button
+                            className={"w-full rounded-lg p-2 text-3xl bg-black/10 text-zinc-700 hover:cursor-pointer transition duration-150 ease-in-out  hover:scale-102"}
+                            onClick={() => {
                                 let pool : PPLPool = {
                                     id: nextPoolID,
                                     name: poolFormData.name,
@@ -151,6 +158,7 @@ const PoolForm: React.FC<PoolFormProps> = ({className}) => {
                                     startAmount : poolFormData.startAmount,
                                 }
                                 dispatch(addPool(SerializeToPoolDto(pool)))
+                                setPoolFormData(initialPoolFormData)
                                 dispatch(closePoolDialog())
                             }}>Create</Button>
                         </Field>
