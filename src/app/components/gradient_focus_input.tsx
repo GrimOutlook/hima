@@ -12,9 +12,9 @@ export const GradientInput: React.FC<GradientFocusInputProps> = ({inputProps, cl
     let [isFocused, setIsFocused] = useState(false)
 
     return (
-        <div className={`${isFocused && `${focusClassName}` || "bg-transparent"} ${className} rounded-lg p-0.5 flex`}>
+        <div className={`${isFocused && `${focusClassName}` || "bg-black/10"} ${className} rounded-lg p-0.5 flex`}>
             <div className={`${unfocusedClassName} flex grow rounded-md`}>
-                <Input  {...inputProps} className={`bg-black/10 rounded-md grow focus:outline-hidden`} onFocus={() => setIsFocused(true)} onBlur={() => setIsFocused(false)} />
+                <Input  {...inputProps} className={`bg-black/10 rounded-md grow focus:outline-hidden p-2`} onFocus={() => setIsFocused(true)} onBlur={() => setIsFocused(false)} />
             </div>
         </div>
     )
