@@ -30,6 +30,7 @@
 - [ ] Allow user to change amount thresholds for colors in individual pools.
 - [ ] Shrink logo after a couple of seconds after page load.
   - Maybe add a menu bar that can contain the logo as well as quickly accessible options.
+- [ ] Allow user to reorder pools by dragging
 
 ### Getting Started
 
@@ -56,3 +57,5 @@ and contributions are welcome!
 - [Redux Documentation](https://redux.js.org/api/api-reference)
 - [TailwindCSS Documentation](https://tailwindcss.com/docs/installation/framework-guides)
 - [HeadlessUI Documentation](https://headlessui.com/)
+
+- [Hero Icons](https://heroicons.com/solid)
