@@ -129,6 +129,7 @@ const PoolForm: React.FC<PoolFormProps> = ({className}) => {
                                     startAmount : poolFormData.startAmount,
                                 }
                                 dispatch(addPool(SerializeToPoolDto(pool)))
+                                setPoolFormData(initialPoolFormData)
                                 dispatch(closePoolDialog())
                             }}>Create</Button>
                         </Field>
