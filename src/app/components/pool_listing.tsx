@@ -46,10 +46,9 @@ const PoolListing: React.FC<PoolListingProps> = ({className, name, amount, id}) 
         <>
             <div className={`${className} ${!isActionsPanelOpen && `rounded-b-lg`} rounded-lg bg-blue-300 mt-2 mx-2
             transition duration-150 ease-in-out hover:-translate-y-1 hover:scale-102
-            hover:drop-shadow-lg p-2`}
-            onClick={() => setIsActionsPanelOpen(!isActionsPanelOpen)}
-            >
-                <div className="flex flex-col w-full"
+            hover:drop-shadow-lg p-2`}>
+                <div className="flex flex-col w-full cursor-pointer"
+                onClick={() => setIsActionsPanelOpen(!isActionsPanelOpen)}
                 ref={refs.setReference}
                 {...getReferenceProps()}>
                     {/* <!-- Name --> */}
