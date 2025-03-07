@@ -7,14 +7,14 @@
 - [x] Create initial layout.
 - [x] Port initial layout to React.
 - [x] Create a form to add pools.
-- [x] Calculate amout of PPL in a pool at a certain date.
+- [x] Calculate amount of PPL in a pool at a certain date.
 - [x] Calculate total amount of PPL available.
 - [x] Create a form to add events.
 - [x] Do the above but add events into the equation.
 - [x] Show details for pools on hover.
 - [ ] Show details for events on hover.
-- [ ] Allow deletion of events.
 - [x] Allow deletion of pools.
+- [ ] Allow deletion of events.
 - [ ] Validate inputs before creating pool (Can currently add pool without a name or a date).
 - [ ] Validate inputs before creating event.
 - [ ] Create settings menu.
@@ -33,6 +33,8 @@
   - Maybe add a menu bar that can contain the logo as well as quickly accessible options.
 - [ ] Allow user to reorder pools by dragging
 - [ ] Restrict only one element to having the action panel opened at any given time.
+- [ ] Allow editing of pools after creation
+- [ ] Allow editing of events after creation
 
 ### Getting Started
 
