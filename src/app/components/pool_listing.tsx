@@ -40,6 +40,9 @@ const PoolListing: React.FC<PoolListingProps> = ({className, pool}) => {
             {isDetailsPanelOpen && (
                 <>
                     <div className={`relative border-t-black/10 border-t-2 w-full text-lg flex flex-col`}>
+                        <div className='font-normal w-full text-left p-2'>
+                            <span className=' m-0.5'>{pool.description}</span>
+                        </div>
                         <div className='font-normal w-full text-center p-2'>
                             <span className='m-0.5'>Accrues</span>
                             <span className='m-1 text-2xl font-semibold'>{pool.amount}</span>
@@ -55,9 +58,9 @@ const PoolListing: React.FC<PoolListingProps> = ({className, pool}) => {
                         </div>
                     </div>
                     <div className={`relative border-t-black/10 border-t-2 flex justify-between`}>
-                        <PencilSquareIcon className='stroke-black size-7 m-1 p-0.5 rounded-full hover:bg-black/10 hover:cursor-pointer'/>
-                        <EyeSlashIcon className={`stroke-black size-7 m-1 p-0.5 rounded-full hover:bg-black/10 hover:cursor-pointer`}/>
-                        <TrashIcon className='stroke-black size-7 m-1 p-0.5 rounded-full hover:bg-black/10 hover:cursor-pointer'
+                        <PencilSquareIcon className='stroke-gray-700 size-7 m-1 p-0.5 rounded-full hover:bg-black/10 hover:cursor-pointer'/>
+                        <EyeSlashIcon className={`stroke-gray-700 size-7 m-1 p-0.5 rounded-full hover:bg-black/10 hover:cursor-pointer`}/>
+                        <TrashIcon className='stroke-gray-700 size-7 m-1 p-0.5 rounded-full hover:bg-black/10 hover:cursor-pointer'
                         onClick={() => dispatch(removePool(pool.id))}/>
                     </div>
                 </>

@@ -1,6 +1,6 @@
 'use client'
 
-import { Button, Field, Fieldset, Input, Label, Legend, Listbox, ListboxButton, ListboxOption, ListboxOptions } from "@headlessui/react";
+import { Button, Field, Fieldset, Input, Label, Legend, Listbox, ListboxButton, ListboxOption, ListboxOptions, Textarea } from "@headlessui/react";
 import { ChangeEvent, useState } from "react";
 import { CheckIcon, ChevronDownIcon } from '@heroicons/react/20/solid'
 import clsx from 'clsx'
@@ -15,7 +15,7 @@ import { SerializeToPoolDto } from "@/lib/models/PPLPoolDto";
 import { selectNextPoolID } from '@/lib/features/poolListSlice';
 import dayjs from "dayjs";
 import { OverlayDialog } from "./overlay_dialog";
-import { GradientInput } from "./gradient_focus_input";
+import { GradientFocusInput } from "./gradient_focus_input";
 
 type PoolFormProps = {
     className?: string;
@@ -46,25 +46,10 @@ const PoolForm: React.FC<PoolFormProps> = ({className}) => {
     const [poolFormData, setPoolFormData] = useState(initialPoolFormData)
     const nextPoolID = useAppSelector(selectNextPoolID);
     
-
-    const handleChange = (e: ChangeEvent<HTMLInputElement>) => {
+    const handleChange = (target: string, value: string) => {
         setPoolFormData({
             ...poolFormData,
-            [e.target.name]: e.target.value,
-        });
-    };
-
-    const handlePeriodChange = (period: Period) => {
-        setPoolFormData({
-            ...poolFormData,
-            period: period
-        })
-    }
-
-    const handleDateChange = (startDate: string) => {
-        setPoolFormData({
-            ...poolFormData,
-            startDate: startDate
+            [target]: value
         })
     }
 
@@ -76,30 +61,47 @@ const PoolForm: React.FC<PoolFormProps> = ({className}) => {
                         <Legend className={"text-6xl"}>New PPL Pool</Legend>
                         <Field>
                             <Label className={"block text-3xl"}>Pool Name</Label>
-                            <GradientInput inputProps={{
-                                autoFocus: true,
-                                name: "name",
-                                value: poolFormData.name,
-                                onChange: (e) => handleChange(e),
-                            }}
-                            className="h-10 w-60"
-                            focusClassName="bg-linear-to-tr from-sky-300 to-red-400 shadow-lg"
-                            unfocusedClassName="bg-zinc-300"/>
+                            <GradientFocusInput
+                                className="h-10 w-60"
+                                focusClassName="bg-linear-to-tr from-sky-300 to-red-400 shadow-lg"
+                                unfocusedClassName="bg-zinc-300">
+                                <Input
+                                    autoFocus
+                                    name="name"
+                                    value={poolFormData.name}
+                                    onChange={(e) => handleChange(e.target.name, e.target.value)}
+                                />
+                            </GradientFocusInput>
                         </Field>
-                        <Label className={"block text-3xl mt-2"}>Accrual Rate</Label>
+                        <Field>
+                            <Label className={"block text-3xl"}>Description</Label>
+                            <GradientFocusInput
+                                className="w-60 h-20"
+                                focusClassName="bg-linear-to-tr from-sky-300 to-red-400 shadow-lg"
+                                unfocusedClassName="bg-zinc-300">
+                                <Textarea
+                                    name={"description"}
+                                    value={poolFormData.description}
+                                    onChange={(e) => handleChange(e.target.name, e.target.value)} />
+                            </GradientFocusInput>
+                        </Field>
                         <Field className={"inline mr-1"}>
-                            <GradientInput inputProps={{
-                                name: "amount",
-                                value: poolFormData.amount,
-                                onChange: (e) => handleChange(e),
-                            }}
-                            className="h-10 w-20 mr-1 inline-block"
-                            focusClassName="bg-linear-to-tr from-sky-300 to-red-400 shadow-lg"
-                            unfocusedClassName="bg-zinc-300"/>
+                            <Label className={"block text-3xl mt-2"}>Accrual Rate</Label>
+                            <GradientFocusInput
+                                className="h-10 w-20 mr-1 inline-block"
+                                focusClassName="bg-linear-to-tr from-sky-300 to-red-400 shadow-lg"
+                                unfocusedClassName="bg-zinc-300">
+                                <Input
+                                    name="amount"
+                                    value={poolFormData.amount}
+                                    onChange={(e) => handleChange(e.target.name, e.target.value)}
+                                />
+                            </GradientFocusInput>
                             <Label>hours</Label>
                         </Field>
                         <Field className={"inline"}>
-                            <Listbox value={poolFormData.period} onChange={(e) => handlePeriodChange(e)}>
+                            <Listbox value={poolFormData.period}
+                                onChange={(e) => handleChange("period", e)}>
                                 <ListboxButton className={"relative h-10 w-40 p-2 pr-10 rounded-lg bg-black/10"}>
                                     {poolFormData.period}
                                     <ChevronDownIcon
@@ -121,27 +123,28 @@ const PoolForm: React.FC<PoolFormProps> = ({className}) => {
                         </Field>
                         <Field className={"mt-2"}>
                             <Label className={"text-3xl block"}>Starting on</Label>
-                            <GradientInput inputProps={{
-                                name: "startAmount",
-                                type: "date",
-                                value: poolFormData.startDate,
-                                onChange: (e) => handleDateChange(e.target.value),
-                            }}
-                            className="h-10 w-auto mr-1 inline-block"
-                            focusClassName="bg-linear-to-tr from-sky-300 to-red-400 shadow-lg"
-                            unfocusedClassName="bg-zinc-300"/>
+                            <GradientFocusInput
+                                className="h-10 w-auto mr-1 inline-block"
+                                focusClassName="bg-linear-to-tr from-sky-300 to-red-400 shadow-lg"
+                                unfocusedClassName="bg-zinc-300">
+                                <Input
+                                    name="startDate"
+                                    type="date"
+                                    value={poolFormData.startDate}
+                                    onChange={(e) => handleChange(e.target.name, e.target.value)}
+                                />
+                            </GradientFocusInput>
                             <Label className={"mx-1"}>With</Label>
-                            <GradientInput inputProps={{
-                               
-                                name: "startAmount"
-                               ,
-                                value: poolFormData.startAmount,
-                               
-                                onChange: (e) => handleChange(e),
-                            }}
-                            className="h-10 w-20 mr-1 inline-block"
-                            focusClassName="bg-linear-to-tr from-sky-300 to-red-400 shadow-lg"
-                            unfocusedClassName="bg-zinc-300"/>
+                            <GradientFocusInput
+                                className="h-10 w-20 mr-1 inline-block"
+                                focusClassName="bg-linear-to-tr from-sky-300 to-red-400 shadow-lg"
+                                unfocusedClassName="bg-zinc-300">
+                                <Input
+                                    name="startAmount"
+                                    value={poolFormData.startAmount}
+                                    onChange={(e) => handleChange(e.target.name, e.target.value)}
+                                />
+                            </GradientFocusInput>
                             <Label>hours</Label>
                         </Field>
                         <Field className={"mt-4"}>

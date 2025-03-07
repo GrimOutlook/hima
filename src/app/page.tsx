@@ -10,8 +10,6 @@ import { calculateAmount } from "@/lib/logic";
 import dayjs from "dayjs";
 import PoolForm from "./components/pool_form";
 import EventForm from "./components/event_form";
-import { PoolDetailsOverlay } from "./components/pool_details_overlay";
-import { useEffect } from "react";
 
 export default function Home() {
   const dispatch = useAppDispatch();

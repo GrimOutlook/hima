@@ -43,14 +43,14 @@ const EventListing: React.FC<EventListingProps> = ({className, event}) => {
             {isDetailsPanelOpen && (
                 <>
                     <div className={`relative border-t-black/10 border-t-2 w-full text-lg flex flex-col`}>
-                        <div className='font-normal w-full text-center p-2'>
-                            <span className='m-1 text-2xl font-semibold'>{event.description}</span>
+                        <div className='font-normal w-full text-left p-2'>
+                            <span className='m-1 text-lg font-normal'>{event.description}</span>
                         </div>
                     </div>
                     <div className={`relative border-t-black/10 border-t-2 flex justify-between`}>
-                        <PencilSquareIcon className='stroke-black size-7 m-1 p-0.5 rounded-full hover:bg-black/10 hover:cursor-pointer'/>
+                        <PencilSquareIcon className='stroke-gray-700 size-7 m-1 p-0.5 rounded-full hover:bg-black/10 hover:cursor-pointer'/>
                         <div></div>
-                        <TrashIcon className='stroke-black size-7 m-1 p-0.5 rounded-full hover:bg-black/10 hover:cursor-pointer'
+                        <TrashIcon className='stroke-gray-700 size-7 m-1 p-0.5 rounded-full hover:bg-black/10 hover:cursor-pointer'
                         onClick={() => dispatch(removeEvent(event.id))}/>
                     </div>
                 </>
