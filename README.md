@@ -11,7 +11,8 @@
 - [x] Calculate total amount of PPL available.
 - [x] Create a form to add events.
 - [x] Do the above but add events into the equation.
-- [ ] Show details on hover.
+- [x] Show details for pools on hover.
+- [ ] Show details for events on hover.
 - [ ] Allow deletion of events.
 - [x] Allow deletion of pools.
 - [ ] Validate inputs before creating pool (Can currently add pool without a name or a date).
