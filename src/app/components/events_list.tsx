@@ -8,8 +8,6 @@ import EventListing from "./event_listing";
 import { openEventDialog } from '@/lib/features/eventDialogSlice';
 import { DeserializeToEvent, PPLEvent } from '@/lib/models/PPLEvent';
 import { selectEvents } from '@/lib/features/eventListSlice';
-import { DeserializeToPool } from '@/lib/models/PPLPool';
-import { selectPools } from '@/lib/features/poolListSlice';
 
 type PoolListProps = {
     className?: string;
@@ -18,7 +16,6 @@ type PoolListProps = {
 const EventsList: React.FC<PoolListProps> = ({className}) => {
     const dispatch = useAppDispatch();
     const events = useAppSelector(selectEvents).map((event) => DeserializeToEvent(event));
-    const pools = useAppSelector(selectPools).map((pool) => DeserializeToPool(pool));
 
     return (
         <div className={`${className} flex flex-col rounded-lg m-2 shadow-xs bg-linear-to-tr from-sky-300 to-red-400`}>
@@ -38,7 +35,7 @@ const EventsList: React.FC<PoolListProps> = ({className}) => {
                 <div className="m-2 scroll-smooth p-2 overflow-x-hidden overflow-y-auto">
                     {/* This is where event listings go */}
                     {events.map((event: PPLEvent) =>(
-                        <EventListing key={event.id} title={event.title} hours={event.hours} date={event.date} pool={pools.find((pool) => pool.id == event.pool)!.name}/>
+                        <EventListing key={event.id} event={event}/>
                     ))}
                 </div>
             </div>

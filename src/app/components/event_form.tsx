@@ -113,13 +113,17 @@ const EventForm: React.FC = () => {
                         </Field>
                         <Field className={"mt-4"}>
                             <Button className={"w-full rounded-lg p-2 text-3xl bg-black/10 text-zinc-700"} onClick={() => {
+                                if (eventFormData.pool == undefined) {
+                                    return
+                                }
+
                                 let even : PPLEvent = {
                                     id: nextEventID,
                                     title: eventFormData.title,
                                     description: eventFormData.description,
                                     hours: eventFormData.amount,
                                     date: dayjs(eventFormData.date),
-                                    pool : eventFormData.pool!,
+                                    pool_id : eventFormData.pool!,
                                 }
                                 dispatch(addEvent(SerializeToEventDto(even)))
                                 setEventFormData(initialEventFormData)

@@ -1,4 +1,4 @@
-import PPLEvent from "./PPLEvent";
+import {PPLEvent} from "./PPLEvent";
 
 export type PPLEventDto = {
     id: number
@@ -6,7 +6,7 @@ export type PPLEventDto = {
     description: string;
     hours: number;
     date: string;
-    pool: number;
+    pool_id: number;
 }
 
 export const SerializeToEventDto = (event: PPLEvent): PPLEventDto => ({
@@ -15,5 +15,5 @@ export const SerializeToEventDto = (event: PPLEvent): PPLEventDto => ({
     description: event.description,
     hours: event.hours,
     date: event.date.toJSON(),
-    pool: event.pool
+    pool_id: event.pool_id
 })

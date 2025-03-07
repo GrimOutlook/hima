@@ -13,7 +13,7 @@ export type PPLEvent = {
     // Date of when the hours are taken
     date: Dayjs;
     // ID of the PPL Pool that this event belongs to
-    pool: number;
+    pool_id: number;
 }
 
 export const DeserializeToEvent = (event: PPLEventDto): PPLEvent => ({
@@ -22,5 +22,5 @@ export const DeserializeToEvent = (event: PPLEventDto): PPLEvent => ({
     description: event.description,
     hours: event.hours,
     date: dayjs(event.date),
-    pool: event.pool,
+    pool_id: event.pool_id,
 })
