@@ -5,10 +5,11 @@ import { poolDialogSlice } from "./features/poolDialogSlice";
 import { poolListSlice } from "./features/poolListSlice";
 import { eventListSlice } from "./features/eventListSlice";
 import { eventDialogSlice } from "./features/eventDialogSlice";
+import { alertDialogSlice } from "./features/alertDialogSlice";
 
 // `combineSlices` automatically combines the reducers using
 // their `reducerPath`s, therefore we no longer need to call `combineReducers`.
-const rootReducer = combineSlices(poolDialogSlice, poolListSlice, eventDialogSlice, eventListSlice);
+const rootReducer = combineSlices(poolDialogSlice, poolListSlice, eventDialogSlice, eventListSlice, alertDialogSlice);
 // Infer the `RootState` type from the root reducer
 export type RootState = ReturnType<typeof rootReducer>;
 

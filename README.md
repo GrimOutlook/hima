@@ -18,8 +18,9 @@
 - [ ] Validate inputs before creating pool (Can currently add pool without a name or a date).
 - [ ] Validate inputs before creating event.
 - [ ] Create settings menu.
-- [ ] Show error when trying to create an event with no pool created.
+- [x] Show error when trying to create an event with no pool created.
 - [ ] Allow user to check PPL amount at future or past dates.
+- [ ] Save session data as cookie
 - [ ] Allow export of data to JSON.
 - [ ] Allow import of data from JSON.
 - [ ] Allow selecting colors for pools.
