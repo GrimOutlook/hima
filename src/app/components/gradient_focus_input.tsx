@@ -1,5 +1,6 @@
 import React from "react"
 import { useState } from "react"
+import styles from './gradient_focus_input.module.css';
 
 interface GradientFocusChildProps {
     onFocus?: () => void;
@@ -8,13 +9,14 @@ interface GradientFocusChildProps {
 }
 
 type GradientFocusInputProps = {
-    children: React.ReactElement,
-    className?: string,
-    focusClassName?: string,
-    unfocusedClassName?: string,
+    children: React.ReactElement;
+    className?: string;
+    focusClassName?: string;
+    unfocusedClassName?: string;
+    invalid?: boolean;
 }
 
-export const GradientFocusInput: React.FC<GradientFocusInputProps> = ({children, className, focusClassName, unfocusedClassName}) => {
+export const GradientFocusInput: React.FC<GradientFocusInputProps> = ({children, invalid, className, focusClassName, unfocusedClassName}) => {
     let [isFocused, setIsFocused] = useState(false)
 
     if (! React.isValidElement(children)) {
@@ -36,6 +38,8 @@ export const GradientFocusInput: React.FC<GradientFocusInputProps> = ({children,
         childClassName = childProps.className
     }
 
+    let invalid_classes = invalid ? `${styles.shake} border-2 border-red-400` : ""
+
     let additionalProps = {
         onFocus: () => {childOnFocus; setIsFocused(true)},
         onBlur: () => {childOnBlur; setIsFocused(false)},
@@ -44,7 +48,7 @@ export const GradientFocusInput: React.FC<GradientFocusInputProps> = ({children,
     let updated_child = React.cloneElement(children, additionalProps)
 
     return (
-        <div className={`${isFocused && `${focusClassName}` || "bg-black/10"} ${className} rounded-lg p-0.5`}>
+        <div className={`${isFocused && ! invalid ? focusClassName : "bg-black/10"} ${className} ${invalid_classes} rounded-lg p-0.5`}>
             <div className={`${unfocusedClassName} w-full h-full rounded-md`}>
                 {updated_child}
             </div>
