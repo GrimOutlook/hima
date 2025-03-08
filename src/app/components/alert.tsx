@@ -12,6 +12,9 @@ const Alert: React.FC = () => {
         setIsClosing(true);
         setTimeout(() => {
             dispatch(closeAlertDialog());
+            setTimeout(() => {
+                setIsClosing(false);
+            }, 0);
         }, 300);
     }
 
