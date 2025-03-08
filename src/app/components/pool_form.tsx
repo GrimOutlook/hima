@@ -135,7 +135,7 @@ const PoolForm: React.FC<PoolFormProps> = ({className}) => {
                         <Field>
                             <Label className={"block text-3xl"}>Description</Label>
                             <GradientFocusInput
-                                className="w-60 h-20"
+                                className="w-60 h-auto"
                                 focusClassName="bg-linear-to-tr from-sky-300 to-red-400 shadow-lg"
                                 unfocusedClassName="bg-zinc-300">
                                 <Textarea
@@ -165,13 +165,20 @@ const PoolForm: React.FC<PoolFormProps> = ({className}) => {
                         <Field className={"inline"}>
                             <Listbox value={poolFormData.period}
                                 onChange={(e) => handleChange("period", e)}>
-                                <ListboxButton className={"relative h-10 w-40 p-2 pr-10 rounded-lg bg-black/10"}>
-                                    {poolFormData.period}
-                                    <ChevronDownIcon
-                                        className="group pointer-events-none absolute top-2.5 right-2.5 size-4 fill-black/60"
-                                        aria-hidden="true"
-                                    />
-                                </ListboxButton>
+                                <GradientFocusInput
+                                    invalid={(errors & PoolFormErrors.PERIOD) > 0}
+                                    className="w-30 h-10 mr-1 inline-block text-left relative"
+                                    focusClassName="bg-linear-to-tr from-sky-300 to-red-400 shadow-lg"
+                                    unfocusedClassName="bg-zinc-300">
+                                    <ListboxButton className={`${(errors & PoolFormErrors.NAME) > 0 ? 'border-red-500' : ''} rounded-lg bg-black/10`}
+                                        onClick={() => setErrors(errors & ~PoolFormErrors.PERIOD)}>
+                                        {poolFormData.period}
+                                        <ChevronDownIcon
+                                            className="pointer-events-none absolute top-2.5 right-2.5 size-4 fill-black/60"
+                                            aria-hidden="true"
+                                        />
+                                    </ListboxButton>
+                                </GradientFocusInput>
                                 <ListboxOptions anchor="bottom" className={clsx('w-[var(--button-width)] rounded-xl border border-black/10 bg-zinc-300/95 p-1 [--anchor-gap:var(--spacing-1)] focus:outline-hidden transition duration-100 ease-in data-leave:data-closed:opacity-0')}>
                                     {periods.map((period) => (
                                     <ListboxOption key={period}
