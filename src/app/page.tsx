@@ -10,6 +10,7 @@ import { calculateAmount } from "@/lib/logic";
 import dayjs from "dayjs";
 import PoolForm from "./components/pool_form";
 import EventForm from "./components/event_form";
+import Alert from "./components/alert";
 
 export default function Home() {
   const dispatch = useAppDispatch();
@@ -56,6 +57,7 @@ export default function Home() {
             <EventsList className="grow"/>
         </div>
       </div>
+      <Alert/>
       <PoolForm/>
       <EventForm/>
       {/* <SettingsMenu/> */}

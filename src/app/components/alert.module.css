@@ -1,0 +1,17 @@
+@keyframes alert_motion {
+    0% { transform: translateX(100%); }
+    100% { transform: translateX(0%); }
+}
+
+.alert_motion {
+    animation: alert_motion 0.3s ease-in;
+}
+
+@keyframes alert_closing {
+    0% {opacity: 100;}
+    100% {opacity: 0;}
+}
+
+.alert_closing {
+    animation: alert_closing 0.3s ease-out;
+}
