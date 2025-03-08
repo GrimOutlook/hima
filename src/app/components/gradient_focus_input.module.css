@@ -1,0 +1,12 @@
+@keyframes shake {
+    0% { transform: rotate(0deg); }
+    25% { transform: rotate(3deg); }
+    50% { transform: rotate(0deg); }
+    75% { transform: rotate(-3deg); }
+    100% { transform: rotate(0deg); }
+}
+
+.shake {
+    animation: shake 0.2s linear;
+    animation-iteration-count: 5;
+}
