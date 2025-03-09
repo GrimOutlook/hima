@@ -9,6 +9,7 @@ import Alert from "./components/alert";
 import { useEffect } from "react";
 import { useAppSelector } from "@/lib/hooks";
 import { selectHasUnsavedChanges } from "@/lib/features/trackUnsavedChanges";
+import { SettingsMenu } from "./components/settings_menu";
 
 export default function Home() {
     const hasUnsavedChanges = useAppSelector(selectHasUnsavedChanges)
@@ -66,7 +67,7 @@ export default function Home() {
         <Alert/>
         <PoolForm/>
         <EventForm/>
-        {/* <SettingsMenu/> */}
+        <SettingsMenu/>
         </>
     );
 }

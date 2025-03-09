@@ -1,3 +1,5 @@
+import { openSettingsMenu } from '@/lib/features/settingsMenuSlice';
+import { useAppDispatch } from '@/lib/hooks';
 import React from 'react';
 
 type SettingsButtonProps = {
@@ -5,8 +7,10 @@ type SettingsButtonProps = {
 }
 
 const SettingsButton: React.FC<SettingsButtonProps> = ({className}) => {
+    const dispatch = useAppDispatch()
     return (
-        <div className={`${className} bg-zinc-500 rounded-lg shadow-xs content-center transition duration-150 ease-in-out hover:-translate-y-1 hover:scale-102 hover:shadow-xs cursor-pointer`}>
+        <div className={`${className} bg-zinc-500 rounded-lg shadow-xs content-center transition duration-150 ease-in-out hover:-translate-y-1 hover:scale-102 hover:shadow-xs cursor-pointer`}
+            onClick={() => {dispatch(openSettingsMenu())}}>
             {/* <!-- Settings --> */}
             <div className="grid grid-cols-3 w-full h-18">
                 {/* <!-- Gear icon --> */}
