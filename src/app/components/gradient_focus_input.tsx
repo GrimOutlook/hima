@@ -1,6 +1,6 @@
 import React from "react"
 import { useState } from "react"
-import styles from './gradient_focus_input.module.css';
+import styles from "@/styles/gradient_focus_input.module.css";
 
 interface GradientFocusChildProps {
     onFocus?: () => void;
@@ -17,7 +17,7 @@ type GradientFocusInputProps = {
 }
 
 export const GradientFocusInput: React.FC<GradientFocusInputProps> = ({children, invalid, className, focusClassName, unfocusedClassName}) => {
-    let [isFocused, setIsFocused] = useState(false)
+    const [isFocused, setIsFocused] = useState(false)
 
     if (! React.isValidElement(children)) {
         console.error("Passed in child is invalid for GradientFocusInput")
@@ -38,14 +38,14 @@ export const GradientFocusInput: React.FC<GradientFocusInputProps> = ({children,
         childClassName = childProps.className
     }
 
-    let invalid_classes = invalid ? `${styles.shake} border-2 border-red-400` : ""
+    const invalid_classes = invalid ? `${styles.shake} border-2 border-red-400` : ""
 
-    let additionalProps = {
-        onFocus: () => {childOnFocus; setIsFocused(true)},
-        onBlur: () => {childOnBlur; setIsFocused(false)},
+    const additionalProps = {
+        onFocus: () => {childOnFocus(); setIsFocused(true)},
+        onBlur: () => {childOnBlur(); setIsFocused(false)},
         className: `${childClassName} bg-black/10 rounded-md w-full h-full focus:outline-hidden p-2`
     };
-    let updated_child = React.cloneElement(children, additionalProps)
+    const updated_child = React.cloneElement(children, additionalProps)
 
     return (
         <div className={`${isFocused && ! invalid ? focusClassName : "bg-black/10"} ${className} ${invalid_classes} rounded-lg p-0.5`}>

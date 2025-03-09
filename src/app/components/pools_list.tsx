@@ -7,10 +7,6 @@ import { useAppDispatch, useAppSelector } from "@/lib/hooks";
 import { selectPools } from '@/lib/features/poolListSlice';
 import { PPLPool } from '@/lib/models/PPLPool';
 import { DeserializeToPool as DeserializeToPool } from '@/lib/models/PPLPool';
-import { selectEvents } from '@/lib/features/eventListSlice';
-import { DeserializeToEvent } from '@/lib/models/PPLEvent';
-import { calculateAmount } from '@/lib/logic';
-import dayjs from 'dayjs';
 
 type PoolListProps = {
     className?: string;

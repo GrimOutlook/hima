@@ -21,7 +21,7 @@ const PoolListing: React.FC<PoolListingProps> = ({className, pool}) => {
     
     const [isDetailsPanelOpen, setIsDetailsPanelOpen] = useState(false);
 
-    let amount = calculateAmount(dayjs(), pool, events.filter((event) => event.pool_id == pool.id));
+    const amount = calculateAmount(dayjs(), pool, events.filter((event) => event.pool_id == pool.id));
 
     return (
         <div className={`${className} ${!isDetailsPanelOpen && `rounded-b-lg`} rounded-lg bg-blue-300 mt-2 mx-2

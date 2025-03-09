@@ -1,4 +1,3 @@
-import { Period } from "./Period";
 import { PPLPool } from "./PPLPool";
 
 export type PPLPoolDto = {

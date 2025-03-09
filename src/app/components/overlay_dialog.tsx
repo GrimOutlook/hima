@@ -7,7 +7,7 @@ import { Fragment, JSX } from "react";
 type OverlayDialogProps = {
     children?: string | JSX.Element | JSX.Element[];
     show: boolean;
-    onClose: (value: any) => void;
+    onClose: (value: unknown) => void;
 }
 
 export const OverlayDialog: React.FC<OverlayDialogProps> = ({children, show, onClose}) => {

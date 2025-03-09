@@ -2,10 +2,10 @@ import {describe, expect, test} from '@jest/globals';
 
 import dayjs from 'dayjs';
 import { elapsedPeriods } from '../../src/lib/logic';
-import Period from '../../src/lib/models/Period';
+import { Period } from '../../src/lib/models/Period';
 
 describe('Testing elapsedPeriods() - daily', () => {
-  let period = Period.Daily
+  const period = Period.Daily
   test('0 days result is 0', () => {
     expect(elapsedPeriods(dayjs(0), dayjs(0), period)).toBe(0);
   });
@@ -18,7 +18,7 @@ describe('Testing elapsedPeriods() - daily', () => {
 });
 
 describe('Testing elapsedPeriods() - weekly', () => {
-  let period = Period.Weekly
+  const period = Period.Weekly
   test('0 week result is 0', () => {
     expect(elapsedPeriods(dayjs(0), dayjs(0), period)).toBe(0);
   });
@@ -31,7 +31,7 @@ describe('Testing elapsedPeriods() - weekly', () => {
 });
 
 describe('Testing elapsedPeriods() - biweekly', () => {
-  let period = Period.BiWeekly
+  const period = Period.BiWeekly
   test('0 week result is 0', () => {
     expect(elapsedPeriods(dayjs(0), dayjs(0), period)).toBe(0);
   });
@@ -50,7 +50,7 @@ describe('Testing elapsedPeriods() - biweekly', () => {
 });
 
 describe('Testing elapsedPeriods() - monthly', () => {
-  let period = Period.Monthly
+  const period = Period.Monthly
   test('0 month result is 0', () => {
     expect(elapsedPeriods(dayjs(0), dayjs(0), period)).toBe(0);
   });
@@ -66,7 +66,7 @@ describe('Testing elapsedPeriods() - monthly', () => {
 });
 
 describe('Testing elapsedPeriods() - yearly', () => {
-  let period = Period.Yearly
+  const period = Period.Yearly
   test('0 year result is 0', () => {
     expect(elapsedPeriods(dayjs(0), dayjs(0), period)).toBe(0);
   });

@@ -3,7 +3,7 @@ import EventsList from "./components/events_list";
 import PoolList from "./components/pools_list";
 import SettingsButton from "./components/settings_button";
 import TotalHoursCard from "./components/total_hours_card";
-import { useAppDispatch, useAppSelector } from "@/lib/hooks";
+import { useAppSelector } from "@/lib/hooks";
 import { DeserializeToPool, PPLPool } from "@/lib/models/PPLPool";
 import { selectPools } from "@/lib/features/poolListSlice";
 import { calculateAmount } from "@/lib/logic";
@@ -13,7 +13,6 @@ import EventForm from "./components/event_form";
 import Alert from "./components/alert";
 
 export default function Home() {
-  const dispatch = useAppDispatch();
   const pools = useAppSelector(selectPools).map((pool) => DeserializeToPool(pool));
 
   const calculateTotal = (pools: PPLPool[]) => {

@@ -15,7 +15,7 @@ type EventListingProps = {
 const EventListing: React.FC<EventListingProps> = ({className, event}) => {
     const dispatch = useAppDispatch();
     const [isDetailsPanelOpen, setIsDetailsPanelOpen] = useState(false);
-    let pool = useAppSelector(selectPools).map((pool) => DeserializeToPool(pool)).find((pool) => pool.id == event.pool_id);
+    const pool = useAppSelector(selectPools).map((pool) => DeserializeToPool(pool)).find((pool) => pool.id == event.pool_id);
     if (pool == undefined) {
         console.error(`Could not find pool of ID [${event.pool_id}]`)
     }
