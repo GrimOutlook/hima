@@ -40,9 +40,12 @@ const PoolListing: React.FC<PoolListingProps> = ({className, pool}) => {
             {isDetailsPanelOpen && (
                 <>
                     <div className={`relative border-t-black/10 border-t-2 w-full text-lg flex flex-col`}>
-                        <div className='font-normal w-full text-left p-2'>
-                            <span className=' m-0.5'>{pool.description}</span>
-                        </div>
+                        {
+                            pool.description && (
+                            <div className='font-normal w-full text-left p-2'>
+                                <span className=' m-0.5'>{pool.description}</span>
+                            </div>)
+                        }
                         <div className='font-normal w-full text-center p-2'>
                             <span className='m-0.5'>Accrues</span>
                             <span className='m-1 text-2xl font-semibold'>{pool.amount}</span>

@@ -6,10 +6,11 @@ import { poolListSlice } from "./features/poolListSlice";
 import { eventListSlice } from "./features/eventListSlice";
 import { eventDialogSlice } from "./features/eventDialogSlice";
 import { alertDialogSlice } from "./features/alertDialogSlice";
+import { unsavedChangesListenerMiddleware, unsavedChangesSlice } from "./features/trackUnsavedChanges";
 
 // `combineSlices` automatically combines the reducers using
 // their `reducerPath`s, therefore we no longer need to call `combineReducers`.
-const rootReducer = combineSlices(poolDialogSlice, poolListSlice, eventDialogSlice, eventListSlice, alertDialogSlice);
+const rootReducer = combineSlices(poolDialogSlice, poolListSlice, eventDialogSlice, eventListSlice, alertDialogSlice, unsavedChangesSlice);
 // Infer the `RootState` type from the root reducer
 export type RootState = ReturnType<typeof rootReducer>;
 
@@ -23,7 +24,7 @@ export const makeStore = () => {
     // Adding the api middleware enables caching, invalidation, polling,
     // and other useful features of `rtk-query`.
     middleware: (getDefaultMiddleware) => {
-      return getDefaultMiddleware();
+      return getDefaultMiddleware().prepend(unsavedChangesListenerMiddleware.middleware);
     },
   });
 };
