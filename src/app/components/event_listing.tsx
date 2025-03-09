@@ -15,7 +15,7 @@ type EventListingProps = {
 const EventListing: React.FC<EventListingProps> = ({className, event}) => {
     const dispatch = useAppDispatch();
     const [isDetailsPanelOpen, setIsDetailsPanelOpen] = useState(false);
-    let pool = useAppSelector(selectPools).map((pool) => DeserializeToPool(pool)).find((pool) => pool.id == event.pool_id);
+    const pool = useAppSelector(selectPools).map((pool) => DeserializeToPool(pool)).find((pool) => pool.id == event.pool_id);
     if (pool == undefined) {
         console.error(`Could not find pool of ID [${event.pool_id}]`)
     }
@@ -42,11 +42,13 @@ const EventListing: React.FC<EventListingProps> = ({className, event}) => {
             </div>
             {isDetailsPanelOpen && (
                 <>
-                    <div className={`relative border-t-black/10 border-t-2 w-full text-lg flex flex-col`}>
-                        <div className='font-normal w-full text-left p-2'>
-                            <span className='m-1 text-lg font-normal'>{event.description}</span>
+                    { event.description && (
+                        <div className={`relative border-t-black/10 border-t-2 w-full text-lg flex flex-col`}>
+                            <div className='font-normal w-full text-left p-2'>
+                                <span className='m-1 text-lg font-normal'>{event.description}</span>
+                            </div>
                         </div>
-                    </div>
+                    )}
                     <div className={`relative border-t-black/10 border-t-2 flex justify-between`}>
                         <PencilSquareIcon className='stroke-gray-700 size-7 m-1 p-0.5 rounded-full hover:bg-black/10 hover:cursor-pointer'/>
                         <div></div>

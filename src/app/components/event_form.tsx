@@ -1,7 +1,7 @@
 'use client'
 
 import { Button, Field, Fieldset, Input, Label, Legend, Listbox, ListboxButton, ListboxOption, ListboxOptions, Textarea } from "@headlessui/react";
-import { ChangeEvent, useState } from "react";
+import { useState } from "react";
 import { CheckIcon, ChevronDownIcon } from '@heroicons/react/20/solid'
 import clsx from 'clsx'
 
@@ -51,7 +51,7 @@ const EventForm: React.FC = () => {
         if (pools.length <= 0) {
             return undefined
         }
-        let pool = pools.find((pool) => pool.id == eventFormData.pool)
+        const pool = pools.find((pool) => pool.id == eventFormData.pool)
         if (pool == undefined) {
             return undefined
         }
@@ -142,7 +142,7 @@ const EventForm: React.FC = () => {
                                     return
                                 }
 
-                                let even : PPLEvent = {
+                                const even : PPLEvent = {
                                     id: nextEventID,
                                     title: eventFormData.title,
                                     description: eventFormData.description,

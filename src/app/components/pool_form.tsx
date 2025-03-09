@@ -1,7 +1,7 @@
 'use client'
 
 import { Button, Field, Fieldset, Input, Label, Legend, Listbox, ListboxButton, ListboxOption, ListboxOptions, Textarea } from "@headlessui/react";
-import { ChangeEvent, useState } from "react";
+import { useState } from "react";
 import { CheckIcon, ChevronDownIcon } from '@heroicons/react/20/solid'
 import clsx from 'clsx'
 
@@ -94,7 +94,7 @@ const PoolForm: React.FC<PoolFormProps> = ({className}) => {
             return;
         }
     
-        let pool: PPLPool = {
+        const pool: PPLPool = {
             id: nextPoolID,
             name: poolFormData.name!,
             description: poolFormData.description || "",
@@ -111,7 +111,7 @@ const PoolForm: React.FC<PoolFormProps> = ({className}) => {
 
     return (
         <OverlayDialog onClose={() => dispatch(closePoolDialog())} show={poolDialogOpenState}>
-            <div className="bg-zinc-300 h-fit w-fit rounded-lg">
+            <div className={`${className} bg-zinc-300 h-fit w-fit rounded-lg`}>
                 <form>
                     <Fieldset className={"p-6"}>
                         <Legend className={"text-6xl"}>New PPL Pool</Legend>

@@ -1,6 +1,6 @@
 import { closeAlertDialog, selectAlertDialogState } from '@/lib/features/alertDialogSlice';
-import { useAppDispatch, useAppSelector } from '../../lib/hooks';
-import styles from './alert.module.css';
+import { useAppDispatch, useAppSelector } from "@/lib/hooks";
+import styles from '@/styles/alert.module.css';
 import React from 'react';
 
 const Alert: React.FC = () => {

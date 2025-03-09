@@ -11,7 +11,6 @@ import { DeserializeToEvent, PPLEvent } from '@/lib/models/PPLEvent';
 import { selectEvents } from '@/lib/features/eventListSlice';
 import { selectPools } from '@/lib/features/poolListSlice';
 import { DeserializeToPool } from '@/lib/models/PPLPool';
-import Alert from './alert';
 
 type PoolListProps = {
     className?: string;
