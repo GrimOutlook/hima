@@ -7,10 +7,19 @@ import { eventListSlice } from "./features/eventListSlice";
 import { eventDialogSlice } from "./features/eventDialogSlice";
 import { alertDialogSlice } from "./features/alertDialogSlice";
 import { unsavedChangesListenerMiddleware, unsavedChangesSlice } from "./features/trackUnsavedChanges";
+import { settingsMenuSlice } from "./features/settingsMenuSlice";
 
 // `combineSlices` automatically combines the reducers using
 // their `reducerPath`s, therefore we no longer need to call `combineReducers`.
-const rootReducer = combineSlices(poolDialogSlice, poolListSlice, eventDialogSlice, eventListSlice, alertDialogSlice, unsavedChangesSlice);
+const rootReducer = combineSlices(
+  poolDialogSlice,
+  poolListSlice,
+  eventDialogSlice,
+  eventListSlice,
+  alertDialogSlice,
+  unsavedChangesSlice,
+  settingsMenuSlice,
+);
 // Infer the `RootState` type from the root reducer
 export type RootState = ReturnType<typeof rootReducer>;
 
