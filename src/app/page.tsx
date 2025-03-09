@@ -6,8 +6,29 @@ import TotalHoursCard from "./components/total_hours_card";
 import PoolForm from "./components/pool_form";
 import EventForm from "./components/event_form";
 import Alert from "./components/alert";
+import { useEffect } from "react";
+import { useAppSelector } from "@/lib/hooks";
+import { selectHasUnsavedChanges } from "@/lib/features/trackUnsavedChanges";
 
 export default function Home() {
+    const hasUnsavedChanges = useAppSelector(selectHasUnsavedChanges)
+
+    useEffect(() => {
+        const handleBeforeUnload = (event: BeforeUnloadEvent) => {
+            if (hasUnsavedChanges) {
+                event.preventDefault();
+                event.returnValue = ''; // Required for some browsers
+                return "You have unsaved changes. Are you sure you want to leave?"; // Custom message (doesn't work in modern browsers only a generic message is shown)
+            }
+        };
+
+        window.addEventListener('beforeunload', handleBeforeUnload);
+
+        return () => {
+            window.removeEventListener('beforeunload', handleBeforeUnload);
+        };
+    }, [hasUnsavedChanges]);
+
 
     return (
         <>
