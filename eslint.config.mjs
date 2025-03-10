@@ -8,7 +8,6 @@ import tseslint from "typescript-eslint";
 
 const myRules = {
   // https://eslint.org/docs/latest/rules/max-len
-  // Temporary rule to see if eslint will work:
   "max-len": [
     "error",
     {
@@ -24,7 +23,7 @@ const myRules = {
 
 export default defineConfig([
   {
-    files: ["**/*.{js,mjs,cjs,ts,jsx,tsx}"],
+    files: ["src/**/*.{js,mjs,cjs,ts,jsx,tsx}"],
     plugins: {
       react: reactPlugin,
       "react-hooks": hooksPlugin,
