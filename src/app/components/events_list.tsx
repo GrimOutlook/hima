@@ -1,12 +1,11 @@
 "use client";
 
-import { deserializeToEvent, PPLEvent } from "@/lib/models/PPLEvent";
-import { useAppSelector } from "@/lib/hooks";
-
+import { PPLEvent, deserializeToEvent } from "@/lib/models/PPLEvent";
+import { EventListTopBar } from "./event_list_top_bar";
 import EventListing from "./event_listing";
 import React from "react";
 import { selectEvents } from "@/lib/features/eventListSlice";
-import { EventListTopBar } from "./event_list_top_bar";
+import { useAppSelector } from "@/lib/hooks";
 
 type PoolListProps = {
   className?: string;
