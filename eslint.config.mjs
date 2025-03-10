@@ -4,6 +4,7 @@ import tsParser from "@typescript-eslint/parser";
 import reactPlugin from "eslint-plugin-react";
 import hooksPlugin from "eslint-plugin-react-hooks";
 import nextPlugin from "@next/eslint-plugin-next";
+import typescript from "@typescript-eslint/eslint-plugin";
 import tseslint from "typescript-eslint";
 
 const myRules = {
@@ -19,9 +20,10 @@ const myRules = {
       ignoreUrls: true,
     },
   ],
-  "one-var": [
-    "error"= "never"
-  ]
+  "one-var": "off",
+  "no-warning-comments": "off",
+  "no-unused-vars": "off",
+  "@typescript-eslint/no-unused-vars": "error",
 };
 
 export default defineConfig([
@@ -31,6 +33,7 @@ export default defineConfig([
       react: reactPlugin,
       "react-hooks": hooksPlugin,
       "@next/next": nextPlugin,
+      "@typescript-eslint": typescript,
     },
     rules: {
       ...eslint.configs.all.rules,

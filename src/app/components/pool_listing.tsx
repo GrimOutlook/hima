@@ -12,7 +12,7 @@ import { removePool } from "@/lib/features/poolListSlice";
 import { PPLPool } from "@/lib/models/PPLPool";
 import { calculateAmount } from "@/lib/logic";
 import { selectEvents } from "@/lib/features/eventListSlice";
-import { DeserializeToEvent } from "@/lib/models/PPLEvent";
+import { deserializeToEvent } from "@/lib/models/PPLEvent";
 
 type PoolListingProps = {
   className?: string;
@@ -22,7 +22,7 @@ type PoolListingProps = {
 const PoolListing: React.FC<PoolListingProps> = ({ className, pool }) => {
   const dispatch = useAppDispatch();
   const events = useAppSelector(selectEvents).map((event) =>
-    DeserializeToEvent(event)
+    deserializeToEvent(event)
   );
 
   const [isDetailsPanelOpen, setIsDetailsPanelOpen] = useState(false);

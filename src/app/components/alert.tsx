@@ -8,6 +8,8 @@ import { setTimeout } from "timers";
 import styles from "@/styles/alert.module.css";
 
 const SEC_IN_MS = 1000;
+const NO_DELAY = 0;
+const ANIMATION_TIME = 300;
 
 const Alert: React.FC = () => {
   const dispatch = useAppDispatch();
@@ -20,8 +22,8 @@ const Alert: React.FC = () => {
       dispatch(closeAlertDialog());
       setTimeout(() => {
         setIsClosing(false);
-      }, 0);
-    }, 300);
+      }, NO_DELAY);
+    }, ANIMATION_TIME);
   };
 
   if (!state.open) {
@@ -29,7 +31,7 @@ const Alert: React.FC = () => {
   }
 
   setTimeout(() => {
-    if (state.open && ~isClosing) {
+    if (state.open && !isClosing) {
       close();
     }
   }, state.timeout * SEC_IN_MS);
@@ -37,7 +39,7 @@ const Alert: React.FC = () => {
   return (
     <>
       <div
-        className={`${styles.alert_motion} ${isClosing ? styles.alert_closing : ""} bg-red-200/80 m-5 rounded-lg absolute z-10 top-0 right-0 shadow-lg p-4 select-none`}
+        className={`${styles.alert_motion} ${(isClosing && styles.alert_closing) || ""} bg-red-200/80 m-5 rounded-lg absolute z-10 top-0 right-0 shadow-lg p-4 select-none`}
         onClick={() => dispatch(closeAlertDialog())}
       >
         <div className="text-xl font-bold">{state.title}</div>
