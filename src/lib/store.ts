@@ -1,4 +1,4 @@
-'use client'
+"use client";
 import type { Action, ThunkAction } from "@reduxjs/toolkit";
 import { combineSlices, configureStore } from "@reduxjs/toolkit";
 import { poolDialogSlice } from "./features/poolDialogSlice";
@@ -6,7 +6,10 @@ import { poolListSlice } from "./features/poolListSlice";
 import { eventListSlice } from "./features/eventListSlice";
 import { eventDialogSlice } from "./features/eventDialogSlice";
 import { alertDialogSlice } from "./features/alertDialogSlice";
-import { unsavedChangesListenerMiddleware, unsavedChangesSlice } from "./features/trackUnsavedChanges";
+import {
+  unsavedChangesListenerMiddleware,
+  unsavedChangesSlice,
+} from "./features/trackUnsavedChanges";
 import { settingsMenuSlice } from "./features/settingsMenuSlice";
 
 // `combineSlices` automatically combines the reducers using
@@ -33,7 +36,9 @@ export const makeStore = () => {
     // Adding the api middleware enables caching, invalidation, polling,
     // and other useful features of `rtk-query`.
     middleware: (getDefaultMiddleware) => {
-      return getDefaultMiddleware().prepend(unsavedChangesListenerMiddleware.middleware);
+      return getDefaultMiddleware().prepend(
+        unsavedChangesListenerMiddleware.middleware,
+      );
     },
   });
 };
