@@ -19,6 +19,9 @@ const myRules = {
       ignoreUrls: true,
     },
   ],
+  "one-var": [
+    "error"= "never"
+  ]
 };
 
 export default defineConfig([
@@ -31,7 +34,7 @@ export default defineConfig([
     },
     rules: {
       ...eslint.configs.all.rules,
-      ...tseslint.configs.strictTypeChecked.rules,
+      ...tseslint.configs.recommendedTypeChecked.rules,
       ...tseslint.configs.stylisticTypeChecked.rules,
       ...reactPlugin.configs.recommended.rules,
       ...reactPlugin.configs["jsx-runtime"].rules,

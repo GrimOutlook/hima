@@ -46,15 +46,5 @@
     "ts-jest": "^29.2.6",
     "typescript": "^5.8.2",
     "typescript-eslint": "^8.26.0"
-  },
-  "prettier": {
-    "printWidth": 80
-  },
-  "eslintConfig": {
-    "extends": [
-      "next",
-      "next/core-web-vitals",
-      "typescript"
-    ]
   }
 }

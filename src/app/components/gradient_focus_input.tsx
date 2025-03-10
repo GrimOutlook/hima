@@ -22,26 +22,26 @@ export const GradientFocusInput: React.FC<GradientFocusInputProps> = ({
   focusClassName,
   unfocusedClassName,
 }) => {
-  const [isFocused, setIsFocused] = useState(false),
-    childProps = children.props as GradientFocusChildProps,
-    invalidClasses =
-      (invalid && `${styles.shake} border-2 border-red-400`) || "",
-    propsAdd = {
-      className: `${childProps.className} bg-black/10 rounded-md w-full h-full focus:outline-hidden p-2`,
-      onBlur: () => {
-        if (childProps.onBlur) {
-          childProps.onBlur();
-        }
-        setIsFocused(false);
-      },
-      onFocus: () => {
-        if (childProps.onFocus) {
-          childProps.onFocus();
-        }
-        setIsFocused(true);
-      },
+  const [isFocused, setIsFocused] = useState(false);
+  const childProps = children.props as GradientFocusChildProps;
+  const invalidClasses =
+    (invalid && `${styles.shake} border-2 border-red-400`) || "";
+  const propsAdd = {
+    className: `${childProps.className} bg-black/10 rounded-md w-full h-full focus:outline-hidden p-2`,
+    onBlur: () => {
+      if (childProps.onBlur) {
+        childProps.onBlur();
+      }
+      setIsFocused(false);
     },
-    updateChild = React.cloneElement(children, propsAdd);
+    onFocus: () => {
+      if (childProps.onFocus) {
+        childProps.onFocus();
+      }
+      setIsFocused(true);
+    },
+  };
+  const updateChild = React.cloneElement(children, propsAdd);
 
   return (
     <div
