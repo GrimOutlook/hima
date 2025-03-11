@@ -14,21 +14,22 @@ import {
   Textarea,
 } from "@headlessui/react";
 import { CheckIcon, ChevronDownIcon } from "@heroicons/react/20/solid";
-import { EnumToArray, ToTitleCase } from "@/lib/helpers";
+import React, { useState } from "react";
+import { addPool, selectNextPoolID } from "@/lib/features/poolListSlice";
 import {
   closePoolDialog,
   selectPoolDialogOpenState,
 } from "@/lib/features/poolDialogSlice";
+import { enumToArray, toTitleCase } from "@/lib/helpers";
 import { useAppDispatch, useAppSelector } from "@/lib/hooks";
 import { GradientFocusInput } from "./gradient_focus_input";
 import { OverlayDialog } from "./overlay_dialog";
 import { PPLPool } from "@/lib/models/PPLPool";
 import { Period } from "@/lib/models/Period";
-import { SerializeToPoolDto } from "@/lib/models/PPLPoolDto";
-import { addPool } from "@/lib/features/poolListSlice";
 import clsx from "clsx";
 import dayjs from "dayjs";
-import { useState } from "react";
+import { serializeToPoolDto } from "@/lib/models/PPLPoolDto";
+import { setTimeout } from "timers";
 
 /* eslint-disable no-magic-numbers */
 enum PoolFormErrors {
@@ -49,79 +50,85 @@ type PoolFormData = {
   description: string;
   amount: number;
   period: Period;
-  startDate: string;
   startAmount: number;
+  startDate: string;
 };
 
-const periods = EnumToArray(Period).map((str: string) => ToTitleCase(str));
+const periods = enumToArray(Period).map((str: string) => toTitleCase(str));
 const initialPoolFormData: PoolFormData = {
-  name: "",
-  description: "",
   amount: 0,
+  description: "",
+  name: "",
   period: Period.BiWeekly,
-  startDate: "",
   startAmount: 0,
+  startDate: "",
 };
 
+const validateName = (name: string) => (name ? 0 : PoolFormErrors.NAME);
+
+const validateAmount = (amount: number) =>
+  amount > 0 ? 0 : PoolFormErrors.AMOUNT;
+
+const validatePeriod = (period: Period) => (period ? 0 : PoolFormErrors.PERIOD);
+
+const validateStartDate = (startDate: string) =>
+  startDate ? 0 : PoolFormErrors.START_DATE;
+
+const validateStartAmount = (startAmount: number) =>
+  startAmount > 0 ? 0 : PoolFormErrors.START_AMOUNT;
+
+/* eslint-disable no-bitwise */
 const validateInputs = (poolFormData: PoolFormData) => {
   let errors = 0;
-
-  if (!poolFormData.name) {
-    errors |= PoolFormErrors.NAME;
-  }
-  if (!poolFormData.amount || poolFormData.amount <= 0) {
-    errors |= PoolFormErrors.AMOUNT;
-  }
-  if (!poolFormData.period) {
-    errors |= PoolFormErrors.PERIOD;
-  }
-  if (!poolFormData.startDate) {
-    errors |= PoolFormErrors.START_DATE;
-  }
-  if (!poolFormData.startAmount || poolFormData.startAmount <= 0) {
-    errors |= PoolFormErrors.START_AMOUNT;
-  }
-
+  errors |= validateName(poolFormData.name);
+  errors |= validateAmount(poolFormData.amount);
+  errors |= validatePeriod(poolFormData.period);
+  errors |= validateStartDate(poolFormData.startDate);
+  errors |= validateStartAmount(poolFormData.startAmount);
   return errors;
+};
+/* eslint-enable no-bitwise */
+
+const createPool = (
+  poolFormData: PoolFormData,
+  setErrors: (x: number) => void
+) => {
+  const validationErrors = validateInputs(poolFormData);
+  if (validationErrors > 0) {
+    setErrors(0);
+    setTimeout(() => {
+      setErrors(validationErrors);
+    }, 0);
+    return;
+  }
+
+  const pool: PPLPool = {
+    amount: poolFormData.amount!,
+    description: poolFormData.description || "",
+    id: nextPoolID,
+    name: poolFormData.name!,
+    period: poolFormData.period!,
+    startAmount: poolFormData.startAmount!,
+    startDate: dayjs(poolFormData.startDate!),
+  };
+
+  dispatch(addPool(serializeToPoolDto(pool)));
+  setPoolFormData(initialPoolFormData);
+  dispatch(closePoolDialog());
 };
 
 const PoolForm: React.FC<PoolFormProps> = ({ className }) => {
   const dispatch = useAppDispatch();
   const poolDialogOpenState = useAppSelector(selectPoolDialogOpenState);
   const [poolFormData, setPoolFormData] = useState(initialPoolFormData);
-  const nextPoolID = useAppSelector(selectNextPoolID);
   const [errors, setErrors] = useState<number>(0);
+  const nextPoolID = useAppSelector(selectNextPoolID);
 
   const handleChange = (target: string, value: string) => {
     setPoolFormData({
       ...poolFormData,
       [target]: value,
     });
-  };
-
-  const createPool = () => {
-    const validationErrors = validateInputs(poolFormData);
-    if (validationErrors > 0) {
-      setErrors(0);
-      setTimeout(() => {
-        setErrors(validationErrors);
-      }, 0);
-      return;
-    }
-
-    const pool: PPLPool = {
-      id: nextPoolID,
-      name: poolFormData.name!,
-      description: poolFormData.description || "",
-      amount: poolFormData.amount!,
-      period: poolFormData.period!,
-      startDate: dayjs(poolFormData.startDate!),
-      startAmount: poolFormData.startAmount!,
-    };
-
-    dispatch(addPool(SerializeToPoolDto(pool)));
-    setPoolFormData(initialPoolFormData);
-    dispatch(closePoolDialog());
   };
 
   return (

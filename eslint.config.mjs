@@ -21,8 +21,11 @@ const myRules = {
     },
   ],
   "one-var": "off",
-  "no-warning-comments": "off",
+  "no-magic-numbers": ["off", { ignore: [0] }],
+  "no-ternary": "off",
+  // This needs to be turned off when turning on the typescript rule
   "no-unused-vars": "off",
+  "no-warning-comments": "off",
   "@typescript-eslint/no-unused-vars": "error",
 };
 

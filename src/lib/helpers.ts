@@ -1,6 +1,6 @@
-export const EnumToArray = (enu: object) => Object.values(enu);
+export const enumToArray = (enu: object) => Object.values(enu);
 
-export const ToTitleCase = (str: string) =>
+export const toTitleCase = (str: string) =>
   str
     .toLowerCase()
     .split(" ")
