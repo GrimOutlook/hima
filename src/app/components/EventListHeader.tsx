@@ -1,17 +1,17 @@
+import { useAppDispatch, useAppSelector } from "@/lib/hooks";
+import { deserializeToPool } from "@/lib/models/PPLPool";
+import { isEmpty } from "@/lib/helpers";
 import { openAlertDialog } from "@/lib/features/alertDialogSlice";
 import { openEventDialog } from "@/lib/features/eventDialogSlice";
-import { deserializeToPool } from "@/lib/models/PPLPool";
 import { selectPools } from "@/lib/features/poolListSlice";
-import { useAppDispatch, useAppSelector } from "@/lib/hooks";
 
-export const EventListTopBar = () => {
+export const EventListHeader = () => {
   const dispatch = useAppDispatch();
   const pools = useAppSelector(selectPools).map((pool) =>
     deserializeToPool(pool)
   );
 
   const openEventForm = () => {
-    // eslint-disable-next-line no-magic-numbers
     if (isEmpty(pools)) {
       dispatch(
         openAlertDialog({

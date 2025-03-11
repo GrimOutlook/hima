@@ -1,15 +1,15 @@
 "use client";
-import EventsList from "./components/events_list";
-import PoolList from "./components/pools_list";
-import SettingsButton from "./components/settings_button";
-import TotalHoursCard from "./components/total_hours_card";
-import PoolForm from "./components/pool_form";
-import EventForm from "./components/event_form";
-import Alert from "./components/alert";
+import EventsList from "./components/EventList";
+import PoolList from "./components/PoolList";
+import SettingsButton from "./components/SettingsButton";
+import TotalHoursCard from "./components/TotalHoursCard";
+import PoolForm from "./components/PoolForm";
+import EventForm from "./components/EventForm";
+import Alert from "./components/Alert";
 import { useEffect } from "react";
 import { useAppSelector } from "@/lib/hooks";
 import { selectHasUnsavedChanges } from "@/lib/features/trackUnsavedChanges";
-import { SettingsMenu } from "./components/settings_menu";
+import { SettingsMenu } from "./components/SettingsMenu";
 
 export default function Home() {
   const hasUnsavedChanges = useAppSelector(selectHasUnsavedChanges);

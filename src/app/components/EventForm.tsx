@@ -27,10 +27,10 @@ import { PPLEvent } from "@/lib/models/PPLEvent";
 import { SerializeToEventDto } from "@/lib/models/PPLEventDto";
 import { selectNextEventID } from "@/lib/features/eventListSlice";
 import dayjs from "dayjs";
-import { OverlayDialog } from "./overlay_dialog";
+import { OverlayDialog } from "./OverlayDialog";
 import { DeserializeToPool } from "@/lib/models/PPLPool";
 import { selectPools } from "@/lib/features/poolListSlice";
-import { GradientFocusInput } from "./gradient_focus_input";
+import { GradientFocusInput } from "./GradientFocusInput";
 
 type EventFormData = {
   title: string;

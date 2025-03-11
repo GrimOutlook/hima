@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState } from "react";
-import { EventDetailsPanel } from "./event_details_panel";
+import { EventDetailsPanel } from "./EventDetailsPanel";
 import { PPLEvent } from "@/lib/models/PPLEvent";
 import { deserializeToPool } from "@/lib/models/PPLPool";
 import { selectPools } from "@/lib/features/poolListSlice";

@@ -1,8 +1,8 @@
 "use client";
 
 import { PPLEvent, deserializeToEvent } from "@/lib/models/PPLEvent";
-import { EventListTopBar } from "./event_list_top_bar";
-import EventListing from "./event_listing";
+import { EventListHeader } from "./EventListHeader";
+import EventListing from "./EventListing";
 import React from "react";
 import { selectEvents } from "@/lib/features/eventListSlice";
 import { useAppSelector } from "@/lib/hooks";
@@ -21,7 +21,7 @@ const EventsList: React.FC<PoolListProps> = ({ className }) => {
       className={`${className} flex flex-col rounded-lg m-2 shadow-xs bg-linear-to-tr from-sky-300 to-red-400`}
     >
       <div className="bg-zinc-100 flex flex-col grow rounded-lg m-2 min-h-0">
-        <EventListTopBar />
+        <EventListHeader />
         {/* <!-- Event list --> */}
         <div
           className={`m-2 scroll-smooth p-2 overflow-x-hidden 

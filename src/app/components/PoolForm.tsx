@@ -22,8 +22,8 @@ import {
 } from "@/lib/features/poolDialogSlice";
 import { enumToArray, toTitleCase } from "@/lib/helpers";
 import { useAppDispatch, useAppSelector } from "@/lib/hooks";
-import { GradientFocusInput } from "./gradient_focus_input";
-import { OverlayDialog } from "./overlay_dialog";
+import { GradientFocusInput } from "./GradientFocusInput";
+import { OverlayDialog } from "./OverlayDialog";
 import { PPLPool } from "@/lib/models/PPLPool";
 import { Period } from "@/lib/models/Period";
 import clsx from "clsx";
