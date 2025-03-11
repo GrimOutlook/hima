@@ -13,7 +13,7 @@ import {
   ListboxOptions,
   Textarea,
 } from "@headlessui/react";
-import { useState } from "react";
+import React, { useState } from "react";
 import { CheckIcon, ChevronDownIcon } from "@heroicons/react/20/solid";
 import clsx from "clsx";
 
@@ -28,7 +28,7 @@ import { SerializeToEventDto } from "@/lib/models/PPLEventDto";
 import { selectNextEventID } from "@/lib/features/eventListSlice";
 import dayjs from "dayjs";
 import { OverlayDialog } from "./OverlayDialog";
-import { DeserializeToPool } from "@/lib/models/PPLPool";
+import { deserializeToPool } from "@/lib/models/PPLPool";
 import { selectPools } from "@/lib/features/poolListSlice";
 import { GradientFocusInput } from "./GradientFocusInput";
 
@@ -37,22 +37,22 @@ type EventFormData = {
   amount: number;
   description: string;
   date: string;
-  pool?: number;
+  pool: number | null;
 };
 
 const initialEventFormData: EventFormData = {
-  title: "",
   amount: 0,
-  description: "",
   date: new Date().toDateString(),
-  pool: undefined,
+  description: "",
+  pool: null,
+  title: "",
 };
 
 const EventForm: React.FC = () => {
   const dispatch = useAppDispatch();
   const eventDialogOpenState = useAppSelector(selectEventDialogOpenState);
   const pools = useAppSelector(selectPools).map((pool) =>
-    DeserializeToPool(pool)
+    deserializeToPool(pool)
   );
   const [eventFormData, setEventFormData] = useState(initialEventFormData);
   const nextEventID = useAppSelector(selectNextEventID);
@@ -66,11 +66,11 @@ const EventForm: React.FC = () => {
 
   const selectedPoolName = () => {
     if (pools.length <= 0) {
-      return undefined;
+      return null;
     }
-    const pool = pools.find((pool) => pool.id == eventFormData.pool);
-    if (pool == undefined) {
-      return undefined;
+    const pool = pools.find((pool) => pool.id === eventFormData.pool);
+    if (pool === null) {
+      return null;
     }
     return pool.name;
   };
