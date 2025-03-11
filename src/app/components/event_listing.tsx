@@ -1,24 +1,26 @@
 "use client";
-import { removeEvent } from "@/lib/features/eventListSlice";
-import { selectPools } from "@/lib/features/poolListSlice";
-import { useAppDispatch, useAppSelector } from "@/lib/hooks";
-import { PPLEvent } from "@/lib/models/PPLEvent";
-import { DeserializeToPool } from "@/lib/models/PPLPool";
-import { PencilSquareIcon, TrashIcon } from "@heroicons/react/24/outline";
+
 import React, { useState } from "react";
+import { EventDetailsPanel } from "./event_details_panel";
+import { PPLEvent } from "@/lib/models/PPLEvent";
+import { deserializeToPool } from "@/lib/models/PPLPool";
+import { selectPools } from "@/lib/features/poolListSlice";
+import { useAppSelector } from "@/lib/hooks";
 
 type EventListingProps = {
   className?: string;
   event: PPLEvent;
 };
 
+// eslint-disable-next-line max-lines-per-function
 const EventListing: React.FC<EventListingProps> = ({ className, event }) => {
-  const dispatch = useAppDispatch();
   const [isDetailsPanelOpen, setIsDetailsPanelOpen] = useState(false);
-  const pool = useAppSelector(selectPools)
-    .map((pool) => DeserializeToPool(pool))
-    .find((pool) => pool.id == event.pool_id);
-  if (pool == undefined) {
+  const affectedPool = useAppSelector(selectPools)
+    .map((pool) => deserializeToPool(pool))
+    .find((pool) => pool.id === event.pool_id);
+  if (!affectedPool) {
+    // TODO: Add client side logging for when this happens
+    // eslint-disable-next-line no-console, no-undef
     console.error(`Could not find pool of ID [${event.pool_id}]`);
   }
 
@@ -37,44 +39,30 @@ const EventListing: React.FC<EventListingProps> = ({ className, event }) => {
           </div>
         </div>
         {/* <!-- Hours --> */}
-        <div className="flex flex-col justify-center items-center h-full w-24 p-2">
-          <div className="text-4xl h-2/3 w-full text-center overflow-hidden text-ellipsis">
+        <div
+          className={`flex flex-col justify-center items-center h-full w-24 p-2`}
+        >
+          <div
+            className={`text-4xl h-2/3 w-full text-center overflow-hidden text-ellipsis`}
+          >
             {event.hours}
           </div>
           <div className="text-sm h-1/3 w-full text-center">hrs</div>
         </div>
         <div className="flex flex-col w-full m-2 self-center">
           {/* <!-- Title of event --> */}
-          <div className="text-xl h-full w-full overflow-hidden text-ellipsis font-normal">
+          <div
+            className={`text-xl h-full w-full overflow-hidden text-ellipsis font-normal`}
+          >
             {event.title}
           </div>
           {/* <!-- Pool name --> */}
-          <div className="text-m h-full w-full">Pool: {pool!.name}</div>
+          <div className="text-m h-full w-full">Pool: {affectedPool!.name}</div>
         </div>
       </div>
       {isDetailsPanelOpen && (
         <>
-          {event.description && (
-            <div
-              className={`relative border-t-black/10 border-t-2 w-full text-lg flex flex-col`}
-            >
-              <div className="font-normal w-full text-left p-2">
-                <span className="m-1 text-lg font-normal">
-                  {event.description}
-                </span>
-              </div>
-            </div>
-          )}
-          <div
-            className={`relative border-t-black/10 border-t-2 flex justify-between`}
-          >
-            <PencilSquareIcon className="stroke-gray-700 size-7 m-1 p-0.5 rounded-full hover:bg-black/10 hover:cursor-pointer" />
-            <div></div>
-            <TrashIcon
-              className="stroke-gray-700 size-7 m-1 p-0.5 rounded-full hover:bg-black/10 hover:cursor-pointer"
-              onClick={() => dispatch(removeEvent(event.id))}
-            />
-          </div>
+          <EventDetailsPanel event={event} />
         </>
       )}
     </div>
