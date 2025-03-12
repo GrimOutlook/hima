@@ -12,7 +12,7 @@ import {
 import { alertDialogSlice } from "./features/alertDialogSlice";
 import { eventDialogSlice } from "./features/eventDialogSlice";
 import { eventListSlice } from "./features/eventListSlice";
-import { poolDialogSlice } from "./features/poolDialogSlice";
+import { poolFormSlice } from "./features/poolFormSlice";
 import { poolListSlice } from "./features/poolListSlice";
 import { settingsMenuSlice } from "./features/settingsMenuSlice";
 
@@ -21,7 +21,7 @@ import { settingsMenuSlice } from "./features/settingsMenuSlice";
  * their `reducerPath`s, therefore we no longer need to call `combineReducers`.
  */
 const rootReducer = combineSlices(
-  poolDialogSlice,
+  poolFormSlice,
   poolListSlice,
   eventDialogSlice,
   eventListSlice,

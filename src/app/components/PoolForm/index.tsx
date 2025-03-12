@@ -17,9 +17,9 @@ import { CheckIcon, ChevronDownIcon } from "@heroicons/react/20/solid";
 import React, { useState } from "react";
 import { addPool, selectNextPoolID } from "@/lib/features/poolListSlice";
 import {
-  closePoolDialog,
-  selectPoolDialogOpenState,
-} from "@/lib/features/poolDialogSlice";
+  closePoolForm,
+  selectPoolFormOpenState,
+} from "@/lib/features/poolFormSlice";
 import { enumToArray, toTitleCase } from "@/lib/helpers";
 import { useAppDispatch, useAppSelector } from "@/lib/hooks";
 import { GradientFocusInput } from "../GradientFocusInput";
@@ -30,14 +30,6 @@ import clsx from "clsx";
 import dayjs from "dayjs";
 import { serializeToPoolDto } from "@/lib/models/PPLPoolDto";
 import { setTimeout } from "timers";
-
-enum PoolFormErrors {
-  NAME = 1,
-  AMOUNT = 2,
-  PERIOD = 4,
-  START_DATE = 8,
-  START_AMOUNT = 16,
-}
 
 type PoolFormProps = {
   className?: string;
@@ -61,31 +53,6 @@ const initialPoolFormData: PoolFormData = {
   startAmount: 0,
   startDate: "",
 };
-
-const validateName = (name: string) => (name ? 0 : PoolFormErrors.NAME);
-
-const validateAmount = (amount: number) =>
-  amount > 0 ? 0 : PoolFormErrors.AMOUNT;
-
-const validatePeriod = (period: Period) => (period ? 0 : PoolFormErrors.PERIOD);
-
-const validateStartDate = (startDate: string) =>
-  startDate ? 0 : PoolFormErrors.START_DATE;
-
-const validateStartAmount = (startAmount: number) =>
-  startAmount > 0 ? 0 : PoolFormErrors.START_AMOUNT;
-
-/* eslint-disable no-bitwise */
-const validateInputs = (poolFormData: PPLPool) => {
-  let errors = 0;
-  errors |= validateName(poolFormData.name);
-  errors |= validateAmount(poolFormData.amount);
-  errors |= validatePeriod(poolFormData.period);
-  errors |= validateStartDate(poolFormData.startDate);
-  errors |= validateStartAmount(poolFormData.startAmount);
-  return errors;
-};
-/* eslint-enable no-bitwise */
 
 const createPool = (
   poolFormData: PoolFormData,
@@ -113,12 +80,12 @@ const createPool = (
 
   dispatch(addPool(serializeToPoolDto(pool)));
   setPoolFormData(initialPoolFormData);
-  dispatch(closePoolDialog());
+  dispatch(closePoolForm());
 };
 
 const PoolForm: React.FC<PoolFormProps> = ({ className }) => {
   const dispatch = useAppDispatch();
-  const poolDialogOpenState = useAppSelector(selectPoolDialogOpenState);
+  const poolFormOpenState = useAppSelector(selectPoolFormOpenState);
   const [poolFormData, setPoolFormData] = useState(initialPoolFormData);
   const [errors, setErrors] = useState<number>(0);
   const nextPoolID = useAppSelector(selectNextPoolID);
@@ -132,33 +99,14 @@ const PoolForm: React.FC<PoolFormProps> = ({ className }) => {
 
   return (
     <OverlayDialog
-      onClose={() => dispatch(closePoolDialog())}
-      show={poolDialogOpenState}
+      onClose={() => dispatch(closePoolForm())}
+      show={poolFormOpenState}
     >
       <div className={`${className} bg-zinc-300 h-fit w-fit rounded-lg`}>
         <form>
           <Fieldset className={"p-6"}>
             <Legend className={"text-6xl"}>New PPL Pool</Legend>
-            <Field>
-              <Label className={"block text-3xl"}>Pool Name</Label>
-              <GradientFocusInput
-                invalid={(errors & PoolFormErrors.NAME) > 0}
-                className="h-10 w-60"
-                focusClassName="bg-linear-to-tr from-sky-300 to-red-400 shadow-lg"
-                unfocusedClassName="bg-zinc-300"
-              >
-                <Input
-                  autoFocus
-                  name="name"
-                  value={poolFormData.name}
-                  onClick={() => setErrors(errors & ~PoolFormErrors.NAME)}
-                  onChange={(e) => handleChange(e.target.name, e.target.value)}
-                  className={
-                    (errors & PoolFormErrors.NAME) > 0 ? "border-red-500" : ""
-                  }
-                />
-              </GradientFocusInput>
-            </Field>
+            <PoolNameField />
             <Field>
               <Label className={"block text-3xl"}>Description</Label>
               <GradientFocusInput
