@@ -17,10 +17,9 @@ import { CheckIcon, ChevronDownIcon } from "@heroicons/react/20/solid";
 import React, { useState } from "react";
 import { addPool, selectNextPoolID } from "@/lib/features/poolListSlice";
 import {
-  closePoolForm,
+  setPoolFormOpenState,
   selectPoolFormOpenState,
 } from "@/lib/features/poolFormSlice";
-import { enumToArray, toTitleCase } from "@/lib/helpers";
 import { useAppDispatch, useAppSelector } from "@/lib/hooks";
 import { GradientFocusInput } from "../GradientFocusInput";
 import { OverlayDialog } from "../OverlayDialog";
@@ -30,6 +29,12 @@ import clsx from "clsx";
 import dayjs from "dayjs";
 import { serializeToPoolDto } from "@/lib/models/PPLPoolDto";
 import { setTimeout } from "timers";
+import { PoolNameField } from "./PoolNameField";
+import { PoolDescriptionField } from "./PoolDescriptionField";
+import { PoolAccrualRateField } from "./PoolAccrualRateField";
+import { PoolPeriodField } from "./PoolPeriodField";
+import { PoolStartDateField } from "./PoolStartDateField";
+import { PoolStartAmountField } from "./PoolStartAmountField";
 
 type PoolFormProps = {
   className?: string;
@@ -44,7 +49,6 @@ type PoolFormData = {
   startDate: string;
 };
 
-const periods = enumToArray(Period).map((str: string) => toTitleCase(str));
 const initialPoolFormData: PoolFormData = {
   amount: 0,
   description: "",
@@ -57,14 +61,9 @@ const initialPoolFormData: PoolFormData = {
 const createPool = (
   poolFormData: PoolFormData,
   nextPoolID: number,
-  setErrors: (x: number) => void
+  errors: number
 ) => {
-  const validationErrors = validateInputs(poolFormData);
-  if (validationErrors > 0) {
-    setErrors(0);
-    setTimeout(() => {
-      setErrors(validationErrors);
-    }, 0);
+  if (errors > 0) {
     return;
   }
 
@@ -80,7 +79,7 @@ const createPool = (
 
   dispatch(addPool(serializeToPoolDto(pool)));
   setPoolFormData(initialPoolFormData);
-  dispatch(closePoolForm());
+  dispatch(setPoolFormOpenState(false));
 };
 
 const PoolForm: React.FC<PoolFormProps> = ({ className }) => {
@@ -99,7 +98,7 @@ const PoolForm: React.FC<PoolFormProps> = ({ className }) => {
 
   return (
     <OverlayDialog
-      onClose={() => dispatch(closePoolForm())}
+      onClose={() => dispatch(setPoolFormOpenState(false))}
       show={poolFormOpenState}
     >
       <div className={`${className} bg-zinc-300 h-fit w-fit rounded-lg`}>
@@ -107,129 +106,11 @@ const PoolForm: React.FC<PoolFormProps> = ({ className }) => {
           <Fieldset className={"p-6"}>
             <Legend className={"text-6xl"}>New PPL Pool</Legend>
             <PoolNameField />
-            <Field>
-              <Label className={"block text-3xl"}>Description</Label>
-              <GradientFocusInput
-                className="w-60 h-auto"
-                focusClassName="bg-linear-to-tr from-sky-300 to-red-400 shadow-lg"
-                unfocusedClassName="bg-zinc-300"
-              >
-                <Textarea
-                  name="description"
-                  value={poolFormData.description}
-                  onChange={(e) => handleChange(e.target.name, e.target.value)}
-                />
-              </GradientFocusInput>
-            </Field>
-            <Field className={"inline mr-1"}>
-              <Label className={"block text-3xl mt-2"}>Accrual Rate</Label>
-              <GradientFocusInput
-                invalid={(errors & PoolFormErrors.AMOUNT) > 0}
-                className="h-10 w-20 mr-1 inline-block"
-                focusClassName="bg-linear-to-tr from-sky-300 to-red-400 shadow-lg"
-                unfocusedClassName="bg-zinc-300"
-              >
-                <Input
-                  name="amount"
-                  value={poolFormData.amount}
-                  onClick={() => setErrors(errors & ~PoolFormErrors.AMOUNT)}
-                  onChange={(e) => handleChange(e.target.name, e.target.value)}
-                  className={
-                    (errors & PoolFormErrors.AMOUNT) > 0 ? "border-red-500" : ""
-                  }
-                />
-              </GradientFocusInput>
-              <Label>hours</Label>
-            </Field>
-            <Field className={"inline"}>
-              <Listbox
-                value={poolFormData.period}
-                onChange={(e) => handleChange("period", e)}
-              >
-                <GradientFocusInput
-                  invalid={(errors & PoolFormErrors.PERIOD) > 0}
-                  className="w-30 h-10 mr-1 inline-block text-left relative"
-                  focusClassName="bg-linear-to-tr from-sky-300 to-red-400 shadow-lg"
-                  unfocusedClassName="bg-zinc-300"
-                >
-                  <ListboxButton
-                    className={`${(errors & PoolFormErrors.NAME) > 0 ? "border-red-500" : ""} rounded-lg bg-black/10`}
-                    onClick={() => setErrors(errors & ~PoolFormErrors.PERIOD)}
-                  >
-                    {poolFormData.period}
-                    <ChevronDownIcon
-                      className="pointer-events-none absolute top-2.5 right-2.5 size-4 fill-black/60"
-                      aria-hidden="true"
-                    />
-                  </ListboxButton>
-                </GradientFocusInput>
-                <ListboxOptions
-                  anchor="bottom"
-                  className={clsx(
-                    "w-[var(--button-width)] rounded-xl border border-black/10 bg-zinc-300/95 p-1 [--anchor-gap:var(--spacing-1)] focus:outline-hidden transition duration-100 ease-in data-leave:data-closed:opacity-0"
-                  )}
-                >
-                  {periods.map((period) => (
-                    <ListboxOption
-                      key={period}
-                      value={period}
-                      className="group flex cursor-default items-center gap-2 rounded-lg py-1.5 px-3 select-none data-focus:bg-white/10"
-                    >
-                      <CheckIcon
-                        className={
-                          "invisible size-6 fill-black group-data-selected:visible"
-                        }
-                      />
-                      {period}
-                    </ListboxOption>
-                  ))}
-                </ListboxOptions>
-              </Listbox>
-            </Field>
-            <Field className={"mt-2"}>
-              <Label className={"text-3xl block"}>Starting on</Label>
-              <GradientFocusInput
-                invalid={(errors & PoolFormErrors.START_DATE) > 0}
-                className="h-10 w-auto mr-1 inline-block"
-                focusClassName="bg-linear-to-tr from-sky-300 to-red-400 shadow-lg"
-                unfocusedClassName="bg-zinc-300"
-              >
-                <Input
-                  name="startDate"
-                  type="date"
-                  onClick={() => setErrors(errors & ~PoolFormErrors.START_DATE)}
-                  value={poolFormData.startDate}
-                  onChange={(e) => handleChange(e.target.name, e.target.value)}
-                  className={
-                    (errors & PoolFormErrors.START_AMOUNT) > 0
-                      ? "border-red-500"
-                      : ""
-                  }
-                />
-              </GradientFocusInput>
-              <Label className={"mx-1"}>With</Label>
-              <GradientFocusInput
-                invalid={(errors & PoolFormErrors.START_AMOUNT) > 0}
-                className="h-10 w-20 mr-1 inline-block"
-                focusClassName="bg-linear-to-tr from-sky-300 to-red-400 shadow-lg"
-                unfocusedClassName="bg-zinc-300"
-              >
-                <Input
-                  name="startAmount"
-                  value={poolFormData.startAmount}
-                  onClick={() =>
-                    setErrors(errors & ~PoolFormErrors.START_AMOUNT)
-                  }
-                  onChange={(e) => handleChange(e.target.name, e.target.value)}
-                  className={
-                    (errors & PoolFormErrors.START_AMOUNT) > 0
-                      ? "border-red-500"
-                      : ""
-                  }
-                />
-              </GradientFocusInput>
-              <Label>hours</Label>
-            </Field>
+            <PoolDescriptionField />
+            <PoolAccrualRateField />
+            <PoolPeriodField />
+            <PoolStartDateField />
+            <PoolStartAmountField />
             <Field className={"mt-4"}>
               <Button
                 className={

@@ -11,13 +11,13 @@ import { PoolFormErrors } from "./PoolFormErrors";
 import React from "react";
 
 // eslint-disable-next-line max-lines-per-function
-export const PoolNameField = () => {
+export const PoolStartDateField = () => {
   const dispatch = useAppDispatch();
   const poolFormData = useAppSelector(selectPoolFormDataState);
   const errors = useAppSelector(selectPoolFormErrorsState);
 
   const handleChange = (event: React.ChangeEvent<HTMLInputElement>) => {
-    const data = { ...poolFormData, name: event.target.value };
+    const data = { ...poolFormData, startDate: event.target.value };
     dispatch(setPoolFormData(data));
   };
 
@@ -25,39 +25,39 @@ export const PoolNameField = () => {
     // eslint-disable-next-line init-declarations
     let newErrors;
 
-    if (poolFormData.name === "") {
+    if (poolFormData.startDate === "") {
       // eslint-disable-next-line no-bitwise
-      newErrors = errors | PoolFormErrors.NAME;
+      newErrors = errors | PoolFormErrors.START_DATE;
     } else {
       // eslint-disable-next-line no-bitwise
-      newErrors = errors | ~PoolFormErrors.NAME;
+      newErrors = errors | ~PoolFormErrors.START_DATE;
     }
 
     dispatch(setPoolFormErrors(newErrors));
   };
 
   // eslint-disable-next-line no-bitwise
-  const isInvalid = (errors & PoolFormErrors.NAME) > 0;
+  const isInvalid = (errors & PoolFormErrors.START_DATE) > 0;
 
   return (
-    <Field>
-      <Label className={"block text-3xl"}>Pool Name</Label>
+    <Field className={"mt-2"}>
+      <Label className={"text-3xl block"}>Starting on</Label>
       <GradientFocusInput
         invalid={isInvalid}
-        className="h-10 w-60"
+        className="h-10 w-auto mr-1 inline-block"
         focusClassName="bg-linear-to-tr from-sky-300 to-red-400 shadow-lg"
         unfocusedClassName="bg-zinc-300"
       >
         <Input
-          autoFocus
-          name="name"
-          value={poolFormData.name}
-          onBlur={() => validate()}
-          onChange={(event) => handleChange(event)}
+          name="startDate"
+          type="date"
           onClick={() =>
             // eslint-disable-next-line no-bitwise
-            dispatch(setPoolFormErrors(errors & ~PoolFormErrors.NAME))
+            dispatch(setPoolFormErrors(errors & ~PoolFormErrors.START_DATE))
           }
+          value={poolFormData.startDate}
+          onBlur={() => validate()}
+          onChange={(event) => handleChange(event)}
           className={isInvalid ? "border-red-500" : ""}
         />
       </GradientFocusInput>
