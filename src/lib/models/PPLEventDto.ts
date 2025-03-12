@@ -9,7 +9,7 @@ export type PPLEventDto = {
   poolId: number;
 };
 
-export const SerializeToEventDto = (event: PPLEvent): PPLEventDto => ({
+export const serializeToEventDto = (event: PPLEvent): PPLEventDto => ({
   date: event.date.toJSON(),
   description: event.description,
   hours: event.hours,

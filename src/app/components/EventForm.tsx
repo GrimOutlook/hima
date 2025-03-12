@@ -24,7 +24,7 @@ import {
 } from "@/lib/features/eventDialogSlice";
 import { addEvent } from "@/lib/features/eventListSlice";
 import { PPLEvent } from "@/lib/models/PPLEvent";
-import { SerializeToEventDto } from "@/lib/models/PPLEventDto";
+import { serializeToEventDto } from "@/lib/models/PPLEventDto";
 import { selectNextEventID } from "@/lib/features/eventListSlice";
 import dayjs from "dayjs";
 import { OverlayDialog } from "./OverlayDialog";
@@ -205,7 +205,7 @@ const EventForm: React.FC = () => {
                     date: dayjs(eventFormData.date),
                     poolId: eventFormData.pool!,
                   };
-                  dispatch(addEvent(SerializeToEventDto(even)));
+                  dispatch(addEvent(serializeToEventDto(even)));
                   setEventFormData(initialEventFormData);
                   dispatch(closeEventDialog());
                 }}
