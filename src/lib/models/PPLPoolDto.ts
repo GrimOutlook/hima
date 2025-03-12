@@ -11,11 +11,11 @@ export type PPLPoolDto = {
 };
 
 export const serializeToPoolDto = (pool: PPLPool): PPLPoolDto => ({
+  amount: pool.amount,
+  description: pool.description,
   id: pool.id,
   name: pool.name,
-  description: pool.description,
-  amount: pool.amount,
   period: pool.period.toString(),
-  startDate: pool.startDate.toJSON(),
   startAmount: pool.startAmount,
+  startDate: pool.startDate.toJSON(),
 });

@@ -1,16 +1,18 @@
 "use client";
+import Alert from "./components/Alert";
+import EventForm from "./components/EventForm";
 import EventsList from "./components/EventList";
+import { Logo } from "./components/Logo";
+import PoolForm from "./components/PoolForm";
 import PoolList from "./components/PoolList";
 import SettingsButton from "./components/SettingsButton";
-import TotalHoursCard from "./components/TotalHoursCard";
-import PoolForm from "./components/PoolForm";
-import EventForm from "./components/EventForm";
-import Alert from "./components/Alert";
-import { useEffect } from "react";
-import { useAppSelector } from "@/lib/hooks";
-import { selectHasUnsavedChanges } from "@/lib/features/trackUnsavedChanges";
 import { SettingsMenu } from "./components/SettingsMenu";
+import TotalHoursCard from "./components/TotalHoursCard";
+import { selectHasUnsavedChanges } from "@/lib/features/trackUnsavedChanges";
+import { useAppSelector } from "@/lib/hooks";
+import { useEffect } from "react";
 
+// eslint-disable-next-line max-lines-per-function
 export default function Home() {
   const hasUnsavedChanges = useAppSelector(selectHasUnsavedChanges);
 
@@ -18,52 +20,44 @@ export default function Home() {
     const handleBeforeUnload = (event: BeforeUnloadEvent) => {
       if (hasUnsavedChanges) {
         event.preventDefault();
-        event.returnValue = ""; // Required for some browsers
-        return "You have unsaved changes. Are you sure you want to leave?"; // Custom message (doesn't work in modern browsers only a generic message is shown)
+        // Required for some browsers
+        event.returnValue = "";
+        /* Custom message (doesn't work in modern browsers only a generic
+         *  message is shown)
+         */
+        return "You have unsaved changes. Are you sure you want to leave?";
       }
+      return null;
     };
 
+    // eslint-disable-next-line no-undef
     window.addEventListener("beforeunload", handleBeforeUnload);
 
     return () => {
+      // eslint-disable-next-line no-undef
       window.removeEventListener("beforeunload", handleBeforeUnload);
     };
   }, [hasUnsavedChanges]);
 
   return (
     <>
-      <div className="flex flex-row text-gray-700 bg-linear-to-tr from-zinc-900 to-zinc-800 w-full max-h-dvh">
+      <div
+        className={`flex flex-row text-gray-700 bg-linear-to-tr
+          from-zinc-900 to-zinc-800 w-full max-h-dvh`}
+      >
         {/* <!-- Left side --> */}
         <div className="flex flex-col min-w-64 max-w-100 ml-2 mb-2 max-h-dvh">
-          {/* Logo banner */}
-          {/* Make a color gradient for the logo text */}
-          <div className="self-center w-full max-h-36">
-            {/* Make a color gradient for the hours text */}
-            <div className="text-transparent self-center bg-clip-text bg-linear-to-tr from-sky-300 to-red-400">
-              {/* <!-- Hour --> */}
-              <div className="text-[9rem] leading-none text-center font-black line-clamp-1">
-                HIMA
-              </div>
-            </div>
-          </div>
+          <Logo className="self-center w-full max-h-36" />
           {/* <!-- Top box --> */}
-          <div className="flex-none">
-            <TotalHoursCard className="mt-2 h-auto" />
-          </div>
+          <TotalHoursCard className="mt-2 flex-none" />
           {/* <!-- Middle box --> */}
-          <div className="grow flex flex-col min-h-0">
-            <PoolList className="mt-2 grow" />
-          </div>
+          <PoolList className="mt-2 grow" />
           {/* <!-- Bottom box --> */}
-          <div className="flex-none">
-            <SettingsButton className="mt-2 h-24 w-full" />
-          </div>
+          <SettingsButton className="mt-2 h-24 w-full" />
         </div>
 
         {/* <!-- Right side --> */}
-        <div className="min-w-48 grow flex">
-          <EventsList className="grow" />
-        </div>
+        <EventsList className="min-w-48 grow" />
       </div>
       <Alert />
       <PoolForm />

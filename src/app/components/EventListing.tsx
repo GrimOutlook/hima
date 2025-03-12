@@ -17,11 +17,11 @@ const EventListing: React.FC<EventListingProps> = ({ className, event }) => {
   const [isDetailsPanelOpen, setIsDetailsPanelOpen] = useState(false);
   const affectedPool = useAppSelector(selectPools)
     .map((pool) => deserializeToPool(pool))
-    .find((pool) => pool.id === event.pool_id);
+    .find((pool) => pool.id === event.poolId);
   if (!affectedPool) {
     // TODO: Add client side logging for when this happens
     // eslint-disable-next-line no-console, no-undef
-    console.error(`Could not find pool of ID [${event.pool_id}]`);
+    console.error(`Could not find pool of ID [${event.poolId}]`);
   }
 
   return (

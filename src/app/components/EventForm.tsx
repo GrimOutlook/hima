@@ -203,7 +203,7 @@ const EventForm: React.FC = () => {
                     description: eventFormData.description,
                     hours: eventFormData.amount,
                     date: dayjs(eventFormData.date),
-                    pool_id: eventFormData.pool!,
+                    poolId: eventFormData.pool!,
                   };
                   dispatch(addEvent(SerializeToEventDto(even)));
                   setEventFormData(initialEventFormData);

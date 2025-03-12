@@ -30,7 +30,7 @@ const PoolListing: React.FC<PoolListingProps> = ({ className, pool }) => {
   const amount = calculateAmount(
     dayjs(),
     pool,
-    events.filter((event) => event.pool_id == pool.id)
+    events.filter((event) => event.poolId == pool.id)
   );
 
   return (

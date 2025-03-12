@@ -22,8 +22,8 @@ import {
 } from "@/lib/features/poolDialogSlice";
 import { enumToArray, toTitleCase } from "@/lib/helpers";
 import { useAppDispatch, useAppSelector } from "@/lib/hooks";
-import { GradientFocusInput } from "./GradientFocusInput";
-import { OverlayDialog } from "./OverlayDialog";
+import { GradientFocusInput } from "../GradientFocusInput";
+import { OverlayDialog } from "../OverlayDialog";
 import { PPLPool } from "@/lib/models/PPLPool";
 import { Period } from "@/lib/models/Period";
 import clsx from "clsx";
@@ -31,7 +31,6 @@ import dayjs from "dayjs";
 import { serializeToPoolDto } from "@/lib/models/PPLPoolDto";
 import { setTimeout } from "timers";
 
-/* eslint-disable no-magic-numbers */
 enum PoolFormErrors {
   NAME = 1,
   AMOUNT = 2,
@@ -39,7 +38,6 @@ enum PoolFormErrors {
   START_DATE = 8,
   START_AMOUNT = 16,
 }
-/* eslint-enable no-magic-numbers */
 
 type PoolFormProps = {
   className?: string;
@@ -78,7 +76,7 @@ const validateStartAmount = (startAmount: number) =>
   startAmount > 0 ? 0 : PoolFormErrors.START_AMOUNT;
 
 /* eslint-disable no-bitwise */
-const validateInputs = (poolFormData: PoolFormData) => {
+const validateInputs = (poolFormData: PPLPool) => {
   let errors = 0;
   errors |= validateName(poolFormData.name);
   errors |= validateAmount(poolFormData.amount);
@@ -91,6 +89,7 @@ const validateInputs = (poolFormData: PoolFormData) => {
 
 const createPool = (
   poolFormData: PoolFormData,
+  nextPoolID: number,
   setErrors: (x: number) => void
 ) => {
   const validationErrors = validateInputs(poolFormData);
