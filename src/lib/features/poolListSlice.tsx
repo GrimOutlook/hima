@@ -27,9 +27,7 @@ export const poolListSlice = createSlice({
     }),
   }),
   selectors: {
-    selectNextPoolID: (state) => {
-      getNextId(state.pools.map((pool) => pool.id));
-    },
+    selectNextPoolID: (state) => getNextId(state.pools.map((pool) => pool.id)),
     selectPools: (state) => state.pools,
   },
 });

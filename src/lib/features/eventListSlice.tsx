@@ -27,9 +27,8 @@ export const eventListSlice = createSlice({
   }),
   selectors: {
     selectEvents: (state) => state.events,
-    selectNextEventID: (state) => {
-      getNextId(state.events.map((event) => event.id));
-    },
+    selectNextEventID: (state) =>
+      getNextId(state.events.map((event) => event.id)),
   },
 });
 
