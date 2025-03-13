@@ -19,7 +19,7 @@ import { EventTitleField } from "./EventTitleField";
 import { OverlayDialog } from "../OverlayDialog";
 import React from "react";
 
-const EventForm: React.FC = () => {
+const EventForm = () => {
   const dispatch = useAppDispatch();
   const eventFormOpenState = useAppSelector(selectEventFormOpenState);
   const eventFormData = useAppSelector(selectEventFormData);
