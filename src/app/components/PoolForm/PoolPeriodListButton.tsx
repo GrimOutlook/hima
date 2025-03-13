@@ -1,6 +1,6 @@
 import {
-  selectPoolFormDataState,
-  selectPoolFormErrorsState,
+  selectPoolFormData,
+  selectPoolFormErrors,
   setPoolFormErrors,
 } from "@/lib/features/poolFormSlice";
 import { useAppDispatch, useAppSelector } from "@/lib/hooks";
@@ -11,8 +11,8 @@ import { PoolFormErrors } from "./PoolFormErrors";
 
 export const PoolPeriodListButton = () => {
   const dispatch = useAppDispatch();
-  const poolFormData = useAppSelector(selectPoolFormDataState);
-  const errors = useAppSelector(selectPoolFormErrorsState);
+  const poolFormData = useAppSelector(selectPoolFormData);
+  const errors = useAppSelector(selectPoolFormErrors);
 
   // eslint-disable-next-line no-bitwise
   const isInvalid = (errors & PoolFormErrors.PERIOD) > 0;

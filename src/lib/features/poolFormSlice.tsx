@@ -22,6 +22,9 @@ export const poolFormSlice = createSlice({
   initialState,
   name: "poolForm",
   reducers: (create) => ({
+    clearPoolFormData: create.reducer((state) => {
+      state.data = initialPoolFormDataDto;
+    }),
     setPoolFormData: create.reducer(
       (state, action: PayloadAction<PoolFormDataDto>) => {
         state.data = action.payload;
@@ -39,17 +42,21 @@ export const poolFormSlice = createSlice({
     ),
   }),
   selectors: {
-    selectPoolFormDataState: (state) => state.data,
-    selectPoolFormErrorsState: (state) => state.errors,
+    selectPoolFormData: (state) => state.data,
+    selectPoolFormErrors: (state) => state.errors,
     selectPoolFormOpenState: (state) => state.open,
   },
 });
 
-export const { setPoolFormData, setPoolFormErrors, setPoolFormOpenState } =
-  poolFormSlice.actions;
+export const {
+  clearPoolFormData,
+  setPoolFormData,
+  setPoolFormErrors,
+  setPoolFormOpenState,
+} = poolFormSlice.actions;
 
 export const {
-  selectPoolFormDataState,
-  selectPoolFormErrorsState,
+  selectPoolFormData,
+  selectPoolFormErrors,
   selectPoolFormOpenState,
 } = poolFormSlice.selectors;

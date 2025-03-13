@@ -1,6 +1,6 @@
 import { Field, Label, Textarea } from "@headlessui/react";
 import {
-  selectPoolFormDataState,
+  selectPoolFormData,
   setPoolFormData,
 } from "@/lib/features/poolFormSlice";
 import { useAppDispatch, useAppSelector } from "@/lib/hooks";
@@ -9,7 +9,7 @@ import React from "react";
 
 export const PoolDescriptionField = () => {
   const dispatch = useAppDispatch();
-  const poolFormData = useAppSelector(selectPoolFormDataState);
+  const poolFormData = useAppSelector(selectPoolFormData);
 
   const handleChange = (event: React.ChangeEvent<HTMLTextAreaElement>) => {
     // No validation required for description

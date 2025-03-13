@@ -5,8 +5,8 @@ import { useAppDispatch, useAppSelector } from "@/lib/hooks";
 import { PlusCircleIcon } from "@heroicons/react/24/outline";
 import PoolListing from "./PoolListing";
 import React from "react";
-import { openPoolForm } from "@/lib/features/poolFormSlice";
 import { selectPools } from "@/lib/features/poolListSlice";
+import { setPoolFormOpenState } from "@/lib/features/poolFormSlice";
 
 type PoolListProps = {
   className?: string;
@@ -39,7 +39,7 @@ const PoolList: React.FC<PoolListProps> = ({ className }) => {
           hover:fill-zinc-900 hover:drop-shadow-lg transition duration-150
           ease-in-out hover:-translate-y-1 hover:scale-110 cursor-pointer`}
           viewBox="0 0 24 24"
-          onClick={() => dispatch(openPoolForm())}
+          onClick={() => dispatch(setPoolFormOpenState(true))}
         />
       </div>
       {/* <!-- Pool list --> */}

@@ -1,7 +1,7 @@
 import { Field, Input, Label } from "@headlessui/react";
 import {
-  selectPoolFormDataState,
-  selectPoolFormErrorsState,
+  selectPoolFormData,
+  selectPoolFormErrors,
   setPoolFormData,
   setPoolFormErrors,
 } from "@/lib/features/poolFormSlice";
@@ -13,11 +13,12 @@ import React from "react";
 // eslint-disable-next-line max-lines-per-function
 export const PoolStartAmountField = () => {
   const dispatch = useAppDispatch();
-  const poolFormData = useAppSelector(selectPoolFormDataState);
-  const errors = useAppSelector(selectPoolFormErrorsState);
+  const poolFormData = useAppSelector(selectPoolFormData);
+  const errors = useAppSelector(selectPoolFormErrors);
 
   const handleChange = (event: React.ChangeEvent<HTMLInputElement>) => {
-    const data = { ...poolFormData, amount: event.target.valueAsNumber };
+    const num = Number(event.target.value);
+    const data = { ...poolFormData, startAmount: num };
     dispatch(setPoolFormData(data));
   };
 

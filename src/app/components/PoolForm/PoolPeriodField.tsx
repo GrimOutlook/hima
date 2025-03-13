@@ -1,7 +1,7 @@
 import { Field, Listbox } from "@headlessui/react";
 import {
-  selectPoolFormDataState,
-  selectPoolFormErrorsState,
+  selectPoolFormData,
+  selectPoolFormErrors,
   setPoolFormData,
   setPoolFormErrors,
 } from "@/lib/features/poolFormSlice";
@@ -12,8 +12,8 @@ import { PoolPeriodListOptions } from "./PoolPeriodListOptions";
 
 export const PoolPeriodField = () => {
   const dispatch = useAppDispatch();
-  const poolFormData = useAppSelector(selectPoolFormDataState);
-  const errors = useAppSelector(selectPoolFormErrorsState);
+  const poolFormData = useAppSelector(selectPoolFormData);
+  const errors = useAppSelector(selectPoolFormErrors);
 
   const validate = (value: string) => {
     // eslint-disable-next-line init-declarations
