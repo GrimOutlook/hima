@@ -1,23 +1,36 @@
 import {
-  selectPoolFormData,
-  selectPoolFormErrors,
-  setPoolFormErrors,
-} from "@/lib/features/poolFormSlice";
+  selectEventFormData,
+  selectEventFormErrors,
+  setEventFormErrors,
+} from "@/lib/features/eventFormSlice";
 import { useAppDispatch, useAppSelector } from "@/lib/hooks";
 import { ChevronDownIcon } from "@heroicons/react/24/outline";
+import { EventFormErrors } from "./EventFormErrors";
 import { GradientFocusInput } from "../GradientFocusInput";
 import { ListboxButton } from "@headlessui/react";
-import { PoolFormErrors } from "./PoolFormErrors";
+import { selectPools } from "@/lib/features/poolListSlice";
 
-const FIELD = PoolFormErrors.PERIOD;
+const FIELD = EventFormErrors.POOL;
 
-export const PoolPeriodListButton = () => {
+export const EventPoolListButton = () => {
   const dispatch = useAppDispatch();
-  const poolFormData = useAppSelector(selectPoolFormData);
-  const errors = useAppSelector(selectPoolFormErrors);
+  const eventFormData = useAppSelector(selectEventFormData);
+  const errors = useAppSelector(selectEventFormErrors);
+  const pools = useAppSelector(selectPools);
 
   // eslint-disable-next-line no-bitwise
   const isInvalid = (errors & FIELD) > 0;
+  const selectedPoolName = () => {
+    if (pools.length <= 0) {
+      return "";
+    }
+    const pool = pools.find((poo) => poo.id === eventFormData.poolId);
+
+    if (pool) {
+      return pool.name;
+    }
+    return "";
+  };
 
   return (
     <GradientFocusInput
@@ -30,10 +43,10 @@ export const PoolPeriodListButton = () => {
         className={`${isInvalid ? "border-red-500" : ""} rounded-lg bg-black/10`}
         onClick={() =>
           // eslint-disable-next-line no-bitwise
-          dispatch(setPoolFormErrors(errors & ~FIELD))
+          dispatch(setEventFormErrors(errors & ~FIELD))
         }
       >
-        {poolFormData.period}
+        {selectedPoolName()}
         <ChevronDownIcon
           className={`pointer-events-none absolute top-2.5 right-2.5 size-4
             fill-black/60`}

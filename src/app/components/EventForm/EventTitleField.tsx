@@ -1,34 +1,28 @@
 import { Field, Input, Label } from "@headlessui/react";
 import {
-  selectPoolFormData,
-  selectPoolFormErrors,
-  setPoolFormData,
-  setPoolFormErrors,
-} from "@/lib/features/poolFormSlice";
+  selectEventFormData,
+  selectEventFormErrors,
+  setEventFormData,
+  setEventFormErrors,
+} from "@/lib/features/eventFormSlice";
 import { useAppDispatch, useAppSelector } from "@/lib/hooks";
+import { EventFormErrors } from "./EventFormErrors";
 import { GradientFocusInput } from "../GradientFocusInput";
-import { PoolFormErrors } from "./PoolFormErrors";
 import React from "react";
 
-const FIELD = PoolFormErrors.AMOUNT;
+const FIELD = EventFormErrors.TITLE;
 
 // eslint-disable-next-line max-lines-per-function
-export const PoolAccrualRateField = () => {
+export const EventTitleField = () => {
   const dispatch = useAppDispatch();
-  const poolFormData = useAppSelector(selectPoolFormData);
-  const errors = useAppSelector(selectPoolFormErrors);
-
-  const handleChange = (event: React.ChangeEvent<HTMLInputElement>) => {
-    const num = Number(event.target.value);
-    const data = { ...poolFormData, amount: num };
-    dispatch(setPoolFormData(data));
-  };
+  const eventFormData = useAppSelector(selectEventFormData);
+  const errors = useAppSelector(selectEventFormErrors);
 
   const validate = () => {
     // eslint-disable-next-line init-declarations
     let newErrors;
 
-    if (poolFormData.amount === 0) {
+    if (eventFormData.title === "") {
       // eslint-disable-next-line no-bitwise
       newErrors = errors | FIELD;
     } else {
@@ -36,34 +30,39 @@ export const PoolAccrualRateField = () => {
       newErrors = errors | ~FIELD;
     }
 
-    dispatch(setPoolFormErrors(newErrors));
+    dispatch(setEventFormErrors(newErrors));
+  };
+
+  const handleChange = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const data = { ...eventFormData, title: event.target.value };
+    dispatch(setEventFormData(data));
+    validate();
   };
 
   // eslint-disable-next-line no-bitwise
   const isInvalid = (errors & FIELD) > 0;
 
   return (
-    <Field className={"inline mr-1"}>
-      <Label className={"block text-3xl mt-2"}>Accrual Rate</Label>
+    <Field className={"mr-4"}>
+      <Label className={"block text-3xl"}>Title</Label>
       <GradientFocusInput
-        invalid={isInvalid}
-        className="h-10 w-20 mr-1 inline-block"
+        className="w-60 h-10"
         focusClassName="bg-linear-to-tr from-sky-300 to-red-400 shadow-lg"
         unfocusedClassName="bg-zinc-300"
       >
         <Input
-          name="amount"
-          value={poolFormData.amount}
+          autoFocus
+          name="title"
+          value={eventFormData.title}
           onBlur={() => validate()}
           onChange={(event) => handleChange(event)}
           onClick={() =>
             // eslint-disable-next-line no-bitwise
-            dispatch(setPoolFormErrors(errors & ~FIELD))
+            dispatch(setEventFormErrors(errors & ~FIELD))
           }
           className={isInvalid ? "border-red-500" : ""}
         />
       </GradientFocusInput>
-      <Label>hours</Label>
     </Field>
   );
 };

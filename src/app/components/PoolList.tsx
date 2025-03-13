@@ -35,8 +35,8 @@ const PoolList: React.FC<PoolListProps> = ({ className }) => {
         <div className="text-4xl text-center m-2 place-self-center">Pools</div>
         {/* <!-- Add event button --> */}
         <PlusCircleIcon
-          className={`h-12 w-12 self-center justify-self-end m-4 fill-zinc-500
-          hover:fill-zinc-900 hover:drop-shadow-lg transition duration-150
+          className={`h-12 w-12 self-center justify-self-end m-4
+          hover:drop-shadow-lg transition duration-150
           ease-in-out hover:-translate-y-1 hover:scale-110 cursor-pointer`}
           viewBox="0 0 24 24"
           onClick={() => dispatch(setPoolFormOpenState(true))}

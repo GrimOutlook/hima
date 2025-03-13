@@ -10,7 +10,7 @@ import {
   unsavedChangesSlice,
 } from "./features/trackUnsavedChanges";
 import { alertDialogSlice } from "./features/alertDialogSlice";
-import { eventDialogSlice } from "./features/eventDialogSlice";
+import { eventFormSlice } from "./features/eventFormSlice";
 import { eventListSlice } from "./features/eventListSlice";
 import { poolFormSlice } from "./features/poolFormSlice";
 import { poolListSlice } from "./features/poolListSlice";
@@ -23,7 +23,7 @@ import { settingsMenuSlice } from "./features/settingsMenuSlice";
 const rootReducer = combineSlices(
   poolFormSlice,
   poolListSlice,
-  eventDialogSlice,
+  eventFormSlice,
   eventListSlice,
   alertDialogSlice,
   unsavedChangesSlice,

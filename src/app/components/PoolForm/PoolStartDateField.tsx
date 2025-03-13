@@ -10,6 +10,8 @@ import { GradientFocusInput } from "../GradientFocusInput";
 import { PoolFormErrors } from "./PoolFormErrors";
 import React from "react";
 
+const FIELD = PoolFormErrors.START_DATE;
+
 // eslint-disable-next-line max-lines-per-function
 export const PoolStartDateField = () => {
   const dispatch = useAppDispatch();
@@ -27,17 +29,17 @@ export const PoolStartDateField = () => {
 
     if (poolFormData.startDate === "") {
       // eslint-disable-next-line no-bitwise
-      newErrors = errors | PoolFormErrors.START_DATE;
+      newErrors = errors | FIELD;
     } else {
       // eslint-disable-next-line no-bitwise
-      newErrors = errors | ~PoolFormErrors.START_DATE;
+      newErrors = errors | ~FIELD;
     }
 
     dispatch(setPoolFormErrors(newErrors));
   };
 
   // eslint-disable-next-line no-bitwise
-  const isInvalid = (errors & PoolFormErrors.START_DATE) > 0;
+  const isInvalid = (errors & FIELD) > 0;
 
   return (
     <Field className={"mt-2"}>
@@ -53,7 +55,7 @@ export const PoolStartDateField = () => {
           type="date"
           onClick={() =>
             // eslint-disable-next-line no-bitwise
-            dispatch(setPoolFormErrors(errors & ~PoolFormErrors.START_DATE))
+            dispatch(setPoolFormErrors(errors & ~FIELD))
           }
           value={poolFormData.startDate}
           onBlur={() => validate()}

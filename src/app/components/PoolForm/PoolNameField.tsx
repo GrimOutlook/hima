@@ -10,6 +10,8 @@ import { GradientFocusInput } from "../GradientFocusInput";
 import { PoolFormErrors } from "./PoolFormErrors";
 import React from "react";
 
+const FIELD = PoolFormErrors.NAME;
+
 // eslint-disable-next-line max-lines-per-function
 export const PoolNameField = () => {
   const dispatch = useAppDispatch();
@@ -27,17 +29,17 @@ export const PoolNameField = () => {
 
     if (poolFormData.name === "") {
       // eslint-disable-next-line no-bitwise
-      newErrors = errors | PoolFormErrors.NAME;
+      newErrors = errors | FIELD;
     } else {
       // eslint-disable-next-line no-bitwise
-      newErrors = errors | ~PoolFormErrors.NAME;
+      newErrors = errors | ~FIELD;
     }
 
     dispatch(setPoolFormErrors(newErrors));
   };
 
   // eslint-disable-next-line no-bitwise
-  const isInvalid = (errors & PoolFormErrors.NAME) > 0;
+  const isInvalid = (errors & FIELD) > 0;
 
   return (
     <Field>
@@ -56,7 +58,7 @@ export const PoolNameField = () => {
           onChange={(event) => handleChange(event)}
           onClick={() =>
             // eslint-disable-next-line no-bitwise
-            dispatch(setPoolFormErrors(errors & ~PoolFormErrors.NAME))
+            dispatch(setPoolFormErrors(errors & ~FIELD))
           }
           className={isInvalid ? "border-red-500" : ""}
         />

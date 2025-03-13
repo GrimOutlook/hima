@@ -1,9 +1,10 @@
 import { useAppDispatch, useAppSelector } from "@/lib/hooks";
+import { PlusCircleIcon } from "@heroicons/react/24/outline";
 import { deserializeToPool } from "@/lib/models/PPLPool";
 import { isEmpty } from "@/lib/helpers";
 import { openAlertDialog } from "@/lib/features/alertDialogSlice";
-import { openEventDialog } from "@/lib/features/eventDialogSlice";
 import { selectPools } from "@/lib/features/poolListSlice";
+import { setEventFormOpenState } from "@/lib/features/eventFormSlice";
 
 export const EventListHeader = () => {
   const dispatch = useAppDispatch();
@@ -22,7 +23,7 @@ export const EventListHeader = () => {
       );
       return;
     }
-    dispatch(openEventDialog());
+    dispatch(setEventFormOpenState(true));
   };
 
   return (
@@ -39,13 +40,12 @@ export const EventListHeader = () => {
           Events
         </div>
         {/* <!-- Add event button --> */}
-        <svg
-          className={`h-12 w-auto self-center justify-self-end m-4 fill-zinc-500
-        hover:fill-zinc-900 hover:drop-shadow-lg transition duration-150
+        <PlusCircleIcon
+          className={`h-12 w-auto self-center justify-self-end m-4
+          hover:drop-shadow-lg transition duration-150
           ease-in-out hover:-translate-y-1 hover:scale-110 cursor-pointer`}
-          viewBox="0 0 24 24"
           onClick={() => openEventForm()}
-        ></svg>
+        />
       </div>
     </>
   );

@@ -10,6 +10,8 @@ import { PoolFormErrors } from "./PoolFormErrors";
 import { PoolPeriodListButton } from "./PoolPeriodListButton";
 import { PoolPeriodListOptions } from "./PoolPeriodListOptions";
 
+const FIELD = PoolFormErrors.PERIOD;
+
 export const PoolPeriodField = () => {
   const dispatch = useAppDispatch();
   const poolFormData = useAppSelector(selectPoolFormData);
@@ -21,10 +23,10 @@ export const PoolPeriodField = () => {
 
     if (value === "") {
       // eslint-disable-next-line no-bitwise
-      newErrors = errors | PoolFormErrors.PERIOD;
+      newErrors = errors | FIELD;
     } else {
       // eslint-disable-next-line no-bitwise
-      newErrors = errors | ~PoolFormErrors.PERIOD;
+      newErrors = errors | ~FIELD;
     }
 
     dispatch(setPoolFormErrors(newErrors));
