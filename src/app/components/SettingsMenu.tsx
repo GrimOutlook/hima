@@ -8,10 +8,8 @@ import { Button } from "@headlessui/react";
 export const SettingsMenu = () => {
   const dispatch = useAppDispatch();
   const isOpen = useAppSelector(selectSettingsMenuOpenState);
-  const closeSettings = () => {
-    return () => {
-      dispatch(closeSettingsMenu());
-    };
+  const closeSettings = () => () => {
+    dispatch(closeSettingsMenu());
   };
 
   if (!isOpen) {
@@ -21,7 +19,8 @@ export const SettingsMenu = () => {
   return (
     <>
       <div
-        className="fixed inset-0 z-50 bg-black/30 flex items-center justify-center"
+        className={`fixed inset-0 z-50 bg-black/30 flex items-center
+          justify-center`}
         onClick={closeSettings()}
       >
         <div className="bg-white w-80 p-4 rounded-lg">

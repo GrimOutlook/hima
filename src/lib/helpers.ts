@@ -11,3 +11,12 @@ export const randomInt = (min: number, max: number) =>
   Math.floor(Math.random() * (max - min + 1)) + min;
 
 export const isEmpty = <T>(arr: T[]) => arr.length === 0;
+
+export const getNextId = (usedIds: number[]) => {
+  while (true) {
+    const nextId = randomInt(0, 2 ** 48 - 1);
+    if (nextId !== 0 && usedIds.some((id) => id !== nextId)) {
+      return nextId;
+    }
+  }
+};
