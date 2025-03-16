@@ -24,6 +24,7 @@ export const eventFormSlice = createSlice({
   reducers: (create) => ({
     clearEventFormData: create.reducer((state) => {
       state.data = initialEventFormDataDto;
+      state.errors = 0;
     }),
     setEventFormData: create.reducer(
       (state, action: PayloadAction<EventFormDataDto>) => {

@@ -1,10 +1,7 @@
 import { ListboxOption, ListboxOptions } from "@headlessui/react";
-import { enumToArray, toTitleCase } from "@/lib/helpers";
 import { CheckIcon } from "@heroicons/react/24/outline";
-import { Period } from "@/lib/models/Period";
 import clsx from "clsx";
-
-const periods = enumToArray(Period).map((str: string) => toTitleCase(str));
+import { periods } from "@/lib/models/Period";
 
 export const PoolPeriodListOptions = () => (
   <ListboxOptions

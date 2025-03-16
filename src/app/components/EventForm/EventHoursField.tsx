@@ -55,7 +55,7 @@ export const EventHoursField = () => {
           value={eventFormData.hours}
           onBlur={() => validate()}
           onChange={(event) => handleChange(event)}
-          onClick={() =>
+          onFocus={() =>
             // eslint-disable-next-line no-bitwise
             dispatch(setEventFormErrors(errors & ~FIELD))
           }

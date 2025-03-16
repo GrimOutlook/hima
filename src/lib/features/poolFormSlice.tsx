@@ -24,6 +24,7 @@ export const poolFormSlice = createSlice({
   reducers: (create) => ({
     clearPoolFormData: create.reducer((state) => {
       state.data = initialPoolFormDataDto;
+      state.errors = 0;
     }),
     setPoolFormData: create.reducer(
       (state, action: PayloadAction<PoolFormDataDto>) => {

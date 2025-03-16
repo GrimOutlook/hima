@@ -17,18 +17,18 @@ export const PoolPeriodListButton = () => {
   const errors = useAppSelector(selectPoolFormErrors);
 
   // eslint-disable-next-line no-bitwise
-  const isInvalid = (errors & FIELD) > 0;
+  const showError = (errors & FIELD) > 0;
 
   return (
     <GradientFocusInput
-      invalid={isInvalid}
+      invalid={showError}
       className="w-30 h-10 mr-1 inline-block text-left relative"
       focusClassName="bg-linear-to-tr from-sky-300 to-red-400 shadow-lg"
       unfocusedClassName="bg-zinc-300"
     >
       <ListboxButton
-        className={`${isInvalid ? "border-red-500" : ""} rounded-lg bg-black/10`}
-        onClick={() =>
+        className={`${showError ? "border-red-500" : ""} rounded-lg bg-black/10`}
+        onFocus={() =>
           // eslint-disable-next-line no-bitwise
           dispatch(setPoolFormErrors(errors & ~FIELD))
         }

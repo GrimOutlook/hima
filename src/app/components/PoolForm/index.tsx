@@ -5,7 +5,6 @@ import { addPool, selectNextPoolID } from "@/lib/features/poolListSlice";
 import {
   clearPoolFormData,
   selectPoolFormData,
-  selectPoolFormErrors,
   selectPoolFormOpenState,
   setPoolFormOpenState,
 } from "@/lib/features/poolFormSlice";
@@ -19,6 +18,7 @@ import { PoolStartAmountField } from "./PoolStartAmountField";
 import { PoolStartDateField } from "./PoolStartDateField";
 import { PoolSubmitButton } from "./PoolSubmitButton";
 import React from "react";
+import { poolFormIsValid } from "./PoolFormErrors";
 
 type PoolFormProps = {
   className?: string;
@@ -28,11 +28,15 @@ const PoolForm: React.FC<PoolFormProps> = ({ className }) => {
   const dispatch = useAppDispatch();
   const poolFormOpenState = useAppSelector(selectPoolFormOpenState);
   const poolFormData = useAppSelector(selectPoolFormData);
-  const errors = useAppSelector(selectPoolFormErrors);
   const nextPoolId = useAppSelector(selectNextPoolID);
 
+  const close = () => {
+    dispatch(clearPoolFormData());
+    dispatch(setPoolFormOpenState(false));
+  };
+
   const submit = () => {
-    if (errors > 0) {
+    if (!poolFormIsValid(poolFormData)) {
       return;
     }
 
@@ -42,15 +46,11 @@ const PoolForm: React.FC<PoolFormProps> = ({ className }) => {
     }
 
     dispatch(addPool(data));
-    dispatch(clearPoolFormData());
-    dispatch(setPoolFormOpenState(false));
+    close();
   };
 
   return (
-    <OverlayDialog
-      onClose={() => dispatch(setPoolFormOpenState(false))}
-      show={poolFormOpenState}
-    >
+    <OverlayDialog onClose={close} show={poolFormOpenState}>
       <div className={`${className} bg-zinc-300 h-fit w-fit rounded-lg`}>
         <form>
           <Fieldset className={"p-6"}>

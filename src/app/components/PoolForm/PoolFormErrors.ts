@@ -1,3 +1,6 @@
+import { PoolFormDataDto } from "@/lib/models/PoolFormDto";
+import { periods } from "@/lib/models/Period";
+
 export enum PoolFormErrors {
   NAME = 1,
   AMOUNT = 2,
@@ -5,3 +8,30 @@ export enum PoolFormErrors {
   START_DATE = 8,
   START_AMOUNT = 16,
 }
+
+export const fieldIsValid = (
+  error: PoolFormErrors,
+  input: number | string
+): boolean => {
+  switch (error) {
+    case PoolFormErrors.NAME:
+      return input !== "";
+    case PoolFormErrors.AMOUNT:
+      return (input as number) >= 0;
+    case PoolFormErrors.PERIOD:
+      return periods.includes(input as string);
+    case PoolFormErrors.START_DATE:
+      return input !== "";
+    case PoolFormErrors.START_AMOUNT:
+      return (input as number) >= 0;
+    default:
+      return false;
+  }
+};
+
+export const poolFormIsValid = (pool: PoolFormDataDto): boolean =>
+  fieldIsValid(PoolFormErrors.NAME, pool.name) &&
+  fieldIsValid(PoolFormErrors.AMOUNT, pool.amount) &&
+  fieldIsValid(PoolFormErrors.PERIOD, pool.period) &&
+  fieldIsValid(PoolFormErrors.START_DATE, pool.startDate) &&
+  fieldIsValid(PoolFormErrors.START_AMOUNT, pool.startAmount);

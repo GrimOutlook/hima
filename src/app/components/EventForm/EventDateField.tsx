@@ -52,7 +52,7 @@ export const EventDateField = () => {
         <Input
           type="date"
           value={eventFormData.date}
-          onClick={() =>
+          onFocus={() =>
             // eslint-disable-next-line no-bitwise
             dispatch(setEventFormErrors(errors & ~FIELD))
           }

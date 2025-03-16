@@ -1,3 +1,5 @@
+import { enumToArray, toTitleCase } from "../helpers";
+
 export enum Period {
   Daily = "DAILY",
   Weekly = "WEEKLY",
@@ -5,6 +7,10 @@ export enum Period {
   Monthly = "MONTHLY",
   Yearly = "YEARLY",
 }
+
+export const periods = enumToArray(Period).map((str: string) =>
+  toTitleCase(str)
+);
 
 export const deserializeToPeriod = (period: string) => {
   switch (period.toUpperCase()) {

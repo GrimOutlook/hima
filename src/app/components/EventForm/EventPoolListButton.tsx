@@ -41,7 +41,7 @@ export const EventPoolListButton = () => {
     >
       <ListboxButton
         className={`${isInvalid ? "border-red-500" : ""} rounded-lg bg-black/10`}
-        onClick={() =>
+        onFocus={() =>
           // eslint-disable-next-line no-bitwise
           dispatch(setEventFormErrors(errors & ~FIELD))
         }

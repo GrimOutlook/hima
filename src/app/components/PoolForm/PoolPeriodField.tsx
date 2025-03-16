@@ -1,4 +1,5 @@
 import { Field, Listbox } from "@headlessui/react";
+import { PoolFormErrors, fieldIsValid } from "./PoolFormErrors";
 import {
   selectPoolFormData,
   selectPoolFormErrors,
@@ -6,7 +7,6 @@ import {
   setPoolFormErrors,
 } from "@/lib/features/poolFormSlice";
 import { useAppDispatch, useAppSelector } from "@/lib/hooks";
-import { PoolFormErrors } from "./PoolFormErrors";
 import { PoolPeriodListButton } from "./PoolPeriodListButton";
 import { PoolPeriodListOptions } from "./PoolPeriodListOptions";
 
@@ -17,17 +17,12 @@ export const PoolPeriodField = () => {
   const poolFormData = useAppSelector(selectPoolFormData);
   const errors = useAppSelector(selectPoolFormErrors);
 
-  const validate = (value: string) => {
-    // eslint-disable-next-line init-declarations
-    let newErrors;
-
-    if (value === "") {
-      // eslint-disable-next-line no-bitwise
-      newErrors = errors | FIELD;
-    } else {
-      // eslint-disable-next-line no-bitwise
-      newErrors = errors | ~FIELD;
-    }
+  const validate = (period: string) => {
+    /* eslint-disable no-bitwise */
+    const newErrors = fieldIsValid(FIELD, period)
+      ? errors | ~FIELD
+      : errors | FIELD;
+    /* eslint-enable no-bitwise */
 
     dispatch(setPoolFormErrors(newErrors));
   };
