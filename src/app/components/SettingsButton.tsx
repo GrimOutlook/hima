@@ -1,4 +1,4 @@
-import { CogIcon } from "@heroicons/react/24/outline";
+import { Cog6ToothIcon } from "@heroicons/react/24/solid";
 import React from "react";
 import { openSettingsMenu } from "@/lib/features/settingsMenuSlice";
 import { useAppDispatch } from "@/lib/hooks";
@@ -20,7 +20,10 @@ const SettingsButton: React.FC<SettingsButtonProps> = ({ className }) => {
       <div className="grid grid-cols-3 w-full h-18">
         {/* <!-- Gear icon --> */}
         <div className="content-center">
-          <CogIcon className="m-4 fill-zinc-100 hover:fill-zinc-200 size-10" />
+          <Cog6ToothIcon
+            className={`m-4 fill-zinc-100 hover:fill-zinc-200
+            size-10`}
+          />
         </div>
         {/* <!-- Settings text --> */}
         <div
