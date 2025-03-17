@@ -1,9 +1,16 @@
 import { ListboxOption, ListboxOptions } from "@headlessui/react";
 import { CheckIcon } from "@heroicons/react/24/outline";
+import React from "react";
 import clsx from "clsx";
 import { periods } from "@/lib/models/Period";
 
-export const PoolPeriodListOptions = () => (
+type PoolPeriodListOptionsProps = {
+  onFocus: () => void;
+};
+
+export const PoolPeriodListOptions: React.FC<PoolPeriodListOptionsProps> = ({
+  onFocus,
+}) => (
   <ListboxOptions
     anchor="bottom"
     className={clsx(
@@ -12,6 +19,7 @@ export const PoolPeriodListOptions = () => (
         focus:outline-hidden transition duration-100 ease-in
         data-leave:data-closed:opacity-0`
     )}
+    onFocus={onFocus}
   >
     {periods.map((period) => (
       <ListboxOption

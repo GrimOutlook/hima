@@ -1,23 +1,22 @@
-import {
-  selectPoolFormData,
-  selectPoolFormErrors,
-  setPoolFormErrors,
-} from "@/lib/features/poolFormSlice";
-import { useAppDispatch, useAppSelector } from "@/lib/hooks";
 import { ChevronDownIcon } from "@heroicons/react/24/outline";
 import { GradientFocusInput } from "../GradientFocusInput";
 import { ListboxButton } from "@headlessui/react";
-import { PoolFormErrors } from "./PoolFormErrors";
+import React from "react";
+import { selectPoolFormData } from "@/lib/features/poolFormSlice";
+import { useAppSelector } from "@/lib/hooks";
 
-const FIELD = PoolFormErrors.PERIOD;
+type PoolPeriodListButtonProps = {
+  showError: boolean;
+  onBlur: () => void;
+  onFocus: () => void;
+};
 
-export const PoolPeriodListButton = () => {
-  const dispatch = useAppDispatch();
+export const PoolPeriodListButton: React.FC<PoolPeriodListButtonProps> = ({
+  showError,
+  onBlur,
+  onFocus,
+}) => {
   const poolFormData = useAppSelector(selectPoolFormData);
-  const errors = useAppSelector(selectPoolFormErrors);
-
-  // eslint-disable-next-line no-bitwise
-  const showError = (errors & FIELD) > 0;
 
   return (
     <GradientFocusInput
@@ -28,10 +27,8 @@ export const PoolPeriodListButton = () => {
     >
       <ListboxButton
         className={`${showError ? "border-red-500" : ""} rounded-lg bg-black/10`}
-        onFocus={() =>
-          // eslint-disable-next-line no-bitwise
-          dispatch(setPoolFormErrors(errors & ~FIELD))
-        }
+        onFocus={onFocus}
+        onBlur={onBlur}
       >
         {poolFormData.period}
         <ChevronDownIcon

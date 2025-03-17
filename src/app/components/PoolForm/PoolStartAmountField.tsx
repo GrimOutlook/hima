@@ -1,21 +1,23 @@
 import { Field, Input, Label } from "@headlessui/react";
 import { PoolFormErrors, fieldIsValid } from "./PoolFormErrors";
+import React, { useState } from "react";
 import {
   selectPoolFormData,
-  selectPoolFormErrors,
   setPoolFormData,
-  setPoolFormErrors,
 } from "@/lib/features/poolFormSlice";
 import { useAppDispatch, useAppSelector } from "@/lib/hooks";
 import { GradientFocusInput } from "../GradientFocusInput";
-import React from "react";
+import { PoolFormFieldProps } from ".";
 
 const FIELD = PoolFormErrors.START_AMOUNT;
 
-export const PoolStartAmountField = () => {
+export const PoolStartAmountField: React.FC<PoolFormFieldProps> = ({
+  submitHasBeenClicked,
+}) => {
   const dispatch = useAppDispatch();
   const poolFormData = useAppSelector(selectPoolFormData);
-  const errors = useAppSelector(selectPoolFormErrors);
+  const [isInvalid, setIsInvalid] = useState(false);
+  const [hasBeenFocused, setHasBeenFocused] = useState(false);
 
   const handleChange = (event: React.ChangeEvent<HTMLInputElement>) => {
     const num = Number(event.target.value);
@@ -23,21 +25,10 @@ export const PoolStartAmountField = () => {
     dispatch(setPoolFormData(data));
   };
 
-  const validate = () => {
-    /* eslint-disable no-bitwise */
-    const newErrors = fieldIsValid(FIELD, poolFormData.startAmount)
-      ? errors | ~FIELD
-      : errors | FIELD;
-    /* eslint-enable no-bitwise */
-
-    dispatch(setPoolFormErrors(newErrors));
-  };
-
-  // eslint-disable-next-line no-bitwise
-  const showError = (errors & FIELD) > 0;
+  const showError = isInvalid && (hasBeenFocused || submitHasBeenClicked);
 
   return (
-    <Field>
+    <Field className={"inline"}>
       <Label className={"mx-1"}>With</Label>
       <GradientFocusInput
         invalid={showError}
@@ -48,11 +39,13 @@ export const PoolStartAmountField = () => {
         <Input
           name="startAmount"
           value={poolFormData.startAmount}
-          onBlur={() => validate()}
-          onFocus={() =>
-            // eslint-disable-next-line no-bitwise
-            dispatch(setPoolFormErrors(errors & ~FIELD))
+          onBlur={() =>
+            setIsInvalid(!fieldIsValid(FIELD, poolFormData.startAmount))
           }
+          onFocus={() => {
+            setHasBeenFocused(true);
+            setIsInvalid(false);
+          }}
           onChange={(event) => handleChange(event)}
           className={showError ? "border-red-500" : ""}
         />

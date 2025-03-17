@@ -1,42 +1,33 @@
 import { Field, Input, Label } from "@headlessui/react";
 import { PoolFormErrors, fieldIsValid } from "./PoolFormErrors";
+import React, { useState } from "react";
 import {
   selectPoolFormData,
-  selectPoolFormErrors,
   setPoolFormData,
-  setPoolFormErrors,
 } from "@/lib/features/poolFormSlice";
 import { useAppDispatch, useAppSelector } from "@/lib/hooks";
 import { GradientFocusInput } from "../GradientFocusInput";
-import React from "react";
+import { PoolFormFieldProps } from ".";
 
 const FIELD = PoolFormErrors.START_DATE;
 
-export const PoolStartDateField = () => {
+export const PoolStartDateField: React.FC<PoolFormFieldProps> = ({
+  submitHasBeenClicked,
+}) => {
   const dispatch = useAppDispatch();
   const poolFormData = useAppSelector(selectPoolFormData);
-  const errors = useAppSelector(selectPoolFormErrors);
+  const [isInvalid, setIsInvalid] = useState(false);
+  const [hasBeenFocused, setHasBeenFocused] = useState(false);
 
   const handleChange = (event: React.ChangeEvent<HTMLInputElement>) => {
     const data = { ...poolFormData, startDate: event.target.value };
     dispatch(setPoolFormData(data));
   };
 
-  const validate = () => {
-    /* eslint-disable no-bitwise */
-    const newErrors = fieldIsValid(FIELD, poolFormData.startDate)
-      ? errors | ~FIELD
-      : errors | FIELD;
-    /* eslint-enable no-bitwise */
-
-    dispatch(setPoolFormErrors(newErrors));
-  };
-
-  // eslint-disable-next-line no-bitwise
-  const showError = (errors & FIELD) > 0;
+  const showError = isInvalid && (hasBeenFocused || submitHasBeenClicked);
 
   return (
-    <Field className={"mt-2"}>
+    <Field className={"mt-2 inline"}>
       <Label className={"text-3xl block"}>Starting on</Label>
       <GradientFocusInput
         invalid={showError}
@@ -47,12 +38,14 @@ export const PoolStartDateField = () => {
         <Input
           name="startDate"
           type="date"
-          onFocus={() =>
-            // eslint-disable-next-line no-bitwise
-            dispatch(setPoolFormErrors(errors & ~FIELD))
-          }
+          onFocus={() => {
+            setHasBeenFocused(true);
+            setIsInvalid(false);
+          }}
           value={poolFormData.startDate}
-          onBlur={() => validate()}
+          onBlur={() =>
+            setIsInvalid(!fieldIsValid(FIELD, poolFormData.startDate))
+          }
           onChange={(event) => handleChange(event)}
           className={showError ? "border-red-500" : ""}
         />

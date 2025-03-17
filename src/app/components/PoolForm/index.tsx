@@ -1,6 +1,7 @@
 "use client";
 
 import { Fieldset, Legend } from "@headlessui/react";
+import React, { useState } from "react";
 import { addPool, selectNextPoolID } from "@/lib/features/poolListSlice";
 import {
   clearPoolFormData,
@@ -17,8 +18,11 @@ import { PoolPeriodField } from "./PoolPeriodField";
 import { PoolStartAmountField } from "./PoolStartAmountField";
 import { PoolStartDateField } from "./PoolStartDateField";
 import { PoolSubmitButton } from "./PoolSubmitButton";
-import React from "react";
 import { poolFormIsValid } from "./PoolFormErrors";
+
+export type PoolFormFieldProps = {
+  submitHasBeenClicked: boolean;
+};
 
 type PoolFormProps = {
   className?: string;
@@ -29,13 +33,16 @@ const PoolForm: React.FC<PoolFormProps> = ({ className }) => {
   const poolFormOpenState = useAppSelector(selectPoolFormOpenState);
   const poolFormData = useAppSelector(selectPoolFormData);
   const nextPoolId = useAppSelector(selectNextPoolID);
+  const [submitHasBeenClicked, setSubmitHasBeenClicked] = useState(false);
 
   const close = () => {
     dispatch(clearPoolFormData());
     dispatch(setPoolFormOpenState(false));
+    setSubmitHasBeenClicked(false);
   };
 
   const submit = () => {
+    setSubmitHasBeenClicked(true);
     if (!poolFormIsValid(poolFormData)) {
       return;
     }
@@ -55,12 +62,12 @@ const PoolForm: React.FC<PoolFormProps> = ({ className }) => {
         <form>
           <Fieldset className={"p-6"}>
             <Legend className={"text-6xl"}>New PPL Pool</Legend>
-            <PoolNameField />
+            <PoolNameField submitHasBeenClicked={submitHasBeenClicked} />
             <PoolDescriptionField />
-            <PoolAccrualRateField />
-            <PoolPeriodField />
-            <PoolStartDateField />
-            <PoolStartAmountField />
+            <PoolAccrualRateField submitHasBeenClicked={submitHasBeenClicked} />
+            <PoolPeriodField submitHasBeenClicked={submitHasBeenClicked} />
+            <PoolStartDateField submitHasBeenClicked={submitHasBeenClicked} />
+            <PoolStartAmountField submitHasBeenClicked={submitHasBeenClicked} />
             <PoolSubmitButton onClick={() => submit()} />
           </Fieldset>
         </form>

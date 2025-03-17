@@ -15,13 +15,13 @@ export const fieldIsValid = (
 ): boolean => {
   switch (error) {
     case PoolFormErrors.NAME:
-      return input !== "";
+      return (input as string) !== "";
     case PoolFormErrors.AMOUNT:
       return (input as number) >= 0;
     case PoolFormErrors.PERIOD:
       return periods.includes(input as string);
     case PoolFormErrors.START_DATE:
-      return input !== "";
+      return (input as string) !== "";
     case PoolFormErrors.START_AMOUNT:
       return (input as number) >= 0;
     default:
