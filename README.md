@@ -22,6 +22,8 @@ Open [http://localhost:3000](http://localhost:3000) with your browser to see the
 
 ### Resources
 
+- [React Standards](https://airbnb.io/javascript/react)
+
 - [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
 and contributions are welcome!
 - [Floating UI Documentation](https://floating-ui.com/docs/getting-started)
