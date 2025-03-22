@@ -1,39 +1,35 @@
-'use client'
-import { createSlice } from "@reduxjs/toolkit/react";
-import type { PayloadAction } from "@reduxjs/toolkit";
-import { randomInt } from "../helpers";
+"use client";
 import { PPLEventDto } from "../models/PPLEventDto";
+import type { PayloadAction } from "@reduxjs/toolkit";
+import { createSlice } from "@reduxjs/toolkit/react";
+import { getNextId } from "@/lib/helpers";
 
 export interface PPLEventListState {
-    events: PPLEventDto[];
+  events: PPLEventDto[];
 }
 
 const initialState: PPLEventListState = {
-    events: [],
-}
+  events: [],
+};
 
 export const eventListSlice = createSlice({
-    name: "eventList",
-    initialState,
-    reducers: (create) => ({
-        addEvent: create.reducer((state, action: PayloadAction<PPLEventDto>) => {
-            console.log(`Adding event with ID ${action.payload.id}`)
-            state.events.push(action.payload);
-        }),
-        removeEvent: create.reducer((state, action: PayloadAction<number>) => {
-            state.events = state.events.filter((event: PPLEventDto) => action.payload != event.id)
-        })
+  initialState,
+  name: "eventList",
+  reducers: (create) => ({
+    addEvent: create.reducer((state, action: PayloadAction<PPLEventDto>) => {
+      state.events.push(action.payload);
     }),
-    selectors: {
-        selectEvents: (state) => state.events,
-        selectNextEventID: (state) => {
-            let next_id = 0
-            do {
-                next_id = randomInt(0, (2**48)-1)
-            } while ( state.events.some((event) => event.id == next_id) )
-            return next_id
-        },
-    },
+    removeEvent: create.reducer((state, action: PayloadAction<number>) => {
+      state.events = state.events.filter(
+        (event: PPLEventDto) => action.payload !== event.id
+      );
+    }),
+  }),
+  selectors: {
+    selectEvents: (state) => state.events,
+    selectNextEventID: (state) =>
+      getNextId(state.events.map((event) => event.id)),
+  },
 });
 
 export const { addEvent, removeEvent } = eventListSlice.actions;

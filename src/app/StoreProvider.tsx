@@ -1,10 +1,8 @@
 "use client";
-import type { AppStore } from "@/lib/store";
-import { makeStore } from "@/lib/store";
-import { setupListeners } from "@reduxjs/toolkit/query";
-import type { ReactNode } from "react";
-import { useEffect, useRef } from "react";
+import { AppStore, makeStore } from "@/lib/store";
+import { ReactNode, useEffect, useRef } from "react";
 import { Provider } from "react-redux";
+import { setupListeners } from "@reduxjs/toolkit/query";
 
 interface Props {
   readonly children: ReactNode;
@@ -18,10 +16,14 @@ export const StoreProvider = ({ children }: Props) => {
     storeRef.current = makeStore();
   }
 
+  // eslint-disable-next-line consistent-return
   useEffect(() => {
-    if (storeRef.current != null) {
-      // configure listeners using the provided defaults
-      // optional, but required for `refetchOnFocus`/`refetchOnReconnect` behaviors
+    if (storeRef.current !== null) {
+      /*
+       * Configure listeners using the provided defaults
+       * optional, but required for `refetchOnFocus`/`refetchOnReconnect`
+       * behaviors
+       */
       const unsubscribe = setupListeners(storeRef.current.dispatch);
       return unsubscribe;
     }

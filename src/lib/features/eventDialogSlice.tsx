@@ -1,28 +1,28 @@
-'use client'
+"use client";
 import { createSlice } from "@reduxjs/toolkit/react";
 
 export interface EventDialogState {
-    open: boolean;
+  open: boolean;
 }
 
 const initialState: EventDialogState = {
-    open: false,
-}
+  open: false,
+};
 
 export const eventDialogSlice = createSlice({
-    name: "eventDialog",
-    initialState,
-    reducers: (create) => ({
-        openEventDialog: create.reducer((state) => {
-            state.open = true;
-        }),
-        closeEventDialog: create.reducer((state) => {
-            state.open = false;
-        })
+  initialState,
+  name: "eventDialog",
+  reducers: (create) => ({
+    closeEventDialog: create.reducer((state) => {
+      state.open = false;
     }),
-    selectors: {
-        selectEventDialogOpenState: (state) => state.open,
-    },
+    openEventDialog: create.reducer((state) => {
+      state.open = true;
+    }),
+  }),
+  selectors: {
+    selectEventDialogOpenState: (state) => state.open,
+  },
 });
 
 export const { openEventDialog, closeEventDialog } = eventDialogSlice.actions;

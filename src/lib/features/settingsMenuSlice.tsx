@@ -1,30 +1,31 @@
-'use client'
+"use client";
 import { createSlice } from "@reduxjs/toolkit/react";
 
 export interface SettingsMenuState {
-    open: boolean;
+  open: boolean;
 }
 
 const initialState: SettingsMenuState = {
-    open: false,
-}
+  open: false,
+};
 
 export const settingsMenuSlice = createSlice({
-    name: "settingsMenu",
-    initialState,
-    reducers: (create) => ({
-        openSettingsMenu: create.reducer((state) => {
-            state.open = true;
-        }),
-        closeSettingsMenu: create.reducer((state) => {
-            state.open = false;
-        })
+  initialState,
+  name: "settingsMenu",
+  reducers: (create) => ({
+    closeSettingsMenu: create.reducer((state) => {
+      state.open = false;
     }),
-    selectors: {
-        selectSettingsMenuOpenState: (state) => state.open,
-    },
+    openSettingsMenu: create.reducer((state) => {
+      state.open = true;
+    }),
+  }),
+  selectors: {
+    selectSettingsMenuOpenState: (state) => state.open,
+  },
 });
 
-export const { openSettingsMenu, closeSettingsMenu } = settingsMenuSlice.actions;
+export const { openSettingsMenu, closeSettingsMenu } =
+  settingsMenuSlice.actions;
 
 export const { selectSettingsMenuOpenState } = settingsMenuSlice.selectors;
