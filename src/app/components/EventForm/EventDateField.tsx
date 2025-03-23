@@ -1,45 +1,31 @@
 import { Field, Input, Label } from "@headlessui/react";
 import {
   selectEventFormData,
-  selectEventFormErrors,
   setEventFormData,
-  setEventFormErrors,
 } from "@/lib/features/eventFormSlice";
 import { useAppDispatch, useAppSelector } from "@/lib/hooks";
-import { EventFormErrors } from "./EventFormErrors";
+import { EventFormErrors, fieldIsValid } from "./EventFormErrors";
 import { GradientFocusInput } from "../GradientFocusInput";
-import React from "react";
+import React, { useState } from "react";
+import { EventFormFieldProps } from ".";
 
 const FIELD = EventFormErrors.DATE;
 
 // eslint-disable-next-line max-lines-per-function
-export const EventDateField = () => {
+export const EventDateField: React.FC<EventFormFieldProps> = ({
+  submitHasBeenClicked,
+}) => {
   const dispatch = useAppDispatch();
   const eventFormData = useAppSelector(selectEventFormData);
-  const errors = useAppSelector(selectEventFormErrors);
+  const [isInvalid, setIsInvalid] = useState(false);
+  const [hasBeenFocused, setHasBeenFocused] = useState(false);
 
   const handleChange = (event: React.ChangeEvent<HTMLInputElement>) => {
-    const data = { ...eventFormData, startDate: event.target.value };
+    const data = { ...eventFormData, date: event.target.value };
     dispatch(setEventFormData(data));
   };
 
-  const validate = () => {
-    // eslint-disable-next-line init-declarations
-    let newErrors;
-
-    if (eventFormData.date === "") {
-      // eslint-disable-next-line no-bitwise
-      newErrors = errors | FIELD;
-    } else {
-      // eslint-disable-next-line no-bitwise
-      newErrors = errors | ~FIELD;
-    }
-
-    dispatch(setEventFormErrors(newErrors));
-  };
-
-  // eslint-disable-next-line no-bitwise
-  const isInvalid = (errors & FIELD) > 0;
+  const showError = isInvalid && (hasBeenFocused || submitHasBeenClicked);
 
   return (
     <Field className="mr-4">
@@ -50,15 +36,18 @@ export const EventDateField = () => {
         unfocusedClassName="bg-zinc-300"
       >
         <Input
+          name="date"
           type="date"
           value={eventFormData.date}
-          onFocus={() =>
-            // eslint-disable-next-line no-bitwise
-            dispatch(setEventFormErrors(errors & ~FIELD))
+          onFocus={() => {
+            setHasBeenFocused(true);
+            setIsInvalid(false);
+          }}
+          onBlur={() =>
+            setIsInvalid(!fieldIsValid(FIELD, eventFormData.date))
           }
-          onBlur={() => validate()}
           onChange={(event) => handleChange(event)}
-          className={isInvalid ? "border-red-500" : ""}
+          className={showError ? "border-red-500" : ""}
         />
       </GradientFocusInput>
     </Field>

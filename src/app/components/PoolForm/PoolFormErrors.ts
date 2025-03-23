@@ -21,10 +21,12 @@ export const fieldIsValid = (
     case PoolFormErrors.PERIOD:
       return periods.includes(input as string);
     case PoolFormErrors.START_DATE:
+      console.log(input);
       return (input as string) !== "";
     case PoolFormErrors.START_AMOUNT:
       return (input as number) >= 0;
     default:
+      // TODO: Add logging here to track when this happens
       return false;
   }
 };

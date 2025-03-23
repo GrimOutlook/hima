@@ -28,7 +28,7 @@ export const EventDetailsPanel: React.FC<EventDetailsPanelProps> = ({
         className={`relative border-t-black/10 border-t-2 flex justify-between`}
       >
         <PencilSquareIcon
-          className={`stroke-gray-700 size-7 m-1 p-0.5 rounded-full 
+          className={`stroke-gray-700 size-7 m-1 p-0.5 rounded-full
           hover:bg-black/10 hover:cursor-pointer`}
         />
         <div></div>

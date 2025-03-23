@@ -6,41 +6,29 @@ import {
   setEventFormErrors,
 } from "@/lib/features/eventFormSlice";
 import { useAppDispatch, useAppSelector } from "@/lib/hooks";
-import { EventFormErrors } from "./EventFormErrors";
+import { EventFormErrors, fieldIsValid } from "./EventFormErrors";
 import { GradientFocusInput } from "../GradientFocusInput";
-import React from "react";
+import React, { useState } from "react";
+import { EventFormFieldProps } from ".";
 
 const FIELD = EventFormErrors.HOURS;
 
 // eslint-disable-next-line max-lines-per-function
-export const EventHoursField = () => {
+export const EventHoursField: React.FC<EventFormFieldProps> = ({
+  submitHasBeenClicked,
+}) => {
   const dispatch = useAppDispatch();
   const eventFormData = useAppSelector(selectEventFormData);
-  const errors = useAppSelector(selectEventFormErrors);
+  const [isInvalid, setIsInvalid] = useState(false);
+  const [hasBeenFocused, setHasBeenFocused] = useState(false);
 
   const handleChange = (event: React.ChangeEvent<HTMLInputElement>) => {
     const num = Number(event.target.value);
-    const data = { ...eventFormData, hours: num };
+    const data = { ...eventFormData, amount: num };
     dispatch(setEventFormData(data));
   };
 
-  const validate = () => {
-    // eslint-disable-next-line init-declarations
-    let newErrors;
-
-    if (eventFormData.hours === 0) {
-      // eslint-disable-next-line no-bitwise
-      newErrors = errors | FIELD;
-    } else {
-      // eslint-disable-next-line no-bitwise
-      newErrors = errors | ~FIELD;
-    }
-
-    dispatch(setEventFormErrors(newErrors));
-  };
-
-  // eslint-disable-next-line no-bitwise
-  const isInvalid = (errors & FIELD) > 0;
+  const showError = isInvalid && (hasBeenFocused || submitHasBeenClicked);
 
   return (
     <Field>
@@ -53,12 +41,12 @@ export const EventHoursField = () => {
         <Input
           name="hours"
           value={eventFormData.hours}
-          onBlur={() => validate()}
+          onBlur={() => setIsInvalid(!fieldIsValid(FIELD, eventFormData.hours))}
           onChange={(event) => handleChange(event)}
-          onFocus={() =>
-            // eslint-disable-next-line no-bitwise
-            dispatch(setEventFormErrors(errors & ~FIELD))
-          }
+          onFocus={() => {
+            setHasBeenFocused(true);
+            setIsInvalid(false);
+          }}
           className={isInvalid ? "border-red-500" : ""}
         />
       </GradientFocusInput>

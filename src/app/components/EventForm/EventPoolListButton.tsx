@@ -1,25 +1,26 @@
 import {
   selectEventFormData,
-  selectEventFormErrors,
-  setEventFormErrors,
 } from "@/lib/features/eventFormSlice";
 import { useAppDispatch, useAppSelector } from "@/lib/hooks";
 import { ChevronDownIcon } from "@heroicons/react/24/outline";
-import { EventFormErrors } from "./EventFormErrors";
 import { GradientFocusInput } from "../GradientFocusInput";
 import { ListboxButton } from "@headlessui/react";
 import { selectPools } from "@/lib/features/poolListSlice";
 
-const FIELD = EventFormErrors.POOL;
+type EventPoolListButtonProps = {
+  showError: boolean;
+  onBlur: () => void;
+  onFocus: () => void;
+};
 
-export const EventPoolListButton = () => {
-  const dispatch = useAppDispatch();
+export const EventPoolListButton: React.FC<EventPoolListButtonProps> = ({
+  showError,
+  onBlur,
+  onFocus,
+}) => {
   const eventFormData = useAppSelector(selectEventFormData);
-  const errors = useAppSelector(selectEventFormErrors);
   const pools = useAppSelector(selectPools);
 
-  // eslint-disable-next-line no-bitwise
-  const isInvalid = (errors & FIELD) > 0;
   const selectedPoolName = () => {
     if (pools.length <= 0) {
       return "";
@@ -32,19 +33,19 @@ export const EventPoolListButton = () => {
     return "";
   };
 
+
   return (
     <GradientFocusInput
-      invalid={isInvalid}
+      invalid={showError}
       className="w-30 h-10 mr-1 inline-block text-left relative"
       focusClassName="bg-linear-to-tr from-sky-300 to-red-400 shadow-lg"
       unfocusedClassName="bg-zinc-300"
     >
       <ListboxButton
-        className={`${isInvalid ? "border-red-500" : ""} rounded-lg bg-black/10`}
-        onFocus={() =>
-          // eslint-disable-next-line no-bitwise
-          dispatch(setEventFormErrors(errors & ~FIELD))
-        }
+        className={`${showError ? "border-red-500" : ""} rounded-lg
+        bg-black/10`}
+        onFocus={onFocus}
+        onBlur={onBlur}
       >
         {selectedPoolName()}
         <ChevronDownIcon
