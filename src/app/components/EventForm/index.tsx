@@ -5,7 +5,6 @@ import { addEvent, selectNextEventID } from "@/lib/features/eventListSlice";
 import {
   clearEventFormData,
   selectEventFormData,
-  selectEventFormErrors,
   selectEventFormOpenState,
   setEventFormOpenState,
 } from "@/lib/features/eventFormSlice";
@@ -17,29 +16,40 @@ import { EventPoolField } from "./EventPoolField";
 import { EventSubmitButton } from "./EventSubmitButton";
 import { EventTitleField } from "./EventTitleField";
 import { OverlayDialog } from "../OverlayDialog";
-import React from "react";
+import React, { useState } from "react";
+import { eventFormIsValid } from "./EventFormErrors";
+
+export type EventFormFieldProps = {
+  submitHasBeenClicked: boolean;
+};
 
 const EventForm = () => {
   const dispatch = useAppDispatch();
   const eventFormOpenState = useAppSelector(selectEventFormOpenState);
   const eventFormData = useAppSelector(selectEventFormData);
-  const errors = useAppSelector(selectEventFormErrors);
   const nextEventId = useAppSelector(selectNextEventID);
+  const [submitHasBeenClicked, setSubmitHasBeenClicked] = useState(false);
 
-  const submit = () => {
-    if (errors > 0) {
-      return;
-    }
+    const close = () => {
+      dispatch(clearEventFormData());
+      dispatch(setEventFormOpenState(false));
+      setSubmitHasBeenClicked(false);
+    };
 
-    let data = eventFormData;
-    if (data.id <= 0) {
-      data = { ...eventFormData, id: nextEventId };
-    }
+    const submit = () => {
+      setSubmitHasBeenClicked(true);
+      if (!eventFormIsValid(eventFormData)) {
+        return;
+      }
 
-    dispatch(addEvent(data));
-    dispatch(clearEventFormData());
-    dispatch(setEventFormOpenState(false));
-  };
+      let data = eventFormData;
+      if (data.id <= 0) {
+        data = { ...eventFormData, id: nextEventId };
+      }
+
+      dispatch(addEvent(data));
+      close();
+    };
 
   return (
     <OverlayDialog
@@ -51,13 +61,13 @@ const EventForm = () => {
           <Fieldset className={"p-6"}>
             <Legend className={"text-6xl"}>New PPL Event</Legend>
             <div className="w-full mt-4 flex">
-              <EventTitleField />
-              <EventHoursField />
+              <EventTitleField submitHasBeenClicked={submitHasBeenClicked} />
+              <EventHoursField submitHasBeenClicked={submitHasBeenClicked} />
             </div>
             <EventDescriptionField />
             <div className="mt-2 flex">
-              <EventDateField />
-              <EventPoolField />
+              <EventDateField submitHasBeenClicked={submitHasBeenClicked} />
+              <EventPoolField submitHasBeenClicked={submitHasBeenClicked} />
             </div>
             <EventSubmitButton onClick={() => submit()} />
           </Fieldset>

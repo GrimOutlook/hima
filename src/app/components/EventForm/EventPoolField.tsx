@@ -1,43 +1,36 @@
 import { Field, Label, Listbox } from "@headlessui/react";
 import {
   selectEventFormData,
-  selectEventFormErrors,
   setEventFormData,
-  setEventFormErrors,
 } from "@/lib/features/eventFormSlice";
 import { useAppDispatch, useAppSelector } from "@/lib/hooks";
-import { EventFormErrors } from "./EventFormErrors";
+import { EventFormErrors, fieldIsValid } from "./EventFormErrors";
 import { EventPoolListButton } from "./EventPoolListButton";
 import { EventPoolListOptions } from "./EventPoolListOptions";
+import { useState } from "react";
+import { EventFormFieldProps } from ".";
 
 const FIELD = EventFormErrors.POOL;
 
-export const EventPoolField = () => {
+export const EventPoolField: React.FC<EventFormFieldProps> = ({
+  submitHasBeenClicked,
+}) => {
   const dispatch = useAppDispatch();
   const eventFormData = useAppSelector(selectEventFormData);
-  const errors = useAppSelector(selectEventFormErrors);
+  const [isInvalid, setIsInvalid] = useState(false);
+  const [optionsListIsFocused, setOptionsListIsFocused] = useState(false);
+  const [hasBeenFocused, setHasBeenFocused] = useState(false);
 
-  const validate = (value: number) => {
-    // eslint-disable-next-line init-declarations
-    let newErrors;
+  const handleChange = (period: number) => {
+    setIsInvalid(!fieldIsValid(FIELD, period));
 
-    if (value === 0) {
-      // eslint-disable-next-line no-bitwise
-      newErrors = errors | FIELD;
-    } else {
-      // eslint-disable-next-line no-bitwise
-      newErrors = errors | ~FIELD;
-    }
-
-    dispatch(setEventFormErrors(newErrors));
-  };
-
-  const handleChange = (poolId: number) => {
-    validate(poolId);
-
-    const data = { ...eventFormData, poolId };
+    const data = { ...eventFormData, period };
     dispatch(setEventFormData(data));
   };
+
+  const showError =
+    isInvalid &&
+    (submitHasBeenClicked || (hasBeenFocused && optionsListIsFocused !== true));
 
   return (
     <Field>
@@ -46,8 +39,18 @@ export const EventPoolField = () => {
         value={eventFormData.poolId}
         onChange={(event) => handleChange(event)}
       >
-        <EventPoolListButton />
-        <EventPoolListOptions />
+        <EventPoolListButton
+          showError={showError}
+          onBlur={() => {
+            setIsInvalid(!fieldIsValid(FIELD, eventFormData.poolId));
+          }}
+          onFocus={() => {
+            setOptionsListIsFocused(false);
+            setHasBeenFocused(true);
+            setIsInvalid(false);
+          }}
+        />
+        <EventPoolListOptions onFocus={() => setOptionsListIsFocused(true)} />
       </Listbox>
     </Field>
   );

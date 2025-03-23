@@ -38,10 +38,6 @@ export const PoolStartDateField: React.FC<PoolFormFieldProps> = ({
         <Input
           name="startDate"
           type="date"
-          onFocus={() => {
-            setHasBeenFocused(true);
-            setIsInvalid(false);
-          }}
           value={poolFormData.startDate}
           onBlur={() =>
             setIsInvalid(!fieldIsValid(FIELD, poolFormData.startDate))

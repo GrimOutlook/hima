@@ -4,18 +4,25 @@ import clsx from "clsx";
 import { selectPools } from "@/lib/features/poolListSlice";
 import { useAppSelector } from "@/lib/hooks";
 
-export const EventPoolListOptions = () => {
+type EventPoolListOptionsProps = {
+  onFocus: () => void;
+};
+
+export const EventPoolListOptions: React.FC<EventPoolListOptionsProps> = ({
+  onFocus,
+}) => {
   const pools = useAppSelector(selectPools);
 
   return (
     <ListboxOptions
       anchor="bottom"
       className={clsx(
-        `w-[var(--button-width)] rounded-xl border border-black/10 
+        `w-[var(--button-width)] rounded-xl border border-black/10
         bg-zinc-300/95 p-1 [--anchor-gap:var(--spacing-1)]
         focus:outline-hidden transition duration-100 ease-in
         data-leave:data-closed:opacity-0`
       )}
+      onFocus={onFocus}
     >
       {pools.map((pool) => (
         <ListboxOption
