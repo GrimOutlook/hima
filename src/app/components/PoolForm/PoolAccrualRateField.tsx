@@ -1,5 +1,5 @@
 import { Field, Input, Label } from "@headlessui/react";
-import { PoolFormErrors, fieldIsValid } from "./PoolFormErrors";
+import { PoolFormErrors, fieldIsInvalid } from "./PoolFormErrors";
 import React, { useState } from "react";
 import {
   selectPoolFormData,
@@ -25,7 +25,9 @@ export const PoolAccrualRateField: React.FC<PoolFormFieldProps> = ({
     dispatch(setPoolFormData(data));
   };
 
-  const showError = isInvalid && (hasBeenFocused || submitHasBeenClicked);
+  const showError =
+    (isInvalid && hasBeenFocused) ||
+    (submitHasBeenClicked && fieldIsInvalid(FIELD, poolFormData.period));
 
   return (
     <Field className={"inline mr-1"}>
@@ -39,7 +41,7 @@ export const PoolAccrualRateField: React.FC<PoolFormFieldProps> = ({
         <Input
           name="amount"
           value={poolFormData.amount}
-          onBlur={() => setIsInvalid(!fieldIsValid(FIELD, poolFormData.amount))}
+          onBlur={() => setIsInvalid(fieldIsInvalid(FIELD, poolFormData.amount))}
           onChange={(event) => handleChange(event)}
           onFocus={() => {
             setHasBeenFocused(true);

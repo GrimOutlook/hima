@@ -1,5 +1,5 @@
 import { Field, Listbox } from "@headlessui/react";
-import { PoolFormErrors, fieldIsValid } from "./PoolFormErrors";
+import { PoolFormErrors, fieldIsInvalid } from "./PoolFormErrors";
 import React, { useState } from "react";
 import {
   selectPoolFormData,
@@ -22,15 +22,15 @@ export const PoolPeriodField: React.FC<PoolFormFieldProps> = ({
   const [hasBeenFocused, setHasBeenFocused] = useState(false);
 
   const handleChange = (period: string) => {
-    setIsInvalid(!fieldIsValid(FIELD, period));
+    setIsInvalid(fieldIsInvalid(FIELD, period));
 
     const data = { ...poolFormData, period };
     dispatch(setPoolFormData(data));
   };
 
   const showError =
-    isInvalid &&
-    (submitHasBeenClicked || (hasBeenFocused && optionsListIsFocused !== true));
+    (isInvalid && (hasBeenFocused && optionsListIsFocused !== true)) ||
+    (submitHasBeenClicked && fieldIsInvalid(FIELD, poolFormData.period));
 
   return (
     <Field className={"inline"}>
@@ -41,7 +41,7 @@ export const PoolPeriodField: React.FC<PoolFormFieldProps> = ({
         <PoolPeriodListButton
           showError={showError}
           onBlur={() => {
-            setIsInvalid(!fieldIsValid(FIELD, poolFormData.period));
+            setIsInvalid(fieldIsInvalid(FIELD, poolFormData.period));
           }}
           onFocus={() => {
             setOptionsListIsFocused(false);

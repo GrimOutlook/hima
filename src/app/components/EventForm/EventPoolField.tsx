@@ -4,7 +4,7 @@ import {
   setEventFormData,
 } from "@/lib/features/eventFormSlice";
 import { useAppDispatch, useAppSelector } from "@/lib/hooks";
-import { EventFormErrors, fieldIsValid } from "./EventFormErrors";
+import { EventFormErrors, fieldIsInvalid } from "./EventFormErrors";
 import { EventPoolListButton } from "./EventPoolListButton";
 import { EventPoolListOptions } from "./EventPoolListOptions";
 import { useState } from "react";
@@ -22,15 +22,16 @@ export const EventPoolField: React.FC<EventFormFieldProps> = ({
   const [hasBeenFocused, setHasBeenFocused] = useState(false);
 
   const handleChange = (period: number) => {
-    setIsInvalid(!fieldIsValid(FIELD, period));
+    setIsInvalid(fieldIsInvalid(FIELD, period));
 
     const data = { ...eventFormData, period };
     dispatch(setEventFormData(data));
   };
 
+
   const showError =
-    isInvalid &&
-    (submitHasBeenClicked || (hasBeenFocused && optionsListIsFocused !== true));
+      (isInvalid && (hasBeenFocused && optionsListIsFocused !== true)) ||
+      (submitHasBeenClicked && fieldIsInvalid(FIELD, eventFormData.poolId));
 
   return (
     <Field>
@@ -42,7 +43,7 @@ export const EventPoolField: React.FC<EventFormFieldProps> = ({
         <EventPoolListButton
           showError={showError}
           onBlur={() => {
-            setIsInvalid(!fieldIsValid(FIELD, eventFormData.poolId));
+            setIsInvalid(fieldIsInvalid(FIELD, eventFormData.poolId));
           }}
           onFocus={() => {
             setOptionsListIsFocused(false);

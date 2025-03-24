@@ -1,12 +1,10 @@
 import { Field, Input, Label } from "@headlessui/react";
 import {
   selectEventFormData,
-  selectEventFormErrors,
   setEventFormData,
-  setEventFormErrors,
 } from "@/lib/features/eventFormSlice";
 import { useAppDispatch, useAppSelector } from "@/lib/hooks";
-import { EventFormErrors, fieldIsValid } from "./EventFormErrors";
+import { EventFormErrors, fieldIsInvalid } from "./EventFormErrors";
 import { GradientFocusInput } from "../GradientFocusInput";
 import React, { useState } from "react";
 import { EventFormFieldProps } from ".";
@@ -28,12 +26,15 @@ export const EventHoursField: React.FC<EventFormFieldProps> = ({
     dispatch(setEventFormData(data));
   };
 
-  const showError = isInvalid && (hasBeenFocused || submitHasBeenClicked);
+  const showError =
+      (isInvalid && hasBeenFocused) ||
+      (submitHasBeenClicked && fieldIsInvalid(FIELD, eventFormData.hours));
 
   return (
     <Field>
       <Label className={"block text-3xl"}>Hours</Label>
       <GradientFocusInput
+        invalid={showError}
         className="w-20 h-10 mr-1"
         focusClassName="bg-linear-to-tr from-sky-300 to-red-400 shadow-lg"
         unfocusedClassName="bg-zinc-300"
@@ -41,13 +42,13 @@ export const EventHoursField: React.FC<EventFormFieldProps> = ({
         <Input
           name="hours"
           value={eventFormData.hours}
-          onBlur={() => setIsInvalid(!fieldIsValid(FIELD, eventFormData.hours))}
+          onBlur={() => setIsInvalid(fieldIsInvalid(FIELD, eventFormData.hours))}
           onChange={(event) => handleChange(event)}
           onFocus={() => {
             setHasBeenFocused(true);
             setIsInvalid(false);
           }}
-          className={isInvalid ? "border-red-500" : ""}
+          className={showError ? "border-red-500" : ""}
         />
       </GradientFocusInput>
     </Field>
