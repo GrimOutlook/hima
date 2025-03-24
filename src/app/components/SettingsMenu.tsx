@@ -25,17 +25,25 @@ export const SettingsMenu = () => {
       >
         <div className="bg-white w-80 p-4 rounded-lg">
           <h1 className="text-2xl font-bold">Settings</h1>
-          <div className="flex flex-col mt-4">
-            <Button className="p-2 border border-gray-400 rounded-lg">
+          <div className="flex flex-col gap-2 mt-4">
+            <Button
+              className={`w-full rounded-lg p-2 text-3xl bg-black/10 text-zinc-700
+                hover:cursor-pointer hover:shadow-lg transition duration-150 ease-in-out hover:scale-102`}
+            >
               Import
             </Button>
-            <Button className="p-2 border border-gray-400 rounded-lg mt-2">
+            <Button
+              className={`w-full rounded-lg p-2 text-3xl bg-black/10 text-zinc-700
+                hover:cursor-pointer hover:shadow-lg transition duration-150 ease-in-out
+                hover:scale-102`}
+            >
               Export
             </Button>
           </div>
           <Button
-            className="mt-4 p-2 border border-gray-400 rounded-lg"
-            onClick={closeSettings()}
+            className={`w-full mt-8 rounded-lg p-2 text-3xl bg-black/10 text-zinc-700
+              hover:cursor-pointer hover:shadow-lg transition duration-150 ease-in-out
+              hover:scale-102`}
           >
             Close
           </Button>

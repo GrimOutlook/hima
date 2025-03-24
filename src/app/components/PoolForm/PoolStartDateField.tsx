@@ -1,5 +1,5 @@
 import { Field, Input, Label } from "@headlessui/react";
-import { PoolFormErrors, fieldIsValid } from "./PoolFormErrors";
+import { PoolFormErrors, fieldIsInvalid } from "./PoolFormErrors";
 import React, { useState } from "react";
 import {
   selectPoolFormData,
@@ -24,7 +24,8 @@ export const PoolStartDateField: React.FC<PoolFormFieldProps> = ({
     dispatch(setPoolFormData(data));
   };
 
-  const showError = isInvalid && (hasBeenFocused || submitHasBeenClicked);
+  const showError = (isInvalid && hasBeenFocused) ||
+    (submitHasBeenClicked && fieldIsInvalid(FIELD, poolFormData.startDate));
 
   return (
     <Field className={"mt-2 inline"}>
@@ -40,9 +41,13 @@ export const PoolStartDateField: React.FC<PoolFormFieldProps> = ({
           type="date"
           value={poolFormData.startDate}
           onBlur={() =>
-            setIsInvalid(!fieldIsValid(FIELD, poolFormData.startDate))
+            setIsInvalid(fieldIsInvalid(FIELD, poolFormData.startDate))
           }
           onChange={(event) => handleChange(event)}
+          onFocus={() => {
+            setHasBeenFocused(true);
+            setIsInvalid(false);
+          }}
           className={showError ? "border-red-500" : ""}
         />
       </GradientFocusInput>

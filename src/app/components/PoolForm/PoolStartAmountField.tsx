@@ -1,5 +1,5 @@
 import { Field, Input, Label } from "@headlessui/react";
-import { PoolFormErrors, fieldIsValid } from "./PoolFormErrors";
+import { PoolFormErrors, fieldIsInvalid } from "./PoolFormErrors";
 import React, { useState } from "react";
 import {
   selectPoolFormData,
@@ -40,7 +40,7 @@ export const PoolStartAmountField: React.FC<PoolFormFieldProps> = ({
           name="startAmount"
           value={poolFormData.startAmount}
           onBlur={() =>
-            setIsInvalid(!fieldIsValid(FIELD, poolFormData.startAmount))
+            setIsInvalid(fieldIsInvalid(FIELD, poolFormData.startAmount))
           }
           onFocus={() => {
             setHasBeenFocused(true);

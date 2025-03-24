@@ -9,31 +9,31 @@ export enum PoolFormErrors {
   START_AMOUNT = 16,
 }
 
-export const fieldIsValid = (
+export const fieldIsInvalid = (
   error: PoolFormErrors,
   input: number | string
 ): boolean => {
   switch (error) {
     case PoolFormErrors.NAME:
-      return (input as string) !== "";
+      return (input as string) === "";
     case PoolFormErrors.AMOUNT:
-      return (input as number) >= 0;
+      return (input as number) < 0;
     case PoolFormErrors.PERIOD:
-      return periods.includes(input as string);
+      return !periods.includes(input as string);
     case PoolFormErrors.START_DATE:
-      console.log(input);
-      return (input as string) !== "";
+      return (input as string) === "";
     case PoolFormErrors.START_AMOUNT:
-      return (input as number) >= 0;
+      return (input as number) < 0;
     default:
       // TODO: Add logging here to track when this happens
+      console.log("Invalid error code");
       return false;
   }
 };
 
 export const poolFormIsValid = (pool: PoolFormDataDto): boolean =>
-  fieldIsValid(PoolFormErrors.NAME, pool.name) &&
-  fieldIsValid(PoolFormErrors.AMOUNT, pool.amount) &&
-  fieldIsValid(PoolFormErrors.PERIOD, pool.period) &&
-  fieldIsValid(PoolFormErrors.START_DATE, pool.startDate) &&
-  fieldIsValid(PoolFormErrors.START_AMOUNT, pool.startAmount);
+  !fieldIsInvalid(PoolFormErrors.NAME, pool.name) &&
+  !fieldIsInvalid(PoolFormErrors.AMOUNT, pool.amount) &&
+  !fieldIsInvalid(PoolFormErrors.PERIOD, pool.period) &&
+  !fieldIsInvalid(PoolFormErrors.START_DATE, pool.startDate) &&
+  !fieldIsInvalid(PoolFormErrors.START_AMOUNT, pool.startAmount);
