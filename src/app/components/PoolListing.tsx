@@ -17,7 +17,7 @@ type PoolListingProps = {
 const PoolListing: React.FC<PoolListingProps> = ({ className, pool }) => {
   const events = useAppSelector(selectEvents).map((event) =>
     deserializeToEvent(event)
-  );
+  ); 
 
   const [isDetailsPanelOpen, setIsDetailsPanelOpen] = useState(false);
 

@@ -1,5 +1,5 @@
 import eslint from "@eslint/js";
-import { defineConfig } from "eslint/config";
+import { defineConfig, globalIgnores } from "eslint/config";
 import tsParser from "@typescript-eslint/parser";
 import reactPlugin from "eslint-plugin-react";
 import hooksPlugin from "eslint-plugin-react-hooks";
@@ -30,6 +30,7 @@ const myRules = {
 };
 
 export default defineConfig([
+  globalIgnores(['**/.next/']),
   {
     files: ["src/**/*.{js,mjs,cjs,ts,jsx,tsx}"],
     plugins: {

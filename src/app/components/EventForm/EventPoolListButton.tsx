@@ -1,11 +1,10 @@
-import {
-  selectEventFormData,
-} from "@/lib/features/eventFormSlice";
-import { useAppDispatch, useAppSelector } from "@/lib/hooks";
 import { ChevronDownIcon } from "@heroicons/react/24/outline";
 import { GradientFocusInput } from "../GradientFocusInput";
 import { ListboxButton } from "@headlessui/react";
+import React from "react";
+import { selectEventFormData } from "@/lib/features/eventFormSlice";
 import { selectPools } from "@/lib/features/poolListSlice";
+import { useAppSelector } from "@/lib/hooks";
 
 type EventPoolListButtonProps = {
   showError: boolean;

@@ -1,6 +1,7 @@
 "use client";
 
 import { Fieldset, Legend } from "@headlessui/react";
+import React, { useState } from "react";
 import { addEvent, selectNextEventID } from "@/lib/features/eventListSlice";
 import {
   clearEventFormData,
@@ -16,13 +17,13 @@ import { EventPoolField } from "./EventPoolField";
 import { EventSubmitButton } from "./EventSubmitButton";
 import { EventTitleField } from "./EventTitleField";
 import { OverlayDialog } from "../OverlayDialog";
-import React, { useState } from "react";
 import { eventFormIsValid } from "./EventFormErrors";
 
 export type EventFormFieldProps = {
   submitHasBeenClicked: boolean;
 };
 
+// eslint-disable-next-line max-lines-per-function
 const EventForm = () => {
   const dispatch = useAppDispatch();
   const eventFormOpenState = useAppSelector(selectEventFormOpenState);

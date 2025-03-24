@@ -41,7 +41,8 @@ export const PoolAccrualRateField: React.FC<PoolFormFieldProps> = ({
         <Input
           name="amount"
           value={poolFormData.amount}
-          onBlur={() => setIsInvalid(fieldIsInvalid(FIELD, poolFormData.amount))}
+          onBlur={() =>
+            setIsInvalid(fieldIsInvalid(FIELD, poolFormData.amount))}
           onChange={(event) => handleChange(event)}
           onFocus={() => {
             setHasBeenFocused(true);

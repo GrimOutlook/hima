@@ -1,13 +1,13 @@
+import { EventFormErrors, fieldIsInvalid } from "./EventFormErrors";
 import { Field, Input, Label } from "@headlessui/react";
+import React, { useState } from "react";
 import {
   selectEventFormData,
   setEventFormData,
 } from "@/lib/features/eventFormSlice";
 import { useAppDispatch, useAppSelector } from "@/lib/hooks";
-import { EventFormErrors, fieldIsInvalid } from "./EventFormErrors";
-import { GradientFocusInput } from "../GradientFocusInput";
-import React, { useState } from "react";
 import { EventFormFieldProps } from ".";
+import { GradientFocusInput } from "../GradientFocusInput";
 
 const FIELD = EventFormErrors.TITLE;
 
@@ -40,7 +40,8 @@ export const EventTitleField: React.FC<EventFormFieldProps> = ({
           autoFocus
           name="title"
           value={eventFormData.title}
-          onBlur={() => setIsInvalid(fieldIsInvalid(FIELD, eventFormData.title))}
+          onBlur={() =>
+            setIsInvalid(fieldIsInvalid(FIELD, eventFormData.title))}
           onChange={(event) => handleChange(event)}
           onFocus={() => {
             setHasBeenFocused(true);

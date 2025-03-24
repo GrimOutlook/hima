@@ -1,14 +1,14 @@
+import { EventFormErrors, fieldIsInvalid } from "./EventFormErrors";
 import { Field, Label, Listbox } from "@headlessui/react";
+import React, { useState } from "react";
 import {
   selectEventFormData,
   setEventFormData,
 } from "@/lib/features/eventFormSlice";
 import { useAppDispatch, useAppSelector } from "@/lib/hooks";
-import { EventFormErrors, fieldIsInvalid } from "./EventFormErrors";
+import { EventFormFieldProps } from ".";
 import { EventPoolListButton } from "./EventPoolListButton";
 import { EventPoolListOptions } from "./EventPoolListOptions";
-import { useState } from "react";
-import { EventFormFieldProps } from ".";
 
 const FIELD = EventFormErrors.POOL;
 

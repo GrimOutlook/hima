@@ -26,7 +26,6 @@ export const fieldIsInvalid = (
       return (input as number) < 0;
     default:
       // TODO: Add logging here to track when this happens
-      console.log("Invalid error code");
       return false;
   }
 };

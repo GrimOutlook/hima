@@ -1,17 +1,16 @@
+import { EventFormErrors, fieldIsInvalid } from "./EventFormErrors";
 import { Field, Input, Label } from "@headlessui/react";
+import React, { useState } from "react";
 import {
   selectEventFormData,
   setEventFormData,
 } from "@/lib/features/eventFormSlice";
 import { useAppDispatch, useAppSelector } from "@/lib/hooks";
-import { EventFormErrors, fieldIsInvalid } from "./EventFormErrors";
-import { GradientFocusInput } from "../GradientFocusInput";
-import React, { useState } from "react";
 import { EventFormFieldProps } from ".";
+import { GradientFocusInput } from "../GradientFocusInput";
 
 const FIELD = EventFormErrors.HOURS;
 
-// eslint-disable-next-line max-lines-per-function
 export const EventHoursField: React.FC<EventFormFieldProps> = ({
   submitHasBeenClicked,
 }) => {
@@ -42,7 +41,8 @@ export const EventHoursField: React.FC<EventFormFieldProps> = ({
         <Input
           name="hours"
           value={eventFormData.hours}
-          onBlur={() => setIsInvalid(fieldIsInvalid(FIELD, eventFormData.hours))}
+          onBlur={() =>
+            setIsInvalid(fieldIsInvalid(FIELD, eventFormData.hours))}
           onChange={(event) => handleChange(event)}
           onFocus={() => {
             setHasBeenFocused(true);
