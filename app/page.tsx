@@ -12,22 +12,26 @@ export default function Home() {
   return (
     <ResizablePanelGroup
       direction="horizontal"
-      className="w-full h-screen rounded-lg border"
+      className="h-full w-full rounded-lg border"
     >
-      <ResizablePanel defaultSize={50}>
+      <ResizablePanel>
         <ResizablePanelGroup direction="vertical">
-          <ResizablePanel defaultSize={25}>
-            <PoolsCard className="flex w-full h-full items-center justify-center p-6"/>
+          <ResizablePanel>
+            <PoolsCard className="h-full w-full"/>
           </ResizablePanel>
-          <ResizableHandle />
-          <ResizablePanel defaultSize={75}>
-            <EventsCard className="flex w-full h-full items-center justify-center p-6"/>
+
+          <ResizableHandle/>
+
+          <ResizablePanel>
+            <EventsCard className="h-full w-full"/>
           </ResizablePanel>
         </ResizablePanelGroup>
       </ResizablePanel>
-      <ResizableHandle />
-      <ResizablePanel defaultSize={50} className="h-full">
-        <GraphCard className="w-full h-full items-center justify-center p-6"/>
+
+      <ResizableHandle/>
+
+      <ResizablePanel>
+        <GraphCard className="h-full w-full"/>
       </ResizablePanel>
     </ResizablePanelGroup>
   );
