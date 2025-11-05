@@ -37,7 +37,7 @@ export function GraphCard({ className }: React.ComponentProps<"div">) {
             <CardHeader>
                 <CardTitle>Leave</CardTitle>
                 <CardDescription>
-                    Paid leave accrual and usage over time
+                    Paid leave earned and used over time
                 </CardDescription>
             </CardHeader>
             <CardContent className="flex-row">
@@ -46,7 +46,7 @@ export function GraphCard({ className }: React.ComponentProps<"div">) {
                         <XAxis
                             dataKey="date"
                             tickLine={false}
-                            tickMargin={10}
+                            tickMargin={1}
                             axisLine={false}
                             tickFormatter={(value) => {
                                 return new Date(value).toLocaleDateString("en-US", {
@@ -66,6 +66,8 @@ export function GraphCard({ className }: React.ComponentProps<"div">) {
                             fill="var(--color-swimming)"
                             radius={[4, 4, 0, 0]}
                         />
+
+                        <ChartLegend content={<ChartLegendContent nameKey="dataKey" payload={undefined} />} />
                         <ChartTooltip
                             content={
                                 <ChartTooltipContent
@@ -111,6 +113,10 @@ export function GraphCard({ className }: React.ComponentProps<"div">) {
                     </BarChart>
                 </ChartContainer>
             </CardContent>
+            <CardFooter className="flex-col">
+                <div className="w-full justify-start">0 hours earned and</div>
+                <div className="w-full justify-start">0 hours used over time period</div>
+            </CardFooter>
         </Card>
     )
 }
