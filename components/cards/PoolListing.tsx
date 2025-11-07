@@ -1,36 +1,39 @@
 "use client";
 
 import React, { useState } from "react";
-import { Pool } from "@/lib/models/Pool";
-import { calculateAmount } from "@/lib/logic";
 import dayjs from "dayjs";
-import { deserializeToEvent } from "@/lib/models/Event";
+import { Card } from "../ui/card";
+import { CardHeader } from "../ui/card";
+import { LeaveEventDto } from "@/lib/models/LeaveEvent";
+import { deserializeToPool, } from "@/lib/models/LeavePool";
+import { amountInPool } from "@/lib/logic";
+import { deserializeToEvent } from "@/lib/models/LeaveEvent";
 import { selectEvents } from "@/lib/features/eventListSlice";
 import { useAppSelector } from "@/lib/hooks";
+import { selectPools } from "@/lib/features/poolListSlice";
 
 type PoolListingProps = {
-  className?: string;
-  pool: Pool;
+    className?: string;
+    poolId: number;
 };
 
-const PoolListing: React.FC<PoolListingProps> = ({ className, pool }) => {
-  const events = useAppSelector(selectEvents).map((event: EventDto) =>
-    deserializeToEvent(event)
-  );
+const PoolListing: React.FC<PoolListingProps> = ({ className, poolId }) => {
+    const pool = deserializeToPool(useAppSelector(selectPools).find((pool) => pool.id = poolId)!)
+    const events = useAppSelector(selectEvents).map((event: LeaveEventDto) =>
+        deserializeToEvent(event)
+    );
 
-  const [isDetailsPanelOpen, setIsDetailsPanelOpen] = useState(false);
+    const [isDetailsPanelOpen, setIsDetailsPanelOpen] = useState(false);
 
-  const amount = calculateAmount(
-    dayjs(),
-    pool,
-    events.filter((event) => event.poolId === pool.id)
-  );
+    const date = dayjs()
+    const amount = amountInPool(
+        date,
+        pool,
+        events)
 
-  return (
-    <Card className={`${className}`}>
-      ${amount}
-    </Card>
-  );
+    return (
+        <Card><CardHeader>{amount}</CardHeader></Card>
+    );
 };
 
 export default PoolListing;
