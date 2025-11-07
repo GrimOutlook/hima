@@ -120,3 +120,7 @@
     @apply bg-background text-foreground;
   }
 }
+.dash-card-title {
+    @apply text-3xl;
+}
+

@@ -1,11 +1,11 @@
 import { enumToArray, toTitleCase } from "../helpers";
 
 export enum Period {
-  Daily = "DAILY",
-  Weekly = "WEEKLY",
-  BiWeekly = "BIWEEKLY",
-  Monthly = "MONTHLY",
-  Yearly = "YEARLY",
+  Daily = "Daily",
+  Weekly = "Weekly",
+  BiWeekly = "BiWeekly",
+  Monthly = "Monthly",
+  Yearly = "Yearly",
 }
 
 export const periods = enumToArray(Period).map((str: string) =>
@@ -26,7 +26,6 @@ export const deserializeToPeriod = (period: string) => {
       return Period.Yearly;
     default:
       // TODO: Add remote for when this fails
-      // eslint-disable-next-line no-console, no-undef
       console.error(
         `Error deserializing period ${period}. Defaulting to daily.`
       );

@@ -1,13 +1,13 @@
 "use client"
 
 import {
-    Card,
-    CardAction,
-    CardContent,
-    CardDescription,
-    CardFooter,
-    CardHeader,
-    CardTitle,
+  Card,
+  CardAction,
+  CardContent,
+  CardDescription,
+  CardFooter,
+  CardHeader,
+  CardTitle,
 } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { ScrollArea } from "../ui/scroll-area";
@@ -20,32 +20,30 @@ import { useAppSelector } from "@/lib/hooks";
 
 export function EventsCard({ className }: React.ComponentProps<"div">) {
 
-    const events = useAppSelector(selectEvents)?.map((event) =>
-        deserializeToEvent(event)
-    ) || [];
+  const events = useAppSelector(selectEvents)?.map((event) =>
+    deserializeToEvent(event)
+  ) || [];
 
-    const events_count = events.length
-
-    return (
-        <Card className={className}>
-            <CardHeader>
-                <CardTitle>Events</CardTitle>
-                <CardDescription>Occasions that add or remove hours from a pool</CardDescription>
-                <CardAction>
-                    <Button variant="outline">Create</Button>
-                </CardAction>
-            </CardHeader>
-            <CardContent>
-                <ScrollArea>
-                    {/* This is where event listings go */}
-                    {events.map((event: LeaveEvent) => (
-                        <EventListing key={event.id} eventId={event.id} />
-                    ))}
-                </ScrollArea>
-            </CardContent>
-            <CardFooter>
-                {events_count} Events Tracked
-            </CardFooter>
-        </Card>
-    )
+  return (
+    <Card className={className}>
+      <CardHeader>
+        <CardTitle className="dash-card-title">Events</CardTitle>
+        <CardDescription>Occasions that add or remove hours from a pool</CardDescription>
+        <CardAction>
+          <Button variant="outline">Create</Button>
+        </CardAction>
+      </CardHeader>
+      <CardContent className="h-full min-h-40">
+        <ScrollArea className="h-full flex flex-col">
+          {/* This is where event listings go */}
+          {events.map((event: LeaveEvent) => (
+            <EventListing key={event.id} eventId={event.id} className="h-fit my-2 py-4" />
+          ))}
+        </ScrollArea>
+      </CardContent>
+      <CardFooter>
+        {events.length} Events Tracked
+      </CardFooter>
+    </Card>
+  )
 }

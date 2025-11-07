@@ -5,37 +5,37 @@ import type { PayloadAction } from "@reduxjs/toolkit";
 import { createSlice } from "@reduxjs/toolkit/react";
 import { getNextId } from "@/lib/helpers";
 import test_pools from "../debug/test_pools";
+import { debug_lists } from "../debug/debug";
 
-var debug_lists = require("@/lib/debug/debug").debug_lists
 console.log("DEBUG_LISTS: " + debug_lists)
 console.log("TEST_POOLS: " + test_pools)
-var pools = debug_lists == true ? test_pools : []
+const pools = debug_lists == true ? test_pools : []
 
 export interface PoolListState {
-    pools: LeavePoolDto[];
+  pools: LeavePoolDto[];
 }
 
 const initialState: PoolListState = {
-    pools: pools,
+  pools: pools,
 };
 
 export const poolListSlice = createSlice({
-    initialState,
-    name: "poolList",
-    reducers: (create) => ({
-        addPool: create.reducer((state, action: PayloadAction<LeavePoolDto>) => {
-            state.pools.push(action.payload);
-        }),
-        removePool: create.reducer((state, action: PayloadAction<number>) => {
-            state.pools = state.pools.filter(
-                (pool: LeavePoolDto) => action.payload !== pool.id
-            );
-        }),
+  initialState,
+  name: "poolList",
+  reducers: (create) => ({
+    addPool: create.reducer((state, action: PayloadAction<LeavePoolDto>) => {
+      state.pools.push(action.payload);
     }),
-    selectors: {
-        selectNextPoolID: (state) => getNextId(state.pools.map((pool) => pool.id)),
-        selectPools: (state) => state.pools,
-    },
+    removePool: create.reducer((state, action: PayloadAction<number>) => {
+      state.pools = state.pools.filter(
+        (pool: LeavePoolDto) => action.payload !== pool.id
+      );
+    }),
+  }),
+  selectors: {
+    selectNextPoolID: (state) => getNextId(state.pools.map((pool) => pool.id)),
+    selectPools: (state) => state.pools,
+  },
 });
 
 export const { addPool, removePool } = poolListSlice.actions;
