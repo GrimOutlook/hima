@@ -1,38 +1,18 @@
-import {
-    ResizableHandle,
-    ResizablePanel,
-    ResizablePanelGroup,
-} from "@/components/ui/resizable"
-
-import { GraphCard } from "@/components/cards/graph"
-import { PoolsCard } from "@/components/cards/pools"
-import { EventsCard } from "@/components/cards/events"
+import { GraphCard } from "@/components/cards/GraphCard"
+import { PoolsCard } from "@/components/cards/PoolsCard"
+import { EventsCard } from "@/components/cards/EventsCard"
 
 export default function Home() {
-    return (
-        <ResizablePanelGroup
-            direction="horizontal"
-            className="h-full w-full rounded-lg border"
-        >
-            <ResizablePanel defaultSize={33} minSize={20}>
-                <ResizablePanelGroup direction="vertical">
-                    <ResizablePanel defaultSize={50}>
-                        <PoolsCard className="h-full w-full" />
-                    </ResizablePanel>
+  return (
+    <div id="home" className="flex flex-row h-full w-full">
+      <div className="flex flex-col h-full">
+        <PoolsCard className="m-2 min-w-72" />
+        <EventsCard className="m-2 min-w-72" />
+      </div>
 
-                    <ResizableHandle />
-
-                    <ResizablePanel defaultSize={50}>
-                        <EventsCard className="h-full w-full" />
-                    </ResizablePanel>
-                </ResizablePanelGroup>
-            </ResizablePanel>
-
-            <ResizableHandle />
-
-            <ResizablePanel defaultSize={67}>
-                <GraphCard className="h-full w-full" />
-            </ResizablePanel>
-        </ResizablePanelGroup>
-    );
+      <div className="w-full">
+        <GraphCard className="m-2 min-w-72" />
+      </div>
+    </div>
+  );
 }
