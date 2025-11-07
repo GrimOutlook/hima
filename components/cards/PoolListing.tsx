@@ -18,10 +18,16 @@ type PoolListingProps = {
 };
 
 const PoolListing: React.FC<PoolListingProps> = ({ className, poolId }) => {
-    const pool = deserializeToPool(useAppSelector(selectPools).find((pool) => pool.id = poolId)!)
-    const events = useAppSelector(selectEvents).map((event: LeaveEventDto) =>
+    const dto = useAppSelector(selectPools)?.find((pool) => pool.id == poolId)
+    if (!dto) {
+        console.log("No Pool DTO found for ID: " + poolId)
+        return
+    }
+
+    const pool = deserializeToPool(dto)
+    const events = useAppSelector(selectEvents)?.map((event: LeaveEventDto) =>
         deserializeToEvent(event)
-    );
+    ) || [];
 
     const [isDetailsPanelOpen, setIsDetailsPanelOpen] = useState(false);
 

@@ -25,9 +25,10 @@ type PoolsCardProps = {
 
 const PoolsCard: React.FC<PoolsCardProps> = ({ className }) => {
     const dispatch = useAppDispatch();
-    const pools = useAppSelector(selectPools).map((pool) =>
+    const pools = useAppSelector(selectPools)?.map((pool) =>
         deserializeToPool(pool)
-    );
+    ) || [];
+
     return (
         <Card className={className}>
             <CardHeader>

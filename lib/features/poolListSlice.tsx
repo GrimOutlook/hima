@@ -4,13 +4,19 @@ import { LeavePoolDto } from "@/lib/models/LeavePool";
 import type { PayloadAction } from "@reduxjs/toolkit";
 import { createSlice } from "@reduxjs/toolkit/react";
 import { getNextId } from "@/lib/helpers";
+import test_pools from "../debug/test_pools";
+
+var debug_lists = require("@/lib/debug/debug").debug_lists
+console.log("DEBUG_LISTS: " + debug_lists)
+console.log("TEST_POOLS: " + test_pools)
+var pools = debug_lists == true ? test_pools : []
 
 export interface PoolListState {
     pools: LeavePoolDto[];
 }
 
 const initialState: PoolListState = {
-    pools: [],
+    pools: pools,
 };
 
 export const poolListSlice = createSlice({

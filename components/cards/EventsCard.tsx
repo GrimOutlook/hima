@@ -20,10 +20,12 @@ import { useAppSelector } from "@/lib/hooks";
 
 export function EventsCard({ className }: React.ComponentProps<"div">) {
 
-    const events = useAppSelector(selectEvents).map((event) =>
+    const events = useAppSelector(selectEvents)?.map((event) =>
         deserializeToEvent(event)
-    );
+    ) || [];
+
     const events_count = events.length
+
     return (
         <Card className={className}>
             <CardHeader>
