@@ -40,8 +40,8 @@ const PoolsCard: React.FC<PoolsCardProps> = ({ className }) => {
           <Button variant="outline" onClick={() => dispatch(setPoolFormOpenState(true))}>Create</Button>
         </CardAction>
       </CardHeader>
-      <CardContent>
-        <ScrollArea>
+      <CardContent className="h-full min-h-40">
+        <ScrollArea className="h-full flex flex-col">
           {/* This is where pool listings go */}
           {pools.map((pool: LeavePool) => (
             <PoolListing key={pool.id} poolId={pool.id} className={"my-2 py-4"} />

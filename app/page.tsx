@@ -5,11 +5,11 @@ import DateSelectionCard from "@/components/cards/DateSelectionCard"
 
 export default function Home() {
   return (
-    <div id="home" className="flex flex-row size-full p-2" >
+    <div id="home" className="flex flex-row p-2 h-dvh w-dvw" >
       <div className="flex flex-col min-w-96 w-fit h-full gap-1 p-0.5" >
-        <DateSelectionCard className="w-full h-fit" />
-        <PoolsCard className="size-full max-h-[40dvh]" />
-        <EventsCard className="size-full max-h-[40dvh]" />
+        <DateSelectionCard className="w-full h-[20dvh]" />
+        <PoolsCard className="size-full h-[40dvh]" />
+        <EventsCard className="size-full h-[40dvh]" />
       </div>
 
       <div className="w-full p-0.5">

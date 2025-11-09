@@ -50,7 +50,7 @@ const PoolListing: React.FC<PoolListingProps> = ({ className, poolId }) => {
         <CardTitle>{pool.name}</CardTitle>
         <CardDescription>{pool.description}</CardDescription>
       </CardHeader>
-      <CardContent className="text-xl -my-4">{amount} Hours</CardContent>
+      <CardContent className="text-xl -my-6">{amount} Hours</CardContent>
       <CardFooter className="text-sm text-stone-600">+{pool.amount} {pool.period.toString()}</CardFooter>
     </Card>
   );
