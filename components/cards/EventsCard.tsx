@@ -41,9 +41,6 @@ export function EventsCard({ className }: React.ComponentProps<"div">) {
           ))}
         </ScrollArea>
       </CardContent>
-      <CardFooter>
-        {events.length} Events Tracked
-      </CardFooter>
     </Card>
   )
 }

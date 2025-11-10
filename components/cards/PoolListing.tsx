@@ -20,10 +20,11 @@ import { selectPools } from "@/lib/features/poolListSlice";
 type PoolListingProps = {
   className?: string;
   poolId: number;
+  date: Date;
 };
 
 
-const PoolListing: React.FC<PoolListingProps> = ({ className, poolId }) => {
+const PoolListing: React.FC<PoolListingProps> = ({ className, poolId, date }) => {
   const dto = useAppSelector(selectPools)?.find((pool) => pool.id == poolId)
   const events = useAppSelector(selectEvents)?.map((event: LeaveEventDto) =>
     deserializeToEvent(event)
@@ -38,9 +39,8 @@ const PoolListing: React.FC<PoolListingProps> = ({ className, poolId }) => {
   const pool = deserializeToPool(dto)
 
 
-  const date = dayjs()
   const amount = amountInPool(
-    date,
+    dayjs(date),
     pool,
     events)
 

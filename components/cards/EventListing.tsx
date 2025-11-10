@@ -42,13 +42,21 @@ const EventListing: React.FC<EventListingProps> = ({ className, eventId }) => {
     )
   });
 
+  const transaction_dates = event.poolTransactions.map((pt) => pt.date).sort();
+  let date_string: string;
+  if (transaction_dates.length == 1) {
+    date_string = "on " + transaction_dates[0].toDate().toDateString()
+  } else {
+    date_string = "from " + transaction_dates[0].toDate().toDateString() + " to " + transaction_dates[transaction_dates.length - 1].toDate().toDateString()
+  }
+
   return (
     <Card className={className}>
       <CardHeader>
         <CardTitle>{event.title}</CardTitle>
         <CardDescription>{event.description}</CardDescription>
       </CardHeader>
-      <CardContent className="text-xl -my-6">{total_hours} Hours</CardContent>
+      <CardContent className="text-xl -my-6">{total_hours} Hours {date_string}</CardContent>
       <CardFooter className="text-sm text-stone-600 text-nowrap">
         {affected_pools_string}
       </CardFooter>
