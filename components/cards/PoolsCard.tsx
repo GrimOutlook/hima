@@ -19,7 +19,8 @@ import { setPoolFormOpenState } from "@/lib/features/poolFormSlice";
 import { useAppDispatch, useAppSelector } from "@/lib/hooks";
 
 import { Calendar } from "@/components/ui/calendar"
-import { Calendar as CalendarIcon } from "lucide-react"
+import { Calendar as CalendarIcon, TimerReset } from "lucide-react"
+import { toast } from "sonner"
 import {
   Popover,
   PopoverContent,
@@ -52,6 +53,11 @@ const PoolsCard: React.FC<PoolsCardProps> = ({ className }) => {
   const [month, setMonth] = React.useState<Date | undefined>(selectedDate.toDate())
   const [value, setValue] = React.useState(formatDate(selectedDate.toDate()))
 
+  function setDate(date: Date) {
+    dispatch(setProjectionDate(date.getTime()));
+    setValue(formatDate(date))
+  }
+
   return (
     <Card className={`${className}`}>
       <CardHeader>
@@ -75,66 +81,89 @@ const PoolsCard: React.FC<PoolsCardProps> = ({ className }) => {
           <Label htmlFor="date" className="px-1">
             Projection Date
           </Label>
-          <div className="relative flex gap-2">
-            <Input
-              id="date"
-              value={value}
-              className="bg-background pr-10"
-              onChange={(e) => {
-                const date = new Date(e.target.value)
-                setValue(e.target.value)
-                if (isValidDate(date)) {
-                  dispatch(setProjectionDate(date.getTime()))
-                  setMonth(date)
-                }
-              }}
-              onKeyDown={(e) => {
-                if (e.key === "ArrowDown") {
-                  e.preventDefault()
-                  setOpen(true)
-                }
-              }}
-            />
-            <Popover open={open} onOpenChange={setOpen}>
-              <PopoverTrigger asChild>
-                <Button
-                  id="date-picker"
-                  variant="ghost"
-                  className="absolute top-1/2 right-2 size-6 -translate-y-1/2"
+          <div className="flex gap-2">
+            <div className="relative flex gap-2">
+              <Input
+                id="date"
+                value={value}
+                className="bg-background pr-10"
+                onChange={(e) => {
+                  setValue(e.target.value)
+                }}
+                onBlur={(e) => {
+                  const date = new Date(e.target.value)
+                  if (isValidDate(date)) {
+                    dispatch(setProjectionDate(date.getTime()))
+                    setMonth(date)
+                  }
+                }}
+                onKeyDown={(e) => {
+                  if (e.key === "ArrowDown") {
+                    e.preventDefault()
+                    setOpen(true)
+                  }
+                }}
+              />
+              <Popover open={open} onOpenChange={setOpen}>
+                <PopoverTrigger asChild>
+                  <Button
+                    id="date-picker"
+                    variant="ghost"
+                    className="absolute top-1/2 right-2 size-6 -translate-y-1/2"
+                  >
+                    <CalendarIcon className="size-3.5" />
+                    <span className="sr-only">Select date</span>
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent
+                  className="w-auto overflow-hidden p-0"
+                  align="end"
+                  alignOffset={-8}
+                  sideOffset={10}
                 >
-                  <CalendarIcon className="size-3.5" />
-                  <span className="sr-only">Select date</span>
-                </Button>
-              </PopoverTrigger>
-              <PopoverContent
-                className="w-auto overflow-hidden p-0"
-                align="end"
-                alignOffset={-8}
-                sideOffset={10}
-              >
-                <Calendar
-                  mode="single"
-                  selected={selectedDate.toDate()}
-                  captionLayout="dropdown"
-                  month={month}
-                  onMonthChange={setMonth}
-                  onSelect={(date) => {
-                    if (!!date) {
-                      dispatch(setProjectionDate(date.getTime()))
-                      setValue(formatDate(date))
-                    }
-                    setOpen(false)
-                  }}
-                />
-              </PopoverContent>
-            </Popover>
+                  <Calendar
+                    mode="single"
+                    selected={selectedDate.toDate()}
+                    captionLayout="dropdown"
+                    month={month}
+                    onMonthChange={setMonth}
+                    onSelect={(date) => {
+                      if (!!date) {
+                        dispatch(setProjectionDate(date.getTime()))
+                        setValue(formatDate(date))
+                      }
+                      setOpen(false)
+                    }}
+                  />
+                </PopoverContent>
+              </Popover>
+            </div>
+            <Button variant="outline" size="icon" aria-label="Reset Projection Date" onClick={() => {
+              const oldDate = selectedDate.toDate()
+              const date = dayjs().toDate()
+              setDate(date)
+              if (oldDate.toDateString() == date.toDateString()) {
+                return
+              }
+
+              toast("Date set to today", {
+                description: date.toDateString(),
+                action: {
+                  label: "Undo",
+                  onClick: () => {
+                    setDate(oldDate)
+                  },
+                },
+              })
+            }}>
+              <TimerReset />
+            </Button>
           </div>
         </div>
       </CardFooter>
     </Card>
   )
 }
-
 
 function formatDate(date: Date | undefined) {
   if (!date) {
