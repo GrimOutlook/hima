@@ -1,5 +1,5 @@
 import dayjs, { Dayjs } from "dayjs";
-import { PoolTransaction, PoolTransactionDto, serializeToPoolTransactionDto, deserializeToPoolTransaction } from "./PoolTransaction";
+import { PoolTransaction, PoolTransactionDto, serializeToPoolTransactionDto, deserializeToPoolTransaction, } from "./PoolTransaction";
 
 export type LeaveEvent = {
   // Unique identifier for this event
@@ -32,3 +32,7 @@ export const deserializeToEvent = (event: LeaveEventDto): LeaveEvent => ({
   dates: event.dates.map((date: string) => dayjs(date)),
   poolTransactions: event.poolTransactions.map((t) => deserializeToPoolTransaction(t))
 });
+
+export const firstDate = (event: LeaveEvent) => {
+  return event.poolTransactions.map((pt) => pt.date).sort()[0]
+}

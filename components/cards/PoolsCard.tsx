@@ -27,14 +27,17 @@ import {
   PopoverTrigger,
 } from "@/components/ui/popover"
 import dayjs from "dayjs"
+import { selectProjectionDate, setProjectionDate } from "@/lib/features/projectionDateSlice"
 
 type PoolsCardProps = {
   className?: string;
 };
 
 const PoolsCard: React.FC<PoolsCardProps> = ({ className }) => {
-  const [date, setDate] = React.useState<Date>(dayjs().toDate())
   const dispatch = useAppDispatch();
+
+  // Get the projection date selected by the user
+  const selectedDate = dayjs(useAppSelector(selectProjectionDate));
 
   // Get all of the pools from the store so we can display them in the list
   const pools = useAppSelector(selectPools)?.map((pool) =>
@@ -54,7 +57,7 @@ const PoolsCard: React.FC<PoolsCardProps> = ({ className }) => {
         <ScrollArea className="h-full flex flex-col">
           {/* This is where pool listings go */}
           {pools.map((pool: LeavePool) => (
-            <PoolListing key={pool.id} poolId={pool.id} date={date} className={"my-2 py-4"} />
+            <PoolListing key={pool.id} poolId={pool.id} date={selectedDate.toDate()} className={"my-2 py-4"} />
           ))}
         </ScrollArea>
       </CardContent>
@@ -64,15 +67,15 @@ const PoolsCard: React.FC<PoolsCardProps> = ({ className }) => {
             <Button
               id="projection-date"
               variant="outline"
-              data-empty={!date}
+              data-empty={!selectedDate}
               className="data-[empty=true]:text-muted-foreground w-64 self-center justify-start text-left font-normal"
             >
               <CalendarIcon />
-              {format(date, "PPP")}
+              {format(selectedDate.toDate(), "PPP")}
             </Button>
           </PopoverTrigger>
           <PopoverContent className="w-auto p-0">
-            <Calendar required={true} mode="single" selected={date} onSelect={setDate} />
+            <Calendar required={true} mode="single" selected={selectedDate.toDate()} onSelect={(date) => dispatch(setProjectionDate(date.getTime()))} />
           </PopoverContent>
         </Popover>
       </CardFooter>

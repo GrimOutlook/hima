@@ -11,7 +11,7 @@ import {
 } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { ScrollArea } from "../ui/scroll-area";
-import { LeaveEvent, deserializeToEvent } from "@/lib/models/LeaveEvent"
+import { LeaveEvent, deserializeToEvent, firstDate } from "@/lib/models/LeaveEvent"
 import EventListing from "@/components/cards/EventListing"
 
 import React from "react";
@@ -20,6 +20,7 @@ import { useAppSelector } from "@/lib/hooks";
 import { selectPools } from "@/lib/features/poolListSlice"
 import { LeavePoolDto, deserializeToPool } from "@/lib/models/LeavePool"
 import { nextPeriodDateFromDate } from "@/lib/logic";
+import { selectProjectionDate } from "@/lib/features/projectionDateSlice"
 import dayjs from "dayjs"
 
 export function EventsCard({ className }: React.ComponentProps<"div">) {
@@ -33,6 +34,9 @@ export function EventsCard({ className }: React.ComponentProps<"div">) {
     deserializeToEvent(event)
   ) || [];
 
+  // Get the projection date selected by the user
+  const selectedDate = dayjs(useAppSelector(selectProjectionDate));
+
   // If the user has it enabled, add all the leave pool periodic events.
   // TODO: Add an option to turn this off.
   pools.forEach((pool) => {
@@ -41,9 +45,10 @@ export function EventsCard({ className }: React.ComponentProps<"div">) {
     let date = dayjs(pool.startDate)
     while (true) {
       date = nextPeriodDateFromDate(date, pool.period)
-      if (date.isAfter(dayjs())) {
+      if (date.isAfter(selectedDate)) {
         break
       }
+
       const event: LeaveEvent = {
         title: pool.name + " Addition",
         dates: [date],
@@ -72,8 +77,8 @@ export function EventsCard({ className }: React.ComponentProps<"div">) {
       <CardContent className="h-full min-h-40">
         <ScrollArea className="h-full flex flex-col">
           {/* TODO: Determine if this needs to be sorted. If so, might refactor to make events and pools classes to make it less verbose. */}
-          {events.map((event: LeaveEvent) => (
-            <EventListing key={event.id} eventId={event.id} className="h-fit my-2 py-4" />
+          {events.sort((a, b) => firstDate(b).diff(firstDate(a))).map((event: LeaveEvent, idx: number) => (
+            <EventListing key={idx} leave_event={event} className="h-fit my-2 py-4" />
           ))}
         </ScrollArea>
       </CardContent>

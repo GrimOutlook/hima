@@ -7,8 +7,6 @@ import { getNextId } from "@/lib/helpers";
 import test_pools from "../debug/test_pools";
 import { debug_lists } from "../debug/debug";
 
-console.log("DEBUG_LISTS: " + debug_lists)
-console.log("TEST_POOLS: " + test_pools)
 const pools = debug_lists == true ? test_pools : []
 
 export interface PoolListState {

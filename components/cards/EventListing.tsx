@@ -1,7 +1,9 @@
 "use client"
 
+import dayjs from "dayjs"
 import {
   deserializeToEvent,
+  LeaveEvent,
   LeaveEventDto } from "@/lib/models/LeaveEvent";
 import { Card, CardTitle, CardContent, CardHeader, CardFooter, CardDescription, CardAction } from "../ui/card"
 import React, { useState } from "react";
@@ -13,25 +15,19 @@ import { deserializeToPool,
 
 type EventListingProps = {
   className?: string;
-  eventId: number;
+  leave_event: LeaveEvent;
 };
 
-const EventListing: React.FC<EventListingProps> = ({ className, eventId }) => {
+const EventListing: React.FC<EventListingProps> = ({ className, leave_event }) => {
   const [isDetailsPanelOpen, setIsDetailsPanelOpen] = useState(false);
   const pools = useAppSelector(selectPools)?.map((pool: LeavePoolDto) =>
     deserializeToPool(pool)
   ) || [];
-  const dto = useAppSelector(selectEvents).find((ev) => ev.id == eventId)
-  if (!dto) {
-    console.log("Failed to find event with ID: " + eventId)
-    return
-  }
 
-  const event = deserializeToEvent(dto)
-  const total_hours = event.poolTransactions.reduce((acc, pt) => pt.hours + acc, 0)
+  const total_hours = leave_event.poolTransactions.reduce((acc, pt) => pt.hours + acc, 0)
 
   // Gets a displayable list of all of the pools that the event pulls from.
-  const affected_pools = Array.from(new Set(event.poolTransactions.map((pt) => pt.poolId)));
+  const affected_pools = Array.from(new Set(leave_event.poolTransactions.map((pt) => pt.poolId)));
   const affected_pools_string = affected_pools.sort().map((id, i) => {
     const eventPoolName = pools.find((p) => p.id == id)!.name
     return (
@@ -42,7 +38,7 @@ const EventListing: React.FC<EventListingProps> = ({ className, eventId }) => {
     )
   });
 
-  const transaction_dates = event.poolTransactions.map((pt) => pt.date).sort();
+  const transaction_dates = leave_event.poolTransactions.map((pt) => dayjs(pt.date)).sort();
   let date_string;
   if (transaction_dates.length == 1) {
     date_string = <>on <span className="font-semibold">{transaction_dates[0].toDate().toDateString()}</span></>
@@ -63,8 +59,8 @@ const EventListing: React.FC<EventListingProps> = ({ className, eventId }) => {
   return (
     <Card className={className}>
       <CardHeader>
-        <CardTitle>{event.title}</CardTitle>
-        <CardDescription>{event.description}</CardDescription>
+        <CardTitle>{leave_event.title}</CardTitle>
+        <CardDescription>{leave_event.description}</CardDescription>
       </CardHeader>
       <CardContent className="text-xl -my-6"><span className={`font-semibold ${total_hours_color}`}>{Math.abs(total_hours)}</span> Hours {date_string}</CardContent>
       <CardFooter className="text-sm text-stone-600 text-nowrap">

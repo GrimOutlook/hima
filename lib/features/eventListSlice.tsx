@@ -6,8 +6,6 @@ import { getNextId } from "@/lib/helpers";
 import test_events from "../debug/test_events"
 import { debug_lists } from "../debug/debug";
 
-console.log("DEBUG_LISTS: " + debug_lists)
-console.log("TEST_POOLS: " + test_events)
 const events = debug_lists == true ? test_events : []
 
 
@@ -35,7 +33,7 @@ export const eventListSlice = createSlice({
   selectors: {
     selectEvents: (state) => state.events,
     selectNextEventID: (state) =>
-      getNextId(state.events.map((event) => event.id)),
+      getNextId(state.events.map((event) => event.id!)),
   },
 });
 
