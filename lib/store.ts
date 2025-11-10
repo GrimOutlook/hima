@@ -15,7 +15,7 @@ import { eventListSlice } from "./features/eventListSlice";
 import { poolFormSlice } from "./features/poolFormSlice";
 import { poolListSlice } from "./features/poolListSlice";
 import { settingsMenuSlice } from "./features/settingsMenuSlice";
-import { projectionsDateSlice } from "./features/projectionDateSlice";
+import { mainPageOptionsSlice } from "./features/mainPageOptionsSlice";
 
 /*
  * `combineSlices` automatically combines the reducers using
@@ -29,7 +29,7 @@ const rootReducer = combineSlices(
   alertDialogSlice,
   unsavedChangesSlice,
   settingsMenuSlice,
-  projectionsDateSlice,
+  mainPageOptionsSlice,
 );
 // Infer the `RootState` type from the root reducer
 export type RootState = ReturnType<typeof rootReducer>;

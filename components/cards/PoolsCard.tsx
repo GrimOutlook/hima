@@ -20,14 +20,17 @@ import { useAppDispatch, useAppSelector } from "@/lib/hooks";
 
 import { Calendar } from "@/components/ui/calendar"
 import { Calendar as CalendarIcon } from "lucide-react"
-import { format } from "date-fns"
 import {
   Popover,
   PopoverContent,
   PopoverTrigger,
 } from "@/components/ui/popover"
 import dayjs from "dayjs"
-import { selectProjectionDate, setProjectionDate } from "@/lib/features/projectionDateSlice"
+import { selectProjectionDate, setProjectionDate } from "@/lib/features/mainPageOptionsSlice"
+import { Label } from "../ui/label"
+import { Input } from "../ui/input"
+import { Separator } from "../ui/separator";
+
 
 type PoolsCardProps = {
   className?: string;
@@ -43,6 +46,11 @@ const PoolsCard: React.FC<PoolsCardProps> = ({ className }) => {
   const pools = useAppSelector(selectPools)?.map((pool) =>
     deserializeToPool(pool)
   ) || [];
+
+
+  const [open, setOpen] = React.useState(false)
+  const [month, setMonth] = React.useState<Date | undefined>(selectedDate.toDate())
+  const [value, setValue] = React.useState(formatDate(selectedDate.toDate()))
 
   return (
     <Card className={`${className}`}>
@@ -61,26 +69,90 @@ const PoolsCard: React.FC<PoolsCardProps> = ({ className }) => {
           ))}
         </ScrollArea>
       </CardContent>
+      <Separator />
       <CardFooter>
-        <Popover>
-          <PopoverTrigger asChild>
-            <Button
-              id="projection-date"
-              variant="outline"
-              data-empty={!selectedDate}
-              className="data-[empty=true]:text-muted-foreground w-64 self-center justify-start text-left font-normal"
-            >
-              <CalendarIcon />
-              {format(selectedDate.toDate(), "PPP")}
-            </Button>
-          </PopoverTrigger>
-          <PopoverContent className="w-auto p-0">
-            <Calendar required={true} mode="single" selected={selectedDate.toDate()} onSelect={(date) => dispatch(setProjectionDate(date.getTime()))} />
-          </PopoverContent>
-        </Popover>
+        <div className="flex flex-col gap-3">
+          <Label htmlFor="date" className="px-1">
+            Projection Date
+          </Label>
+          <div className="relative flex gap-2">
+            <Input
+              id="date"
+              value={value}
+              className="bg-background pr-10"
+              onChange={(e) => {
+                const date = new Date(e.target.value)
+                setValue(e.target.value)
+                if (isValidDate(date)) {
+                  dispatch(setProjectionDate(date.getTime()))
+                  setMonth(date)
+                }
+              }}
+              onKeyDown={(e) => {
+                if (e.key === "ArrowDown") {
+                  e.preventDefault()
+                  setOpen(true)
+                }
+              }}
+            />
+            <Popover open={open} onOpenChange={setOpen}>
+              <PopoverTrigger asChild>
+                <Button
+                  id="date-picker"
+                  variant="ghost"
+                  className="absolute top-1/2 right-2 size-6 -translate-y-1/2"
+                >
+                  <CalendarIcon className="size-3.5" />
+                  <span className="sr-only">Select date</span>
+                </Button>
+              </PopoverTrigger>
+              <PopoverContent
+                className="w-auto overflow-hidden p-0"
+                align="end"
+                alignOffset={-8}
+                sideOffset={10}
+              >
+                <Calendar
+                  mode="single"
+                  selected={selectedDate.toDate()}
+                  captionLayout="dropdown"
+                  month={month}
+                  onMonthChange={setMonth}
+                  onSelect={(date) => {
+                    if (!!date) {
+                      dispatch(setProjectionDate(date.getTime()))
+                      setValue(formatDate(date))
+                    }
+                    setOpen(false)
+                  }}
+                />
+              </PopoverContent>
+            </Popover>
+          </div>
+        </div>
       </CardFooter>
     </Card>
   )
+}
+
+
+function formatDate(date: Date | undefined) {
+  if (!date) {
+    return ""
+  }
+
+  return date.toLocaleDateString("en-US", {
+    day: "2-digit",
+    month: "long",
+    year: "numeric",
+  })
+}
+
+function isValidDate(date: Date | undefined) {
+  if (!date) {
+    return false
+  }
+  return !isNaN(date.getTime())
 }
 
 export default PoolsCard
