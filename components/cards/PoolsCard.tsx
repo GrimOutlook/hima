@@ -19,7 +19,7 @@ import { setPoolFormOpenState } from "@/lib/features/poolFormSlice";
 import { useAppDispatch, useAppSelector } from "@/lib/hooks";
 
 import { Calendar } from "@/components/ui/calendar"
-import { Calendar as CalendarIcon, TimerReset } from "lucide-react"
+import { Calendar as CalendarIcon, TimerReset, Plus } from "lucide-react"
 import { toast } from "sonner"
 import {
   Popover,
@@ -64,7 +64,11 @@ const PoolsCard: React.FC<PoolsCardProps> = ({ className }) => {
         <CardTitle className="dash-card-title">Pools</CardTitle>
         <CardDescription>Pools track amount of hours available for paid time off work</CardDescription>
         <CardAction>
-          <Button variant="outline" onClick={() => dispatch(setPoolFormOpenState(true))}>Create</Button>
+          <Button variant="outline" size="icon" onClick={() => {
+            console.log("Clicked create pool...")
+          }}>
+            <Plus />
+          </Button>
         </CardAction>
       </CardHeader>
       <CardContent className="h-full min-h-40">

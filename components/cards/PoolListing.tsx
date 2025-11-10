@@ -7,6 +7,7 @@ import {
   CardDescription,
   CardFooter,
   CardTitle,
+  CardAction,
   Card } from "../ui/card";
 import { CardHeader } from "../ui/card";
 import { LeaveEventDto } from "@/lib/models/LeaveEvent";
@@ -16,6 +17,8 @@ import { deserializeToEvent } from "@/lib/models/LeaveEvent";
 import { selectEvents } from "@/lib/features/eventListSlice";
 import { useAppSelector } from "@/lib/hooks";
 import { selectPools } from "@/lib/features/poolListSlice";
+import { Button } from "../ui/button";
+import { Pencil } from "lucide-react";
 
 type PoolListingProps = {
   className?: string;
@@ -49,6 +52,13 @@ const PoolListing: React.FC<PoolListingProps> = ({ className, poolId, date }) =>
       <CardHeader>
         <CardTitle>{pool.name}</CardTitle>
         <CardDescription>{pool.description}</CardDescription>
+        <CardAction>
+          <Button variant="outline" size="icon-sm" aria-label="Reset Projection Date" onClick={() => {
+            console.log("Editing pool")
+          }}>
+            <Pencil />
+          </Button>
+        </CardAction>
       </CardHeader>
       <CardContent className="text-xl -my-6">{amount} Hours</CardContent>
       <CardFooter className="text-sm text-stone-600">+{pool.amount} {pool.period.toString()}</CardFooter>

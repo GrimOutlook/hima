@@ -2,16 +2,16 @@
 
 import dayjs from "dayjs"
 import {
-  deserializeToEvent,
   LeaveEvent,
-  LeaveEventDto } from "@/lib/models/LeaveEvent";
+} from "@/lib/models/LeaveEvent";
 import { Card, CardTitle, CardContent, CardHeader, CardFooter, CardDescription, CardAction } from "../ui/card"
 import React, { useState } from "react";
 import { useAppSelector } from "@/lib/hooks";
-import { selectEvents } from "@/lib/features/eventListSlice";
 import { selectPools } from "@/lib/features/poolListSlice";
 import { deserializeToPool,
   LeavePoolDto } from "@/lib/models/LeavePool";
+import { Button } from "../ui/button"
+import { Pencil } from "lucide-react"
 
 type EventListingProps = {
   className?: string;
@@ -61,6 +61,15 @@ const EventListing: React.FC<EventListingProps> = ({ className, leave_event }) =
       <CardHeader>
         <CardTitle>{leave_event.title}</CardTitle>
         <CardDescription>{leave_event.description}</CardDescription>
+        <CardAction>
+          {leave_event.id != null &&
+            <Button variant="outline" size="icon-sm" aria-label="Reset Projection Date" onClick={() => {
+              console.log("Editing event")
+            }}>
+              <Pencil />
+            </Button>
+          }
+        </CardAction>
       </CardHeader>
       <CardContent className="text-xl -my-6"><span className={`font-semibold ${total_hours_color}`}>{Math.abs(total_hours)}</span> Hours {date_string}</CardContent>
       <CardFooter className="text-sm text-stone-600 text-nowrap">
