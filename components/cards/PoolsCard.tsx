@@ -1,5 +1,12 @@
 "use client"
 
+import dayjs from "dayjs"
+import { Calendar as CalendarIcon, Plus, TimerReset } from "lucide-react"
+import React from "react";
+import { toast } from "sonner"
+
+import { Button } from "@/components/ui/button"
+import { Calendar } from "@/components/ui/calendar"
 import {
   Card,
   CardAction,
@@ -9,28 +16,21 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card"
-import PoolListing from "./PoolListing"
-import React from "react";
-import { Button } from "@/components/ui/button"
-import { LeavePool, deserializeToPool } from "@/lib/models/LeavePool"
-import { ScrollArea } from "@/components/ui/scroll-area"
-import { selectPools } from "@/lib/features/poolListSlice";
-import { setPoolFormOpenState } from "@/lib/features/poolFormSlice";
-import { useAppDispatch, useAppSelector } from "@/lib/hooks";
-
-import { Calendar } from "@/components/ui/calendar"
-import { Calendar as CalendarIcon, TimerReset, Plus } from "lucide-react"
-import { toast } from "sonner"
 import {
   Popover,
   PopoverContent,
   PopoverTrigger,
 } from "@/components/ui/popover"
-import dayjs from "dayjs"
+import { ScrollArea } from "@/components/ui/scroll-area"
 import { selectProjectionDate, setProjectionDate } from "@/lib/features/mainPageOptionsSlice"
-import { Label } from "../ui/label"
+import { selectPools } from "@/lib/features/poolListSlice";
+import { useAppDispatch, useAppSelector } from "@/lib/hooks";
+import { deserializeToPool, LeavePool } from "@/lib/models/LeavePool"
+
 import { Input } from "../ui/input"
+import { Label } from "../ui/label"
 import { Separator } from "../ui/separator";
+import PoolListing from "./PoolListing"
 
 
 type PoolsCardProps = {
@@ -48,7 +48,6 @@ const PoolsCard: React.FC<PoolsCardProps> = ({ className }) => {
     deserializeToPool(pool)
   ) || [];
 
-
   const [open, setOpen] = React.useState(false)
   const [month, setMonth] = React.useState<Date | undefined>(selectedDate.toDate())
   const [value, setValue] = React.useState(formatDate(selectedDate.toDate()))
@@ -65,7 +64,7 @@ const PoolsCard: React.FC<PoolsCardProps> = ({ className }) => {
         <CardDescription>Pools track amount of hours available for paid time off work</CardDescription>
         <CardAction>
           <Button variant="outline" size="icon" onClick={() => {
-            console.log("Clicked create pool...")
+            console.debug("Clicked create pool...")
           }}>
             <Plus />
           </Button>
@@ -75,7 +74,7 @@ const PoolsCard: React.FC<PoolsCardProps> = ({ className }) => {
         <ScrollArea className="h-full flex flex-col">
           {/* This is where pool listings go */}
           {pools.map((pool: LeavePool) => (
-            <PoolListing key={pool.id} poolId={pool.id} date={selectedDate.toDate()} className={"my-2 py-4"} />
+            <PoolListing key={pool.id} pool={pool} date={selectedDate.toDate()} className={"my-2 py-4"} />
           ))}
         </ScrollArea>
       </CardContent>

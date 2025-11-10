@@ -18,10 +18,11 @@ export const mainPageOptionsSlice = createSlice({
   name: "mainPageOptions",
   reducers: (create) => ({
     setProjectionDate: create.reducer((state, action: PayloadAction<number>) => {
+      console.debug("Setting projectionDate to " + dayjs(action.payload).toDate().toDateString())
       state.projectionDate = action.payload;
     }),
     setShowAllEvents: create.reducer((state, action: PayloadAction<boolean>) => {
-      console.log("Setting showAllEvents to " + action.payload)
+      console.debug("Setting showAllEvents to " + action.payload)
       state.showAllEvents = action.payload;
     }),
   }),

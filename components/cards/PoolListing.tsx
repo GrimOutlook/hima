@@ -1,46 +1,38 @@
 "use client";
 
-import React, { useState } from "react";
 import dayjs from "dayjs";
+import { Pencil } from "lucide-react";
+import React from "react";
+
+import { selectEvents } from "@/lib/features/eventListSlice";
+import { useAppSelector } from "@/lib/hooks";
+import { amountInPool } from "@/lib/logic";
+import { LeaveEventDto } from "@/lib/models/LeaveEvent";
+import { deserializeToEvent } from "@/lib/models/LeaveEvent";
 import {
+  LeavePool,
+} from "@/lib/models/LeavePool";
+
+import { Button } from "../ui/button";
+import {
+  Card, CardAction,
   CardContent,
   CardDescription,
   CardFooter,
-  CardTitle,
-  CardAction,
-  Card } from "../ui/card";
+  CardTitle } from "../ui/card";
 import { CardHeader } from "../ui/card";
-import { LeaveEventDto } from "@/lib/models/LeaveEvent";
-import { deserializeToPool, } from "@/lib/models/LeavePool";
-import { amountInPool } from "@/lib/logic";
-import { deserializeToEvent } from "@/lib/models/LeaveEvent";
-import { selectEvents } from "@/lib/features/eventListSlice";
-import { useAppSelector } from "@/lib/hooks";
-import { selectPools } from "@/lib/features/poolListSlice";
-import { Button } from "../ui/button";
-import { Pencil } from "lucide-react";
 
 type PoolListingProps = {
   className?: string;
-  poolId: number;
+  pool: LeavePool;
   date: Date;
 };
 
 
-const PoolListing: React.FC<PoolListingProps> = ({ className, poolId, date }) => {
-  const dto = useAppSelector(selectPools)?.find((pool) => pool.id == poolId)
+const PoolListing: React.FC<PoolListingProps> = ({ className, pool, date }) => {
   const events = useAppSelector(selectEvents)?.map((event: LeaveEventDto) =>
     deserializeToEvent(event)
   ) || [];
-  const [isDetailsPanelOpen, setIsDetailsPanelOpen] = useState(false);
-
-  if (!dto) {
-    console.log("No Pool DTO found for ID: " + poolId)
-    return
-  }
-
-  const pool = deserializeToPool(dto)
-
 
   const amount = amountInPool(
     dayjs(date),
@@ -54,7 +46,7 @@ const PoolListing: React.FC<PoolListingProps> = ({ className, poolId, date }) =>
         <CardDescription>{pool.description}</CardDescription>
         <CardAction>
           <Button variant="outline" size="icon-sm" aria-label="Reset Projection Date" onClick={() => {
-            console.log("Editing pool")
+            console.debug("Editing pool")
           }}>
             <Pencil />
           </Button>

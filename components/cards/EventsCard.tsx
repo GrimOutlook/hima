@@ -1,5 +1,11 @@
 "use client"
 
+import dayjs from "dayjs"
+import { Plus } from "lucide-react"
+import React from "react";
+
+import EventListing from "@/components/cards/EventListing"
+import { Button } from "@/components/ui/button"
 import {
   Card,
   CardAction,
@@ -9,23 +15,18 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card"
-import { Button } from "@/components/ui/button"
-import { ScrollArea } from "../ui/scroll-area";
-import { LeaveEvent, deserializeToEvent, firstDate } from "@/lib/models/LeaveEvent"
-import EventListing from "@/components/cards/EventListing"
-
-import React from "react";
 import { selectEvents } from "@/lib/features/eventListSlice";
-import { useAppDispatch, useAppSelector } from "@/lib/hooks";
-import { selectPools } from "@/lib/features/poolListSlice"
-import { LeavePoolDto, deserializeToPool } from "@/lib/models/LeavePool"
-import { nextPeriodDateFromDate } from "@/lib/logic";
 import { selectProjectionDate, selectShowAllEvents, setShowAllEvents } from "@/lib/features/mainPageOptionsSlice"
-import dayjs from "dayjs"
+import { selectPools } from "@/lib/features/poolListSlice"
+import { useAppDispatch, useAppSelector } from "@/lib/hooks";
+import { nextPeriodDateFromDate } from "@/lib/logic";
+import { deserializeToEvent, firstDate, LeaveEvent } from "@/lib/models/LeaveEvent"
+import { deserializeToPool, LeavePoolDto } from "@/lib/models/LeavePool"
+
 import { Label } from "../ui/label"
-import { Checkbox } from "../ui/checkbox"
+import { ScrollArea } from "../ui/scroll-area"
 import { Separator } from "../ui/separator"
-import { Plus } from "lucide-react"
+import { Switch } from "../ui/switch"
 
 export function EventsCard({ className }: React.ComponentProps<"div">) {
   const dispatch = useAppDispatch()
@@ -65,7 +66,7 @@ export function EventsCard({ className }: React.ComponentProps<"div">) {
             poolId: pool.id,
           }]
         }
-        console.log("Made pool event on " + date.toDate().toDateString() + " for pool " + pool.name)
+        console.debug("Made pool event for pool " + pool.name + " on " + date.toDate().toDateString())
         events.push(event)
       }
 
@@ -80,7 +81,7 @@ export function EventsCard({ className }: React.ComponentProps<"div">) {
         <CardDescription>Occasions that add or remove hours from a pool</CardDescription>
         <CardAction>
           <Button variant="outline" size="icon" onClick={() => {
-            console.log("Clicked create event...")
+            console.debug("Clicked create event...")
           }}>
             <Plus />
           </Button>
@@ -96,8 +97,8 @@ export function EventsCard({ className }: React.ComponentProps<"div">) {
       </CardContent>
       <Separator />
       <CardFooter>
-        <div className="flex items-center gap-3">
-          <Checkbox id="all_events" onCheckedChange={(checked: boolean) => dispatch(setShowAllEvents(checked))} />
+        <div className="flex items-center space-x-2">
+          <Switch id="all_events" onCheckedChange={(checked: boolean) => dispatch(setShowAllEvents(checked))} />
           <Label htmlFor="all_events">Show All Events</Label>
         </div>
       </CardFooter>

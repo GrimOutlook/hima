@@ -1,7 +1,8 @@
-import { PayloadAction, createSlice } from "@reduxjs/toolkit/react";
+import { createSlice, PayloadAction } from "@reduxjs/toolkit/react";
+
 import {
-  PoolFormDataDto,
   initialPoolFormDataDto,
+  PoolFormDataDto,
 } from "@/lib/models/PoolFormDto";
 
 export interface PoolFormState {
@@ -28,7 +29,7 @@ export const poolFormSlice = createSlice({
     ),
     setPoolFormOpenState: create.reducer(
       (state, action: PayloadAction<boolean>) => {
-        console.log("Setting pool form to " + (action.payload ? "open" : "closed"))
+        console.debug("Setting pool form to " + (action.payload ? "open" : "closed"))
         state.open = action.payload;
       }
     ),

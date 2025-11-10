@@ -1,17 +1,19 @@
 "use client"
 
 import dayjs from "dayjs"
+import { Pencil } from "lucide-react"
+import React from "react";
+
+import { selectPools } from "@/lib/features/poolListSlice";
+import { useAppSelector } from "@/lib/hooks";
 import {
   LeaveEvent,
 } from "@/lib/models/LeaveEvent";
-import { Card, CardTitle, CardContent, CardHeader, CardFooter, CardDescription, CardAction } from "../ui/card"
-import React, { useState } from "react";
-import { useAppSelector } from "@/lib/hooks";
-import { selectPools } from "@/lib/features/poolListSlice";
 import { deserializeToPool,
   LeavePoolDto } from "@/lib/models/LeavePool";
+
 import { Button } from "../ui/button"
-import { Pencil } from "lucide-react"
+import { Card, CardAction, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "../ui/card"
 
 type EventListingProps = {
   className?: string;
@@ -19,7 +21,6 @@ type EventListingProps = {
 };
 
 const EventListing: React.FC<EventListingProps> = ({ className, leave_event }) => {
-  const [isDetailsPanelOpen, setIsDetailsPanelOpen] = useState(false);
   const pools = useAppSelector(selectPools)?.map((pool: LeavePoolDto) =>
     deserializeToPool(pool)
   ) || [];
@@ -64,7 +65,7 @@ const EventListing: React.FC<EventListingProps> = ({ className, leave_event }) =
         <CardAction>
           {leave_event.id != null &&
             <Button variant="outline" size="icon-sm" aria-label="Reset Projection Date" onClick={() => {
-              console.log("Editing event")
+              console.debug("Editing event")
             }}>
               <Pencil />
             </Button>

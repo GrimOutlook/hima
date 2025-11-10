@@ -1,12 +1,13 @@
 import {
-  PayloadAction,
   createListenerMiddleware,
   createSlice,
   isAnyOf,
+  PayloadAction,
 } from "@reduxjs/toolkit/react";
+
+import { RootState } from "../store";
 import { addEvent, removeEvent } from "./eventListSlice";
 import { addPool, removePool } from "./poolListSlice";
-import { RootState } from "../store";
 
 export interface UnsavedChangesState {
   hasUnsavedChanges: boolean;
@@ -41,8 +42,8 @@ unsavedChangesListenerMiddleware.startListening({
     const state = listenerApi.getState() as RootState;
     if (!state.dirty.hasUnsavedChanges) {
       // TODO: Add remote logging
-      // eslint-disable-next-line no-console, no-undef
-      console.log("Unsaved changes have been noted");
+
+      console.debug("Unsaved changes have been noted");
       listenerApi.dispatch(setHasUnsavedChanges(true));
     }
   },
