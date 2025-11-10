@@ -43,12 +43,22 @@ const EventListing: React.FC<EventListingProps> = ({ className, eventId }) => {
   });
 
   const transaction_dates = event.poolTransactions.map((pt) => pt.date).sort();
-  let date_string: string;
+  let date_string;
   if (transaction_dates.length == 1) {
-    date_string = "on " + transaction_dates[0].toDate().toDateString()
+    date_string = <>on <span className="font-semibold">{transaction_dates[0].toDate().toDateString()}</span></>
   } else {
-    date_string = "from " + transaction_dates[0].toDate().toDateString() + " to " + transaction_dates[transaction_dates.length - 1].toDate().toDateString()
+    date_string = <>from <span className="font-semibold">{transaction_dates[0].toDate().toDateString()}</span> to <span className="font-semibold">{transaction_dates[transaction_dates.length - 1].toDate().toDateString()}</span></>
   }
+
+  let total_hours_color;
+  if (total_hours < 0) {
+    total_hours_color = "text-red-500"
+  } else if (total_hours > 0) {
+    total_hours_color = "text-green-500"
+  } else {
+    total_hours_color = "text-black"
+  }
+
 
   return (
     <Card className={className}>
@@ -56,11 +66,11 @@ const EventListing: React.FC<EventListingProps> = ({ className, eventId }) => {
         <CardTitle>{event.title}</CardTitle>
         <CardDescription>{event.description}</CardDescription>
       </CardHeader>
-      <CardContent className="text-xl -my-6">{total_hours} Hours {date_string}</CardContent>
+      <CardContent className="text-xl -my-6"><span className={`font-semibold ${total_hours_color}`}>{Math.abs(total_hours)}</span> Hours {date_string}</CardContent>
       <CardFooter className="text-sm text-stone-600 text-nowrap">
         {affected_pools_string}
       </CardFooter>
-    </Card>
+    </Card >
   )
 }
 

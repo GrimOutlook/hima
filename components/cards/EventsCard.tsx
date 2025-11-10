@@ -17,12 +17,48 @@ import EventListing from "@/components/cards/EventListing"
 import React from "react";
 import { selectEvents } from "@/lib/features/eventListSlice";
 import { useAppSelector } from "@/lib/hooks";
+import { selectPools } from "@/lib/features/poolListSlice"
+import { LeavePoolDto, deserializeToPool } from "@/lib/models/LeavePool"
+import { nextPeriodDateFromDate } from "@/lib/logic";
+import dayjs from "dayjs"
 
 export function EventsCard({ className }: React.ComponentProps<"div">) {
+  // Get all the pools created by the user
+  const pools = useAppSelector(selectPools)?.map((pool: LeavePoolDto) =>
+    deserializeToPool(pool)
+  ) || [];
 
+  // Get all events created by the user
   const events = useAppSelector(selectEvents)?.map((event) =>
     deserializeToEvent(event)
   ) || [];
+
+  // If the user has it enabled, add all the leave pool periodic events.
+  // TODO: Add an option to turn this off.
+  pools.forEach((pool) => {
+    // Generate an event for every time the period has been hit from the start
+    // date to the current date.
+    let date = dayjs(pool.startDate)
+    while (true) {
+      date = nextPeriodDateFromDate(date, pool.period)
+      if (date.isAfter(dayjs())) {
+        break
+      }
+      const event: LeaveEvent = {
+        title: pool.name + " Addition",
+        dates: [date],
+        poolTransactions: [{
+          date: date,
+          hours: pool.amount,
+          poolId: pool.id,
+        }]
+      }
+      console.log("Made pool event on " + date.toDate().toDateString() + " for pool " + pool.name)
+      events.push(event)
+    }
+
+    return events
+  })
 
   return (
     <Card className={className}>
@@ -35,7 +71,7 @@ export function EventsCard({ className }: React.ComponentProps<"div">) {
       </CardHeader>
       <CardContent className="h-full min-h-40">
         <ScrollArea className="h-full flex flex-col">
-          {/* This is where event listings go */}
+          {/* TODO: Determine if this needs to be sorted. If so, might refactor to make events and pools classes to make it less verbose. */}
           {events.map((event: LeaveEvent) => (
             <EventListing key={event.id} eventId={event.id} className="h-fit my-2 py-4" />
           ))}

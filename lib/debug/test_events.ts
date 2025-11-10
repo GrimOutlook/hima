@@ -10,7 +10,7 @@ const test_events: LeaveEventDto[] = [
     poolTransactions: [
       {
         date: dayjs("2025-01-01").toJSON(),
-        hours: 8,
+        hours: -8,
         poolId: 0
       }
     ]
@@ -23,7 +23,7 @@ const test_events: LeaveEventDto[] = [
     poolTransactions: [
       {
         date: dayjs("2025-01-01").toJSON(),
-        hours: 2,
+        hours: -2,
         poolId: 1
       }
     ]
@@ -38,12 +38,12 @@ const test_events: LeaveEventDto[] = [
     poolTransactions: [
       {
         date: dayjs("2025-02-01").toJSON(),
-        hours: 8,
+        hours: -8,
         poolId: 1,
       },
       {
         date: dayjs("2025-02-02").toJSON(),
-        hours: 8,
+        hours: -8,
         poolId: 0,
       }
     ]
