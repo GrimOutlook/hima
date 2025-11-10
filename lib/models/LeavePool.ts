@@ -1,5 +1,6 @@
-import { Period, deserializeToPeriod } from "./Period";
 import dayjs, { Dayjs } from "dayjs";
+
+import { deserializeToPeriod, Period } from "./Period";
 
 export type LeavePool = {
   // Unique identifier for the pool

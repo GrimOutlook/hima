@@ -1,13 +1,10 @@
-import { PoolDto } from "./Pool";
+import { LeavePoolDto } from "./LeavePool";
 
-export type PoolFormDataDto = PoolDto;
-
-export const initialPoolFormDataDto: PoolFormDataDto = {
-  amount: 0,
-  description: "",
-  id: 0,
-  name: "",
-  period: "",
-  startAmount: 0,
-  startDate: "",
+type UndefinedOk<T> = {
+  [P in keyof T]?: T[P];
 };
+
+
+export type PoolFormDataDto = UndefinedOk<Omit<LeavePoolDto, 'id'>>;
+
+export const initialPoolFormDataDto: PoolFormDataDto = {};

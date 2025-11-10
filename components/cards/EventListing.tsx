@@ -56,7 +56,6 @@ const EventListing: React.FC<EventListingProps> = ({ className, leave_event }) =
     total_hours_color = "text-black"
   }
 
-
   return (
     <Card className={className}>
       <CardHeader>
