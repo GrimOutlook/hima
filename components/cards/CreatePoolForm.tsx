@@ -49,50 +49,40 @@ import { Textarea } from "@/components/ui/textarea"
 import { formatDate, isValidDate } from "@/lib/helpers"
 import { periods } from "@/lib/models/Period";
 
-const inputFormSchema = z.object({
+const formSchema = z.object({
   name: z
-    .string(),
+    .string().min(1),
   description: z
-    .string(),
+    .string().optional(),
   period: z
     .enum(periods),
-  amount: z.string()
-    .min(1, "Amount is required")
-  ,
-  startDate: z.string(),
-  startingAmount: z.string(),
-
-})
-const outputFormSchema = inputFormSchema.transform((data) => {
-
-  amount: Number(data.amount)
-
+  amount: z.transform(Number).pipe(z.number()),
+  startDate: z.date().refine(val => val.getTime() != 0),
+  startingAmount: z.transform(Number).pipe(z.number()),
 })
 
-
-type FormInput = z.input<typeof inputFormSchema>;
-type FormOutput = z.output<typeof outputFormSchema>;
+type InputFormSchema = z.input<typeof formSchema>;
+type OutputFormSchema = z.output<typeof formSchema>;
 
 export function CreatePoolForm() {
-  const form = useForm<FormInput>({
-    resolver: zodResolver(outputFormSchema),
+  const form = useForm<InputFormSchema, OutputFormSchema>({
+    resolver: zodResolver(formSchema),
     defaultValues: {
       name: "",
       description: "",
-      amount: "",
       period: "",
-      startDate: "",
+      amount: "",
+      startDate: new Date(),
       startingAmount: "",
-    },
+    }
   })
 
   // Date State
   const [open, setOpen] = React.useState(false)
-  const [date, setDate] = React.useState<Date | undefined>()
-  const [month, setMonth] = React.useState<Date | undefined>(date)
-  const [value, setValue] = React.useState(formatDate(date))
+  const [month, setMonth] = React.useState<Date | undefined>()
+  const [value, setValue] = React.useState(formatDate(undefined))
 
-  function onSubmit(data: FormOutput) {
+  function onSubmit(data: OutputFormSchema) {
     // Do something with the form values.
     console.log(data)
   }
@@ -132,13 +122,16 @@ export function CreatePoolForm() {
                           <FieldError errors={[fieldState.error]} />
                         )}
                       </Field>
-                    )}
-
-                  />
-                  <Field>
-                    <FieldLabel htmlFor="pool-description">Description</FieldLabel>
-                    <Textarea id="pool-description" placeholder="Describe what the pool represents" />
-                  </Field>
+                    )} />
+                  <Controller
+                    name="description"
+                    control={form.control}
+                    render={({ field, fieldState }) => (
+                      <Field data-invalid={fieldState.invalid}>
+                        <FieldLabel htmlFor={field.name}>Description</FieldLabel>
+                        <Textarea {...field} placeholder="Describe what the pool represents" />
+                      </Field>
+                    )} />
                 </FieldGroup>
               </FieldSet>
               <FieldSeparator />
@@ -208,10 +201,11 @@ export function CreatePoolForm() {
                           aria-invalid={fieldState.invalid}
                           onChange={(e) => {
                             const date = new Date(e.target.value)
+
                             setValue(e.target.value)
                             if (isValidDate(date)) {
-                              setDate(date)
                               setMonth(date)
+                              form.setValue(field.name, date)
                             }
                           }}
                           onKeyDown={(e) => {
@@ -240,14 +234,17 @@ export function CreatePoolForm() {
                           >
                             <Calendar
                               mode="single"
-                              selected={date}
+                              selected={field.value}
                               captionLayout="dropdown"
                               month={month}
                               onMonthChange={setMonth}
                               onSelect={(date) => {
-                                setDate(date)
                                 setValue(formatDate(date))
-                                setOpen(false)
+                                if (date != undefined) {
+                                  form.setValue(field.name, date)
+                                  form.clearErrors(field.name)
+                                  setOpen(false)
+                                }
                               }}
                             />
                           </PopoverContent>
@@ -274,7 +271,7 @@ export function CreatePoolForm() {
             </FieldGroup>
           </main>
           <DialogFooter>
-            <Button type="reset" variant="secondary" form="form-create-pool" onClick={() => form.reset()}>Clear</Button>
+            <Button type="reset" variant="secondary" form="form-create-pool" onClick={() => { setValue(""); form.reset() }}>Clear</Button>
             <DialogClose asChild>
               <Button variant="outline">Cancel</Button>
             </DialogClose>
