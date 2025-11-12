@@ -28,7 +28,6 @@ import {
   FieldError,
   FieldGroup,
   FieldLabel,
-  FieldLegend,
   FieldSeparator,
   FieldSet,
 } from "@/components/ui/field"
@@ -46,34 +45,44 @@ import {
   SelectValue,
 } from "@/components/ui/select"
 import { Textarea } from "@/components/ui/textarea"
+import { addPool, selectPools } from "@/lib/features/poolListSlice";
 import { formatDate, isValidDate } from "@/lib/helpers"
+import { useAppDispatch, useAppSelector } from "@/lib/hooks";
+import { LeavePoolFormDto } from "@/lib/models/LeavePool"
 import { periods } from "@/lib/models/Period";
 
-const formSchema = z.object({
-  name: z
-    .string().min(1),
-  description: z
-    .string().optional(),
-  period: z
-    .enum(periods),
-  amount: z.transform(Number).pipe(z.number()),
-  startDate: z.date().refine(val => val.getTime() != 0),
-  startingAmount: z.transform(Number).pipe(z.number()),
-})
+const dateFormat = 'MMMM DD, YYYY'
 
-type InputFormSchema = z.input<typeof formSchema>;
-type OutputFormSchema = z.output<typeof formSchema>;
 
 export function CreatePoolForm() {
-  const form = useForm<InputFormSchema, OutputFormSchema>({
+  const dispatch = useAppDispatch()
+  // Get the name of all Leave pools for validation
+  const pool_names = useAppSelector(selectPools).map(p => p.name) || [];
+
+
+  type FormSchema = z.infer<typeof formSchema>;
+
+  const formSchema = z.object({
+    name: z
+      .string().min(1, "Name is required").refine(val => !pool_names.includes(val), "Name already used"),
+    description: z
+      .string().optional(),
+    period: z
+      .enum(periods, "Period is required"),
+    amount: z.string().min(1, "Amount is required").regex(/\d+/, "Amount must be a number"),
+    startDate: z.string().min(1, "Starting date is required").refine(val => dayjs(val, dateFormat, true).isValid(), "Date format is invalid"),
+    startAmount: z.string().min(1, "Starting amount is required").regex(/\d+/, "Starting amount must be a number"),
+  })
+
+  const form = useForm<FormSchema>({
     resolver: zodResolver(formSchema),
     defaultValues: {
       name: "",
       description: "",
       period: "",
       amount: "",
-      startDate: new Date(),
-      startingAmount: "",
+      startDate: "",
+      startAmount: "",
     }
   })
 
@@ -82,9 +91,17 @@ export function CreatePoolForm() {
   const [month, setMonth] = React.useState<Date | undefined>()
   const [value, setValue] = React.useState(formatDate(undefined))
 
-  function onSubmit(data: OutputFormSchema) {
-    // Do something with the form values.
-    console.log(data)
+  function onSubmit(data: FormSchema) {
+    console.debug("Submitted new pool date: " + data)
+
+    // Create a new leave pool with the given information
+    const new_pool: LeavePoolFormDto = {
+      ...data,
+      amount: Number(data.amount),
+      startAmount: Number(data.startAmount),
+    }
+    dispatch(addPool(new_pool))
+
   }
 
 
@@ -205,7 +222,7 @@ export function CreatePoolForm() {
                             setValue(e.target.value)
                             if (isValidDate(date)) {
                               setMonth(date)
-                              form.setValue(field.name, date)
+                              form.setValue(field.name, e.target.value)
                             }
                           }}
                           onKeyDown={(e) => {
@@ -234,14 +251,14 @@ export function CreatePoolForm() {
                           >
                             <Calendar
                               mode="single"
-                              selected={field.value}
+                              selected={dayjs(field.value, dateFormat).toDate()}
                               captionLayout="dropdown"
                               month={month}
                               onMonthChange={setMonth}
                               onSelect={(date) => {
                                 setValue(formatDate(date))
                                 if (date != undefined) {
-                                  form.setValue(field.name, date)
+                                  form.setValue(field.name, formatDate(date))
                                   form.clearErrors(field.name)
                                   setOpen(false)
                                 }
@@ -253,7 +270,7 @@ export function CreatePoolForm() {
                     </Field>
                   )} />
                 <Controller
-                  name="startingAmount"
+                  name="startAmount"
                   control={form.control}
                   render={({ field, fieldState }) => (
                     <Field data-invalid={fieldState.invalid} orientation="horizontal">

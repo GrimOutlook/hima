@@ -37,6 +37,7 @@ type LeavePoolDtoOverrides = {
 };
 
 export type LeavePoolDto = Omit<LeavePool, keyof LeavePoolDtoOverrides> & LeavePoolDtoOverrides
+export type LeavePoolFormDto = Omit<LeavePoolDto, 'id'>
 
 export const serializeToPoolDto = (pool: LeavePool): LeavePoolDto => {
   return {
@@ -55,3 +56,8 @@ export const deserializeToPool = (pool: LeavePoolDto): LeavePool => ({
   // TODO: Add support for the below parameters and their consequences.
   // rolloverDate: dayjs(pool.rolloverDate),
 });
+
+export const leavePoolFormDtoWithId = (form_dto: LeavePoolFormDto, id: number): LeavePoolDto => ({
+  ...form_dto,
+  id: id
+})
