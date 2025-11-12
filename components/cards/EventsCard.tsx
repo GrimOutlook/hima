@@ -27,6 +27,7 @@ import { Label } from "../ui/label"
 import { ScrollArea } from "../ui/scroll-area"
 import { Separator } from "../ui/separator"
 import { Switch } from "../ui/switch"
+import { CreateEventForm } from "./CreateEventForm";
 
 export function EventsCard({ className }: React.ComponentProps<"div">) {
   const dispatch = useAppDispatch()
@@ -80,11 +81,7 @@ export function EventsCard({ className }: React.ComponentProps<"div">) {
         <CardTitle className="dash-card-title">Events</CardTitle>
         <CardDescription>Occasions that add or remove hours from a pool</CardDescription>
         <CardAction>
-          <Button variant="outline" size="icon" onClick={() => {
-            console.debug("Clicked create event...")
-          }}>
-            <Plus />
-          </Button>
+          <CreateEventForm />
         </CardAction>
       </CardHeader>
       <CardContent className="h-full min-h-40">

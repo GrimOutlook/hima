@@ -53,25 +53,30 @@ import { periods } from "@/lib/models/Period";
 
 const dateFormat = 'MMMM DD, YYYY'
 
-
 export function CreatePoolForm() {
   const dispatch = useAppDispatch()
   // Get the name of all Leave pools for validation
   const pool_names = useAppSelector(selectPools).map(p => p.name) || [];
 
-
   type FormSchema = z.infer<typeof formSchema>;
 
   const formSchema = z.object({
     name: z
-      .string().min(1, "Name is required").refine(val => !pool_names.includes(val), "Name already used"),
-    description: z
-      .string().optional(),
-    period: z
-      .enum(periods, "Period is required"),
+      .string().min(1, "Name is required")
+      .refine(val => !pool_names.includes(val), "Name already used"),
+    description: z.string().optional(),
+    period: z.enum(periods, "Period is required"),
     amount: z.string().min(1, "Amount is required").regex(/\d+/, "Amount must be a number"),
-    startDate: z.string().min(1, "Starting date is required").refine(val => dayjs(val, dateFormat, true).isValid(), "Date format is invalid"),
-    startAmount: z.string().min(1, "Starting amount is required").regex(/\d+/, "Starting amount must be a number"),
+    startDate: z.string()
+      .min(1, "Starting date is required")
+      .refine(
+        val => dayjs(val, dateFormat, true).isValid(),
+        "Date format is invalid"
+      ),
+    startAmount: z
+      .string()
+      .min(1, "Starting amount is required")
+      .regex(/\d+/, "Starting amount must be a number"),
   })
 
   const form = useForm<FormSchema>({
@@ -92,7 +97,7 @@ export function CreatePoolForm() {
   const [value, setValue] = React.useState(formatDate(undefined))
 
   function onSubmit(data: FormSchema) {
-    console.debug("Submitted new pool date: " + data)
+    console.debug("Submitted new pool data: " + data)
 
     // Create a new leave pool with the given information
     const new_pool: LeavePoolFormDto = {
@@ -117,7 +122,7 @@ export function CreatePoolForm() {
         </DialogTrigger>
         <DialogContent className="sm:max-w-[425px]">
           <DialogHeader>
-            <DialogTitle>Create Field Pool</DialogTitle>
+            <DialogTitle>Create New Pool</DialogTitle>
             <DialogDescription>
               Make changes to the pool here. Click save when you&apos;re
               done.

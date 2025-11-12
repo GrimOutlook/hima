@@ -8,3 +8,4 @@
 - Edit events after creation
 - Save data to browser storage
 - Allow export of data
+- Allow dragging to re-order pools.
