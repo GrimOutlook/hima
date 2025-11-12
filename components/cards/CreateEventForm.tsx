@@ -2,10 +2,8 @@
 
 
 import { zodResolver } from "@hookform/resolvers/zod"
-import dayjs from "dayjs"
 import { CalendarIcon, Plus, Trash2 } from "lucide-react"
 import React from "react"
-import { type DateRange } from "react-day-picker"
 import { Controller, useFieldArray, useForm } from "react-hook-form"
 import * as z from "zod"
 
@@ -40,6 +38,13 @@ import {
   PopoverTrigger,
 } from "@/components/ui/popover"
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group"
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select"
 import { Textarea } from "@/components/ui/textarea"
 import { selectEvents } from "@/lib/features/eventListSlice";
 import { selectPools } from "@/lib/features/poolListSlice";
@@ -47,18 +52,16 @@ import { useAppDispatch, useAppSelector } from "@/lib/hooks";
 import { deserializeToEvent } from "@/lib/models/LeaveEvent";
 import { deserializeToPool } from "@/lib/models/LeavePool"
 
-
-const dateFormat = 'MMMM DD, YYYY'
-
 export function CreateEventForm() {
   const dispatch = useAppDispatch()
 
   // Need pools for validation reasons
   const pools = useAppSelector(selectPools).map(deserializeToPool);
+  const pool_names = pools.map(p => p.name)
   // Need events for validation reasons
   const events = useAppSelector(selectEvents).map(deserializeToEvent);
 
-  type FormSchema = z.infer<typeof formSchema>;
+  const empty_date_field = { dates: { from: null, to: null }, pool: null }
 
   const formSchema = z.object({
     name: z
@@ -66,14 +69,21 @@ export function CreateEventForm() {
     description: z.string().optional(),
     leave_action: z.enum(["using", "adding"]).nullable(),
     amount: z.string().min(1, "Amount is required").regex(/\d+/, "Amount must be a number"),
-    useDates: z.array(z.object({ from: z.date().nullable(), to: z.date().nullable() })).refine(val =>
-      val.find((item) => item.to != null && item.from != null) != undefined
-      , "At least 1 use date is required"),
-    addDate: z.date().nullable()
+    use_dates: z.array(z.object({
+      dates: z.object({
+        from: z.date().nullable(),
+        to: z.date().nullable()
+      }),
+      pool: z.enum(pool_names).nullable()
+    }).refine(val => val.dates.from && !val.pool, "Pool not set for dates")),
+    add_date: z.date().nullable(),
+    pool: z.enum(pool_names).nullable()
   })
-    .refine(data => data.leave_action == "using" && data.useDates == null, "Using Dates is required")
-    .refine(data => data.leave_action == "adding" && data.useDates == null, "Date Added is required")
+    .refine(data => data.leave_action == "using" && data.use_dates.find((item) => item.pool && item.dates.from), "At least 1 use date is required")
+    .refine(data => data.leave_action == "adding" && data.add_date == null, "Date Added is required")
+    .refine(data => data.leave_action == "adding" && data.pool == null, "Pool is required")
 
+  type FormSchema = z.infer<typeof formSchema>;
   const form = useForm<FormSchema>({
     resolver: zodResolver(formSchema),
     defaultValues: {
@@ -81,23 +91,33 @@ export function CreateEventForm() {
       description: "",
       leave_action: null,
       amount: "",
-      useDates: [{ from: null, to: null }],
-      addDate: null,
+      use_dates: [empty_date_field],
+      add_date: null,
+      pool: null,
     }
   })
 
   const useDatesFieldArray = useFieldArray({
     control: form.control,
-    name: "useDates",
+    name: "use_dates",
   })
 
   // Date State
-  const [open, setOpen] = React.useState(false)
+  const [addedOpen, setAddedOpen] = React.useState(false)
+  const [usingOpen, setUsingOpen] = React.useState([false])
+
+  const nextInputRef = React.useRef<HTMLInputElement>(null);
 
   // TODO: I couldn't find a way to use the `form` updates to conditionally
   // render fields which meant that this is required. There is almost certainly
   // a way to do it so if it is found, replace this.
   const [leaveAction, setLeaveAction] = React.useState<string | null>(null)
+
+  // The pool that was selected last from a `pools` dropdown. This is useful
+  // when trying to determine what we should auto-fill the next date range pool
+  // selection with.
+  type PoolName = typeof pool_names[number];
+  const [lastSelectedPool, setLastSelectedPool] = React.useState<PoolName | null>(null)
 
   function onSubmit(data: FormSchema) {
     console.debug("Submitted new event data: " + data)
@@ -210,7 +230,7 @@ export function CreateEventForm() {
                 {leaveAction == "adding" &&
                   <FieldGroup>
                     <Controller
-                      name="addDate"
+                      name="add_date"
                       control={form.control}
                       render={({ field, fieldState }) => (
                         <Field orientation="horizontal" data-invalid={fieldState.invalid}>
@@ -218,7 +238,7 @@ export function CreateEventForm() {
                             <FieldLabel htmlFor={field.name}>Date Added</FieldLabel>
                             <FieldDescription>The date the added hours take effect</FieldDescription>
                           </FieldContent>
-                          <Popover open={open} onOpenChange={setOpen}>
+                          <Popover open={addedOpen} onOpenChange={setAddedOpen} modal={true}>
                             <PopoverTrigger asChild>
                               <Button
                                 variant="outline"
@@ -253,77 +273,126 @@ export function CreateEventForm() {
                     <FieldDescription>Dates that you want to use paid leave</FieldDescription>
 
                     {useDatesFieldArray.fields.map((field, index) => {
+                      const last_using_date_index = useDatesFieldArray.fields.length - 1;
+                      const last_using_date = useDatesFieldArray.fields[last_using_date_index];
+                      const pool = field.pool
+                      const dates = field.dates
+
                       let button_string = "Select Dates"
-                      if (!!field.from) {
-                        button_string = field.from.toLocaleDateString()
-                      }
-                      if (!!field.to && field.to.toDateString() != field.from?.toDateString()) {
-                        button_string += " → " + field.to.toLocaleDateString()
+                      if (dates.from) {
+                        button_string = dates.from.toLocaleDateString()
+                        if (dates.to && dates.to.toDateString() != dates.from?.toDateString()) {
+                          button_string += " → " + dates.to.toLocaleDateString()
+                        }
                       }
 
                       return (
                         <div key={field.id} className="flex flex-row gap-2">
                           <Controller
-                            name={`useDates.${index}`}
+                            name={`use_dates.${index}.dates`}
                             control={form.control}
                             render={(control) => (
                               <Field data-invalid={control.fieldState.invalid}>
-                                <Popover open={open} onOpenChange={setOpen} >
+                                <Popover open={usingOpen[index]} onOpenChange={(e) => {
+                                  console.debug(`Setting use_dates.${index}.dates is open: ${e}`)
+                                  setUsingOpen(usingOpen.map((def, openIndex) => openIndex == index ? e : def))
+                                }} >
                                   <PopoverTrigger asChild>
                                     <Button
                                       variant="outline"
-                                      id={control.field.name}
-                                      className="w-48 justify-between font-normal"
+                                      id={`use_dates.${index}.dates-button`}
+                                      className="w-full justify-between font-normal basis-2/3"
                                     >
                                       {button_string}
                                       <CalendarIcon />
                                     </Button>
                                   </PopoverTrigger>
-                                  <PopoverContent className="w-auto overflow-hidden p-0" align="start">
+                                  <PopoverContent className="w-auto overflow-hidden p-0" align="start" ref={usingOpen[index] ? nextInputRef : undefined}>
                                     <Calendar
                                       mode="range"
-                                      selected={{ to: field.to || undefined, from: field.from || undefined }}
+                                      selected={{ to: field.dates.to || undefined, from: field.dates.from || undefined }}
                                       captionLayout="dropdown"
                                       onDayClick={(date) => {
-                                        // If the user didn't select a date, and
-                                        // no date has been selected yet, or if
-                                        // the user selected the same day that
-                                        // is already selected, remove the date
-                                        // input if it is not the first input.
-                                        // First input needs to stay so users
-                                        // can input dates still
-                                        if ((date == undefined && field == undefined || date == field.to) && index != 0) {
+                                        if (!date && !field.dates.from && !field.pool && index != 0) {
+                                          console.debug("Removing empty use_date index: " + index)
                                           useDatesFieldArray.remove(index)
                                           return
                                         }
 
                                         let from, to;
                                         if (
+                                          !field.dates.from
                                           // If `to` is set, then reset the `to`
                                           // and `from` values, setting the `to`
                                           // to the newly selected value.
-                                          field.to != undefined
+                                          || field.dates.to
                                           // // If the user selected a date
                                           // // before the `to` date reset the
                                           // // just set the `to` date to the newly
                                           // // selected date
-                                          // || (field.from && field.from.getTime() < date.getTime())
+                                          // || (field.dates.from && field.dates.from.getTime() < date.getTime())
                                         ) {
                                           from = date
-                                          to = undefined
+                                          to = null
                                         } else {
-                                          from = field.from
+                                          from = field.dates.from
                                           to = date
                                         }
-                                        useDatesFieldArray.replace({ from: from, to: to || null })
+
+                                        // Make sure the dates always go from
+                                        // earliest to latest
+                                        if (from && to && from.getTime() > to.getTime()) {
+                                          const temp = from
+                                          from = to
+                                          to = temp
+                                        }
+                                        console.debug("Updating use_dates index " + index)
+                                        useDatesFieldArray.update(index, { ...field, dates: { from: from, to: to || null } })
+
+                                        if (field.pool && from && index == last_using_date_index) {
+                                          console.debug("Creating use_dates index " + (index + 1))
+                                          useDatesFieldArray.append(empty_date_field)
+                                          // Open the calendar back up. It
+                                          // closes when making a new field.
+                                          setUsingOpen(usingOpen.map((def, openIndex) => openIndex == index ? true : def))
+                                        }
                                       }}
                                     />
                                   </PopoverContent>
                                 </Popover>
                               </Field>
+                            )
+                            } />
+
+                          < Controller
+                            name={`use_dates.${index}.pool`}
+                            control={form.control}
+                            render={(control) => (
+                              <Field data-invalid={control.fieldState.invalid}>
+                                <Select name={`use_dates.${index}.pool-select`} value={pool || undefined} onValueChange={(pool) => {
+                                  console.debug("Updating use_dates index " + index)
+                                  useDatesFieldArray.update(index, { ...field, pool: pool || null })
+
+                                  if (pool && field.dates.from && index == last_using_date_index) {
+                                    console.debug("Creating use_dates index " + (index + 1))
+                                    useDatesFieldArray.append(empty_date_field)
+                                  }
+                                }} defaultValue="">
+                                  <SelectTrigger aria-invalid={control.fieldState.invalid} className="w-full basis-1/3">
+                                    <SelectValue placeholder="Pool" />
+                                  </SelectTrigger>
+                                  <SelectContent position="item-aligned">
+                                    {
+                                      pool_names.map((pool, idx) =>
+                                        <SelectItem key={idx} value={pool}>{pool}</SelectItem>
+                                      )
+                                    }
+                                  </SelectContent>
+                                </Select>
+                              </Field>
                             )} />
                           {index != useDatesFieldArray.fields.length - 1 &&
-                            < Button variant="outline" size="icon-sm" >
+                            <Button variant="outline" size="icon-sm" onClick={() => useDatesFieldArray.remove(index)}>
                               <Trash2 />
                             </Button>
                           }
