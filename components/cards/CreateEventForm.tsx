@@ -2,12 +2,13 @@
 
 
 import { zodResolver } from "@hookform/resolvers/zod"
-import { defineStepper } from "@stepperize/react"
+import { defineStepper, Stepper } from "@stepperize/react"
 import { Plus } from "lucide-react"
 import React from "react"
-import { useFieldArray, useForm, useFormContext } from "react-hook-form"
+import { FormProvider, useForm } from "react-hook-form"
 import * as z from "zod"
 
+import GeneralFormComponent from "@/components/cards/EventForm/GeneralFormComponent"
 import { Button } from "@/components/ui/button"
 import {
   Dialog,
@@ -25,6 +26,7 @@ import { selectPools } from "@/lib/features/poolListSlice";
 import { useAppDispatch, useAppSelector } from "@/lib/hooks";
 import { deserializeToEvent } from "@/lib/models/LeaveEvent";
 import { deserializeToPool } from "@/lib/models/LeavePool"
+import { AddHoursSchema, GeneralSchema, UseHoursSchema } from "@/lib/validators/leave-event.validator"
 
 export function CreateEventForm() {
   const dispatch = useAppDispatch()
@@ -35,37 +37,13 @@ export function CreateEventForm() {
   // Need events for validation reasons
   const events = useAppSelector(selectEvents).map(deserializeToEvent);
 
-  const generalSchema = z.object({
-    name: z
-      .string().min(1, "Name is required"),
-    description: z.string().optional(),
-    leave_action: z.enum(["using", "adding"]).nullable(),
-  })
-  const addHoursSchema = z.object({
-    amount: z.string().min(1, "Amount is required").regex(/\d+/, "Amount must be a number"),
-    add_date: z.date().nullable(),
-    pool: z.enum(pool_names).nullable()
-  })
-    .refine(data => data.pool == null, "Pool is required")
-    .refine(data => data.add_date == null, "Date Added is required")
-  const useHoursSchema = z.object({
-    use_dates: z.array(z.object({
-      dates: z.object({
-        from: z.date().nullable(),
-        to: z.date().nullable()
-      }),
-      pool: z.enum(pool_names).nullable()
-    }).refine(val => val.dates.from && !val.pool, "Pool not set for dates")),
-  })
-    .refine(data => data.use_dates.find((item) => item.pool && item.dates.from), "At least 1 use date is required")
-
-  const { useStepper, steps, utils } = defineStepper(
-    { id: "general", label: "General", schema: generalSchema },
-    { id: "adding", label: "Adding Hours to Pool", schema: addHoursSchema },
-    { id: "using", label: "Using Hours in Pool", schema: useHoursSchema },
+  const Stepper = defineStepper(
+    { id: "general", label: "General Information", schema: GeneralSchema },
+    { id: "adding", label: "Adding Hours to Pool", schema: AddHoursSchema(pool_names) },
+    { id: "using", label: "Using Hours in Pool", schema: UseHoursSchema(pool_names) },
   )
 
-  const stepper = useStepper();
+  const stepper = Stepper.useStepper();
 
   const form = useForm({
     mode: "onTouched",
@@ -74,117 +52,71 @@ export function CreateEventForm() {
 
 
   const onSubmit = (values: z.infer<typeof stepper.current.schema>) => {
-    // biome-ignore lint/suspicious/noConsoleLog: <We want to log the form values>
     console.log(`Form values for step ${stepper.current.id}:`, values);
     if (stepper.isLast) {
-      stepper.reset();
-    } else {
-      stepper.next();
+      // Create the event
+      return
+    }
+
+    if (stepper.current.id == "general") {
+      stepper.goTo(form.getValues("leave_action")!)
     }
   };
 
-  const currentIndex = utils.getIndex(stepper.current.id);
+  const currentIndex = Stepper.utils.getIndex(stepper.current.id);
   return (
-    <Dialog>
-      <form id="form-create-event" onSubmit={form.handleSubmit(onSubmit)}>
-        <DialogTrigger asChild>
-          <Button variant="outline" size="icon" onClick={() => {
-            console.debug("Clicked create event...")
-          }}>
-            <Plus />
-          </Button>
-        </DialogTrigger>
-        <DialogContent className="sm:max-w-[425px]">
-          <DialogHeader>
-            <DialogTitle>Create New Event</DialogTitle>
-            <DialogDescription>
-              Make changes to the event here. Click save when you&apos;re done.
-            </DialogDescription>
-          </DialogHeader>
-          <main>
-            <div className="flex justify-between">
-              <h2 className="text-lg font-medium">Checkout</h2>
-              <div className="flex items-center gap-2">
-                <span className="text-sm text-muted-foreground">
-                  Step {currentIndex + 1} of {steps.length}
-                </span>
-              </div>
-            </div>
-            <nav aria-label="Checkout Steps" className="group my-4">
-              <ol
-                className="flex items-center justify-between gap-2"
-                aria-orientation="horizontal"
-              >
-                {stepper.all.map((step, index, array) => (
-                  <React.Fragment key={step.id}>
-                    <li className="flex items-center gap-4 flex-shrink-0">
-                      <Button
-                        type="button"
-                        role="tab"
-                        variant={index <= currentIndex ? 'default' : 'secondary'}
-                        aria-current={
-                          stepper.current.id === step.id ? 'step' : undefined
-                        }
-                        aria-posinset={index + 1}
-                        aria-setsize={steps.length}
-                        aria-selected={stepper.current.id === step.id}
-                        className="flex size-10 items-center justify-center rounded-full"
-                        onClick={async () => {
-                          const valid = await form.trigger();
-                          //must be validated
-                          if (!valid) return;
-                          //can't skip steps forwards but can go back anywhere if validated
-                          if (index - currentIndex > 1) return;
-                          stepper.goTo(step.id);
-                        }}
-                      >
-                        {index + 1}
-                      </Button>
-                      <span className="text-sm font-medium">{step.label}</span>
-                    </li>
-                    {index < array.length - 1 && (
-                      <Separator
-                        className={`flex-1 ${index < currentIndex ? 'bg-primary' : 'bg-muted'
-                          }`}
-                      />
-                    )}
-                  </React.Fragment>
-                ))}
-              </ol>
-            </nav>
-            <div className="space-y-4">
-              {stepper.switch({
-                general: () => <GeneralFormComponent schema={generalSchema} />,
-                // adding: () => <AddHoursFormComponent />,
-                // using: () => <UseHoursFormComponent />,
-              })}
-              {!stepper.isLast ? (
-                <div className="flex justify-end gap-4">
-                  <Button
-                    variant="secondary"
-                    onClick={stepper.prev}
-                    disabled={stepper.isFirst}
-                  >
-                    Back
-                  </Button>
-                  <Button type="submit">
-                    {stepper.isLast ? 'Complete' : 'Next'}
-                  </Button>
+
+    <FormProvider {...form}>
+      <Stepper.Scoped>
+        <Dialog>
+          <form id="form-create-event" onSubmit={form.handleSubmit(onSubmit)}>
+            <DialogTrigger asChild>
+              <Button variant="outline" size="icon" onClick={() => {
+                console.debug("Clicked create event...")
+              }}>
+                <Plus />
+              </Button>
+            </DialogTrigger>
+            <DialogContent className="">
+              <DialogHeader>
+                <DialogTitle>Create New Event</DialogTitle>
+                <DialogDescription>
+                  Make changes to the event here. Click save when you&apos;re done.
+                </DialogDescription>
+              </DialogHeader>
+              <main>
+                <div className="space-y-4">
+                  {stepper.switch({
+                    general: () => <GeneralFormComponent />,
+                    // adding: () => <AddHoursFormComponent schema={AddHoursSchema(pool_names)}/>,
+                    // using: () => <UseHoursFormComponent schema={AddHoursSchema(pool_names)}/>,
+                  })}
+                  {!stepper.isLast ? (
+                    <div className="flex justify-end gap-4">
+                    </div>
+                  ) : (
+                    <Button onClick={stepper.reset}>Reset</Button>
+                  )}
                 </div>
-              ) : (
-                <Button onClick={stepper.reset}>Reset</Button>
-              )}
-            </div>
-          </main>
-          <DialogFooter>
-            <Button type="reset" variant="secondary" form="form-create-event" onClick={() => form.reset()}>Clear</Button>
-            <DialogClose asChild>
-              <Button variant="outline">Cancel</Button>
-            </DialogClose>
-            <Button type="submit" form="form-create-event">Save</Button>
-          </DialogFooter>
-        </DialogContent>
-      </form >
-    </Dialog >
+              </main>
+              <DialogFooter>
+                <Button type="reset" variant="outline" form="form-create-event" onClick={() => form.reset()}>Clear</Button>
+                <Button
+                  variant="secondary"
+                  onClick={stepper.prev}
+                  disabled={stepper.isFirst}
+                >
+                  Back
+                </Button>
+                <Button type="submit" form="form-create-event">
+                  {stepper.isLast ? 'Finish' : 'Next'}
+                </Button>
+              </DialogFooter>
+            </DialogContent>
+          </form >
+        </Dialog >
+
+      </Stepper.Scoped>
+    </FormProvider>
   )
 }

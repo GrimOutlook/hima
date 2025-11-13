@@ -1,3 +1,4 @@
+import { Stepper } from "@stepperize/react"
 import { Controller, useFormContext } from "react-hook-form"
 import * as z from "zod"
 
@@ -12,19 +13,41 @@ import {
   FieldSet,
   FieldTitle,
 } from "@/components/ui/field"
+import { Input } from "@/components/ui/input"
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group"
+import { Textarea } from "@/components/ui/textarea"
 
-type EventListingProps = {
-  schema: z.ZodObject;
-};
-
-
-const GeneralFormComponent: React.FC<EventListingProps> = ({ schema }) => {
-
-  const context = useFormContext<z.infer<typeof schema>>();
+const GeneralFormComponent: React.FC = () => {
+  const context = useFormContext();
 
   return (
     <>
+      <FieldSeparator />
+      <FieldSet>
+        <FieldGroup>
+          <Controller
+            name="name"
+            control={context.control}
+            render={({ field, fieldState }) => (
+              <Field data-invalid={fieldState.invalid}>
+                <FieldLabel htmlFor={field.name}>Name</FieldLabel>
+                <Input {...field} id={field.name} placeholder="Dentist Appointment, etc..." required aria-invalid={fieldState.invalid} />
+                {fieldState.invalid && (
+                  <FieldError errors={[fieldState.error]} />
+                )}
+              </Field>
+            )} />
+          <Controller
+            name="description"
+            control={context.control}
+            render={({ field, fieldState }) => (
+              <Field data-invalid={fieldState.invalid}>
+                <FieldLabel htmlFor={field.name}>Description</FieldLabel>
+                <Textarea {...field} placeholder="Additional information for event..." />
+              </Field>
+            )} />
+        </FieldGroup>
+      </FieldSet>
       <FieldSeparator />
       <FieldSet>
         <FieldGroup>
@@ -36,7 +59,7 @@ const GeneralFormComponent: React.FC<EventListingProps> = ({ schema }) => {
                 <RadioGroup
                   name={field.name}
                   value={field.value}
-                  onValueChange={(e) => { field.onChange(e); setLeaveAction(e) }}
+                  onValueChange={field.onChange}
                   aria-invalid={fieldState.invalid}
                 >
                   <FieldLabel htmlFor="form-leave_action-using_hours">
@@ -74,5 +97,9 @@ const GeneralFormComponent: React.FC<EventListingProps> = ({ schema }) => {
               </FieldSet>
             )} />
         </FieldGroup>
-      </FieldSet></>)
+      </FieldSet>
+    </>
+  )
 }
+
+export default GeneralFormComponent
