@@ -2,17 +2,16 @@
 
 
 import { zodResolver } from "@hookform/resolvers/zod"
-import { defineStepper, Stepper } from "@stepperize/react"
+import { defineStepper } from "@stepperize/react"
 import { Plus } from "lucide-react"
-import React from "react"
 import { FormProvider, useForm } from "react-hook-form"
 import * as z from "zod"
 
+import AddHoursFormComponent from "@/components/cards/EventForm/AddHoursFormComponent"
 import GeneralFormComponent from "@/components/cards/EventForm/GeneralFormComponent"
 import { Button } from "@/components/ui/button"
 import {
   Dialog,
-  DialogClose,
   DialogContent,
   DialogDescription,
   DialogFooter,
@@ -20,7 +19,6 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog"
-import { Separator } from "@/components/ui/separator"
 import { selectEvents } from "@/lib/features/eventListSlice";
 import { selectPools } from "@/lib/features/poolListSlice";
 import { useAppDispatch, useAppSelector } from "@/lib/hooks";
@@ -88,8 +86,8 @@ export function CreateEventForm() {
                 <div className="space-y-4">
                   {stepper.switch({
                     general: () => <GeneralFormComponent />,
-                    // adding: () => <AddHoursFormComponent schema={AddHoursSchema(pool_names)}/>,
-                    // using: () => <UseHoursFormComponent schema={AddHoursSchema(pool_names)}/>,
+                    adding: () => <AddHoursFormComponent />,
+                    // using: () => <UseHoursFormComponent />,
                   })}
                   {!stepper.isLast ? (
                     <div className="flex justify-end gap-4">

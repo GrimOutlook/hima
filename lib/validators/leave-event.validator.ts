@@ -2,9 +2,9 @@ import { z } from 'zod'
 
 export const GeneralSchema = z.object({
   name: z
-    .string("String is required").min(1, "Name is required"),
+    .string("Name is required").min(1, "Name is required"),
   description: z.string().optional(),
-  leave_action: z.enum(["using", "adding"]).nullable(),
+  leave_action: z.enum(["using", "adding"], "Leave Action is required").nullable(),
 })
 
 export const AddHoursSchema = (pool_names: string[]) => z.object({
