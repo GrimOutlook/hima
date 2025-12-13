@@ -1,12 +1,17 @@
 import "@/global.css";
-import { Text, View } from "react-native";
+import { ScrollView, View } from "react-native";
+import { Card, CardHeader, CardTitle } from "@/components/ui/card";
 
 export default function App() {
   return (
-    <View className="flex-1 items-center justify-center bg-white">
-      <Text className="text-xl font-bold text-blue-500">
-        Welcome to Nativewind!
-      </Text>
-    </View>
+    <ScrollView className="flex-1 w-full items-center justify-center bg-white">
+      <View className="flex-col w-full">
+        <Card className="w-full">
+          <CardHeader>
+            <CardTitle>Pools</CardTitle>
+          </CardHeader>
+        </Card>
+      </View>
+    </ScrollView>
   );
 }

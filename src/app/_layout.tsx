@@ -5,7 +5,7 @@ import React from "react";
 import { StatusBar } from "expo-status-bar";
 import { useColorScheme } from "nativewind";
 import "@/global.css";
-import { NAV_THEME } from "./theme";
+import { NAV_THEME } from "../lib/theme";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 
 export default function RootLayout() {
