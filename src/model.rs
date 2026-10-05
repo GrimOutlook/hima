@@ -59,6 +59,15 @@ impl Cadence {
         }
     }
 
+    pub fn form_value(self) -> &'static str {
+        match self {
+            Self::Weekly => "weekly",
+            Self::Fortnightly => "fortnightly",
+            Self::Monthly => "monthly",
+            Self::Yearly => "yearly",
+        }
+    }
+
     pub fn from_form(value: &str) -> Self {
         match value {
             "weekly" => Self::Weekly,

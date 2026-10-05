@@ -151,6 +151,7 @@ button:focus-visible, input:focus-visible, select:focus-visible, a:focus-visible
 .pool-card, .events-panel, .empty-card { border: 1px solid #ecebe5; border-radius: 13px; background: var(--surface); box-shadow: 0 3px 11px rgba(35, 45, 39, .025); }
 .pool-card { padding: 19px 20px 14px; }
 .pool-card-header { display: flex; align-items: center; justify-content: space-between; }
+.pool-actions { display: flex; align-items: center; gap: 3px; }
 .pool-title-group { display: flex; align-items: center; gap: 11px; min-width: 0; }
 .pool-icon { display: grid; place-items: center; flex: 0 0 37px; height: 37px; border-radius: 11px; color: #54765f; background: #edf3ee; font-size: 24px; line-height: 1; }
 .pool-title-group h3 { margin: 0; color: #333e37; font: 700 14px 'Manrope', sans-serif; }
@@ -169,6 +170,9 @@ button:focus-visible, input:focus-visible, select:focus-visible, a:focus-visible
 .one-time-symbol { color: #bd876f; background: #f8eee8; }
 .rule-copy { color: #5e695f; font-weight: 600; }
 .rule-date { margin-left: auto; color: #9ba098; white-space: nowrap; }
+.rule-actions { display: flex; align-items: center; gap: 1px; margin-left: 2px; }
+.rule-actions .icon-button { width: 24px; height: 24px; font-size: 15px; }
+.rule-delete:hover { color: #b46b59; background: #fbefeb; }
 .no-rules, .more-additions { margin: 0; color: #9a9f99; font-size: 10px; line-height: 1.5; }
 .more-additions { padding-left: 27px; }
 .pool-card-footer { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding-top: 10px; border-top: 1px solid #f0f0eb; }
@@ -185,7 +189,7 @@ button:focus-visible, input:focus-visible, select:focus-visible, a:focus-visible
 .text-button { padding: 4px; border: 0; background: transparent; color: #42664e; cursor: pointer; font-size: 11px; font-weight: 600; }
 .text-button:hover { color: #294d36; }
 .timeline-list { margin-top: 17px; border-top: 1px solid #f0f0eb; }
-.event-row { display: grid; grid-template-columns: 38px minmax(0, 1fr) auto 25px; align-items: center; gap: 10px; padding: 13px 0; border-bottom: 1px solid #f0f0eb; }
+.event-row { display: grid; grid-template-columns: 38px minmax(0, 1fr) auto 49px; align-items: center; gap: 10px; padding: 13px 0; border-bottom: 1px solid #f0f0eb; }
 .event-date-block { display: grid; place-items: center; align-content: center; width: 37px; height: 43px; border-radius: 9px; color: #617966; background: #eff4ef; }
 .event-month { font-size: 8px; line-height: 1.1; font-weight: 700; letter-spacing: .6px; }
 .event-date-block strong { margin-top: 2px; font: 700 16px/1 'Manrope', sans-serif; }
@@ -195,7 +199,9 @@ button:focus-visible, input:focus-visible, select:focus-visible, a:focus-visible
 .event-status { color: #b17b66; font-size: 8px; font-weight: 600; }
 .event-status-counted { color: #689073; }
 .event-amount { color: #7d594a; font-size: 10px; font-weight: 600; white-space: nowrap; }
-.event-delete { width: 24px; height: 24px; font-size: 17px; }
+.event-actions { display: flex; align-items: center; gap: 1px; }
+.event-actions .icon-button { width: 24px; height: 24px; font-size: 15px; }
+.event-actions .event-delete { font-size: 17px; }
 .events-panel-footer { display: flex; justify-content: space-between; gap: 10px; margin: 0 -19px; padding: 12px 19px; color: #92988f; background: #fbfbf8; font-size: 9px; }
 
 .empty-card { display: flex; align-items: center; flex-direction: column; padding: 33px 26px; text-align: center; }
@@ -282,7 +288,7 @@ button:focus-visible, input:focus-visible, select:focus-visible, a:focus-visible
   .rule-date { margin-left: 27px; }
   .events-panel { padding: 16px 14px 0; }
   .events-panel-footer { margin: 0 -14px; padding: 11px 14px; }
-  .event-row { grid-template-columns: 35px minmax(0, 1fr) auto 22px; gap: 7px; }
+  .event-row { grid-template-columns: 35px minmax(0, 1fr) auto 46px; gap: 7px; }
   .event-date-block { width: 34px; }
   .event-amount { font-size: 9px; }
   .page-footer { flex-wrap: wrap; gap: 6px; font-size: 9px; }

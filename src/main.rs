@@ -10,8 +10,12 @@ const STORAGE_KEY: &str = "hima.store.v1";
 enum Modal {
     None,
     NewPool,
+    EditPool { pool_id: u64 },
     AddTime { pool_id: u64 },
+    EditAddition { pool_id: u64, addition_id: u64 },
+    EditRecurring { pool_id: u64, rule_id: u64 },
     NewEvent,
+    EditEvent { event_id: u64 },
 }
 
 fn main() {
@@ -50,6 +54,21 @@ fn App() -> Element {
     timeline.sort_by(|left, right| left.date.cmp(&right.date));
     let event_word = plural(timeline.len(), "event", "events");
     let current_modal = modal();
+    let editing_pool_id = match current_modal {
+        Modal::EditPool { pool_id } => Some(pool_id),
+        _ => None,
+    };
+    let editing_event_id = match current_modal {
+        Modal::EditEvent { event_id } => Some(event_id),
+        _ => None,
+    };
+    let contribution_pool_id = match current_modal {
+        Modal::AddTime { pool_id }
+        | Modal::EditAddition { pool_id, .. }
+        | Modal::EditRecurring { pool_id, .. } => Some(pool_id),
+        _ => None,
+    };
+    let is_adding_time = matches!(current_modal, Modal::AddTime { .. });
 
     rsx! {
         document::Stylesheet { href: asset!("/assets/main.css") }
@@ -155,6 +174,7 @@ fn App() -> Element {
                                 {
                                     let pool_id = pool.id;
                                     let pool_balance = state.pool_balance_on(pool_id, &selected_date);
+                                    let pool_name_for_edit = pool.name.clone();
                                     let pool_name_for_delete = pool.name.clone();
                                     rsx! {
                                         article { class: "pool-card", key: "pool-{pool_id}",
@@ -166,18 +186,31 @@ fn App() -> Element {
                                                         div { class: "pool-subtitle", "Personal leave pool" }
                                                     }
                                                 }
-                                                button {
-                                                    class: "icon-button delete-button",
-                                                    title: "Delete pool and its events",
-                                                    aria_label: "Delete {pool.name}",
-                                                    onclick: move |_| {
-                                                        if confirm_delete(&format!("Remove ‘{pool_name_for_delete}’ and all events assigned to it?")) {
-                                                            let mut data = store.write();
-                                                            data.pools.retain(|candidate| candidate.id != pool_id);
-                                                            data.events.retain(|event| event.pool_id != pool_id);
-                                                        }
-                                                    },
-                                                    "×"
+                                                div { class: "pool-actions",
+                                                    button {
+                                                        class: "icon-button",
+                                                        title: "Edit pool",
+                                                        aria_label: "Edit {pool.name}",
+                                                        onclick: move |_| {
+                                                            pool_name.set(pool_name_for_edit.clone());
+                                                            form_error.set(String::new());
+                                                            modal.set(Modal::EditPool { pool_id });
+                                                        },
+                                                        "✎"
+                                                    }
+                                                    button {
+                                                        class: "icon-button delete-button",
+                                                        title: "Delete pool and its events",
+                                                        aria_label: "Delete {pool.name}",
+                                                        onclick: move |_| {
+                                                            if confirm_delete(&format!("Remove ‘{pool_name_for_delete}’ and all events assigned to it?")) {
+                                                                let mut data = store.write();
+                                                                data.pools.retain(|candidate| candidate.id != pool_id);
+                                                                data.events.retain(|event| event.pool_id != pool_id);
+                                                            }
+                                                        },
+                                                        "×"
+                                                    }
                                                 }
                                             }
                                             div {
@@ -192,21 +225,90 @@ fn App() -> Element {
                                                     p { class: "no-rules", "No time added yet. Add a balance or set a schedule." }
                                                 } else {
                                                     for rule in pool.recurring.iter() {
-                                                        div { class: "rule-row", key: "recurring-{rule.id}",
-                                                            span { class: "rule-symbol recurring-symbol", "↻" }
-                                                            span { class: "rule-copy", "+{format_hours(rule.amount)} h every {rule.cadence.label()}" }
-                                                            span { class: "rule-date", "from {pretty_date(&rule.start_date)}" }
+                                                        {
+                                                            let rule_id = rule.id;
+                                                            let rule_amount = rule.amount;
+                                                            let rule_start_date = rule.start_date.clone();
+                                                            let rule_cadence = rule.cadence;
+                                                            rsx! {
+                                                                div { class: "rule-row", key: "recurring-{rule_id}",
+                                                                    span { class: "rule-symbol recurring-symbol", "↻" }
+                                                                    span { class: "rule-copy", "+{format_hours(rule_amount)} h every {rule_cadence.label()}" }
+                                                                    span { class: "rule-date", "from {pretty_date(&rule_start_date)}" }
+                                                                    div { class: "rule-actions",
+                                                                        button {
+                                                                            class: "icon-button",
+                                                                            title: "Edit recurring addition",
+                                                                            aria_label: "Edit recurring addition",
+                                                                            onclick: move |_| {
+                                                                                contribution_amount.set(format_hours(rule_amount));
+                                                                                contribution_date.set(rule_start_date.clone());
+                                                                                contribution_cadence.set(rule_cadence.form_value().to_owned());
+                                                                                contribution_is_recurring.set(true);
+                                                                                form_error.set(String::new());
+                                                                                modal.set(Modal::EditRecurring { pool_id, rule_id });
+                                                                            },
+                                                                            "✎"
+                                                                        }
+                                                                        button {
+                                                                            class: "icon-button rule-delete",
+                                                                            title: "Delete recurring addition",
+                                                                            aria_label: "Delete recurring addition",
+                                                                            onclick: move |_| {
+                                                                                if confirm_delete("Remove this recurring addition?") {
+                                                                                    if let Some(pool) = store.write().pools.iter_mut().find(|pool| pool.id == pool_id) {
+                                                                                        pool.recurring.retain(|candidate| candidate.id != rule_id);
+                                                                                    }
+                                                                                }
+                                                                            },
+                                                                            "×"
+                                                                        }
+                                                                    }
+                                                                }
+                                                            }
                                                         }
                                                     }
-                                                    for addition in pool.additions.iter().rev().take(3) {
-                                                        div { class: "rule-row", key: "addition-{addition.id}",
-                                                            span { class: "rule-symbol one-time-symbol", "+" }
-                                                            span { class: "rule-copy", "+{format_hours(addition.amount)} h one-time" }
-                                                            span { class: "rule-date", "on {pretty_date(&addition.date)}" }
+                                                    for addition in pool.additions.iter().rev() {
+                                                        {
+                                                            let addition_id = addition.id;
+                                                            let addition_amount = addition.amount;
+                                                            let addition_date = addition.date.clone();
+                                                            rsx! {
+                                                                div { class: "rule-row", key: "addition-{addition_id}",
+                                                                    span { class: "rule-symbol one-time-symbol", "+" }
+                                                                    span { class: "rule-copy", "+{format_hours(addition_amount)} h one-time" }
+                                                                    span { class: "rule-date", "on {pretty_date(&addition_date)}" }
+                                                                    div { class: "rule-actions",
+                                                                        button {
+                                                                            class: "icon-button",
+                                                                            title: "Edit one-time addition",
+                                                                            aria_label: "Edit one-time addition",
+                                                                            onclick: move |_| {
+                                                                                contribution_amount.set(format_hours(addition_amount));
+                                                                                contribution_date.set(addition_date.clone());
+                                                                                contribution_is_recurring.set(false);
+                                                                                form_error.set(String::new());
+                                                                                modal.set(Modal::EditAddition { pool_id, addition_id });
+                                                                            },
+                                                                            "✎"
+                                                                        }
+                                                                        button {
+                                                                            class: "icon-button rule-delete",
+                                                                            title: "Delete one-time addition",
+                                                                            aria_label: "Delete one-time addition",
+                                                                            onclick: move |_| {
+                                                                                if confirm_delete("Remove this one-time addition?") {
+                                                                                    if let Some(pool) = store.write().pools.iter_mut().find(|pool| pool.id == pool_id) {
+                                                                                        pool.additions.retain(|candidate| candidate.id != addition_id);
+                                                                                    }
+                                                                                }
+                                                                            },
+                                                                            "×"
+                                                                        }
+                                                                    }
+                                                                }
+                                                            }
                                                         }
-                                                    }
-                                                    if pool.additions.len() > 3 {
-                                                        p { class: "more-additions", "+{pool.additions.len() - 3} earlier additions" }
                                                     }
                                                 }
                                             }
@@ -288,6 +390,10 @@ fn App() -> Element {
                                         {
                                             let event_id = event.id;
                                             let event_is_counted = event.date.as_str() <= selected_date.as_str();
+                                            let event_name_for_edit = event.name.clone();
+                                            let event_amount_for_edit = event.amount;
+                                            let event_date_for_edit = event.date.clone();
+                                            let event_pool_id_for_edit = event.pool_id;
                                             let pool_name = state.pools.iter()
                                                 .find(|pool| pool.id == event.pool_id)
                                                 .map(|pool| pool.name.clone())
@@ -307,12 +413,28 @@ fn App() -> Element {
                                                         }
                                                     }
                                                     div { class: "event-amount", "−{format_hours(event.amount)} h" }
-                                                    button {
-                                                        class: "icon-button event-delete",
-                                                        title: "Delete event",
-                                                        aria_label: "Delete {event.name}",
-                                                        onclick: move |_| store.write().events.retain(|item| item.id != event_id),
-                                                        "×"
+                                                    div { class: "event-actions",
+                                                        button {
+                                                            class: "icon-button",
+                                                            title: "Edit event",
+                                                            aria_label: "Edit {event.name}",
+                                                            onclick: move |_| {
+                                                                event_name.set(event_name_for_edit.clone());
+                                                                event_amount.set(format_hours(event_amount_for_edit));
+                                                                event_date.set(event_date_for_edit.clone());
+                                                                event_pool_id.set(event_pool_id_for_edit);
+                                                                form_error.set(String::new());
+                                                                modal.set(Modal::EditEvent { event_id });
+                                                            },
+                                                            "✎"
+                                                        }
+                                                        button {
+                                                            class: "icon-button event-delete",
+                                                            title: "Delete event",
+                                                            aria_label: "Delete {event.name}",
+                                                            onclick: move |_| store.write().events.retain(|item| item.id != event_id),
+                                                            "×"
+                                                        }
                                                     }
                                                 }
                                             }
@@ -336,14 +458,20 @@ fn App() -> Element {
                 }
             }
 
-            if current_modal == Modal::NewPool {
+            if current_modal == Modal::NewPool || editing_pool_id.is_some() {
                 div { class: "modal-backdrop",
                     section { class: "modal-card", role: "dialog", aria_modal: "true", aria_labelledby: "new-pool-title",
                         div { class: "modal-header",
                             div { class: "modal-icon", "◌" }
                             div { class: "modal-heading",
-                                h2 { id: "new-pool-title", "Create a pool" }
-                                p { "Give a kind of leave its own little home." }
+                                h2 { id: "new-pool-title", if editing_pool_id.is_some() { "Edit pool" } else { "Create a pool" } }
+                                p {
+                                    if editing_pool_id.is_some() {
+                                        "Rename this pool. Its balance is calculated from its additions and events."
+                                    } else {
+                                        "Give a kind of leave its own little home."
+                                    }
+                                }
                             }
                             button { class: "icon-button modal-close", aria_label: "Close", onclick: move |_| modal.set(Modal::None), "×" }
                         }
@@ -352,39 +480,48 @@ fn App() -> Element {
                             onsubmit: move |event| {
                                 event.prevent_default();
                                 let name = pool_name.read().trim().to_owned();
-                                let amount_text = opening_amount.read().trim().to_owned();
-                                let date = opening_date.read().clone();
                                 if name.is_empty() {
                                     form_error.set("Add a name for this pool.".to_owned());
                                     return;
                                 }
-                                let initial = if amount_text.is_empty() {
-                                    Some(0.0)
-                                } else {
-                                    parse_hours(&amount_text, true)
-                                };
-                                if initial.is_none() {
-                                    form_error.set("Enter a starting balance with up to two decimal places.".to_owned());
-                                    return;
-                                }
-                                if parse_date(&date).is_none() {
-                                    form_error.set("Choose a valid starting date.".to_owned());
-                                    return;
-                                }
                                 let mut data = store.write();
-                                let pool_id = data.allocate_id();
-                                let amount = initial.unwrap_or_default();
-                                let additions = if amount > 0.0 {
-                                    vec![OneTimeAddition { id: data.allocate_id(), amount, date }]
+                                if let Some(pool_id) = editing_pool_id {
+                                    if let Some(pool) = data.pools.iter_mut().find(|pool| pool.id == pool_id) {
+                                        pool.name = name;
+                                    } else {
+                                        form_error.set("This pool no longer exists.".to_owned());
+                                        return;
+                                    }
                                 } else {
-                                    Vec::new()
-                                };
-                                data.pools.push(Pool {
-                                    id: pool_id,
-                                    name,
-                                    additions,
-                                    recurring: Vec::new(),
-                                });
+                                    let amount_text = opening_amount.read().trim().to_owned();
+                                    let date = opening_date.read().clone();
+                                    let initial = if amount_text.is_empty() {
+                                        Some(0.0)
+                                    } else {
+                                        parse_hours(&amount_text, true)
+                                    };
+                                    if initial.is_none() {
+                                        form_error.set("Enter a starting balance with up to two decimal places.".to_owned());
+                                        return;
+                                    }
+                                    if parse_date(&date).is_none() {
+                                        form_error.set("Choose a valid starting date.".to_owned());
+                                        return;
+                                    }
+                                    let pool_id = data.allocate_id();
+                                    let amount = initial.unwrap_or_default();
+                                    let additions = if amount > 0.0 {
+                                        vec![OneTimeAddition { id: data.allocate_id(), amount, date }]
+                                    } else {
+                                        Vec::new()
+                                    };
+                                    data.pools.push(Pool {
+                                        id: pool_id,
+                                        name,
+                                        additions,
+                                        recurring: Vec::new(),
+                                    });
+                                }
                                 drop(data);
                                 modal.set(Modal::None);
                                 form_error.set(String::new());
@@ -400,27 +537,29 @@ fn App() -> Element {
                                     oninput: move |event| pool_name.set(event.value()),
                                 }
                             }
-                            div { class: "form-two-columns",
-                                label { class: "field-label",
-                                    "Starting balance"
-                                    div { class: "input-with-suffix",
-                                        input {
-                                            r#type: "number",
-                                            min: "0",
-                                            step: "0.01",
-                                            placeholder: "0",
-                                            value: "{opening_amount}",
-                                            oninput: move |event| opening_amount.set(event.value()),
+                            if editing_pool_id.is_none() {
+                                div { class: "form-two-columns",
+                                    label { class: "field-label",
+                                        "Starting balance"
+                                        div { class: "input-with-suffix",
+                                            input {
+                                                r#type: "number",
+                                                min: "0",
+                                                step: "0.01",
+                                                placeholder: "0",
+                                                value: "{opening_amount}",
+                                                oninput: move |event| opening_amount.set(event.value()),
+                                            }
+                                            span { "hours" }
                                         }
-                                        span { "hours" }
                                     }
-                                }
-                                label { class: "field-label",
-                                    "Balance as of"
-                                    input {
-                                        r#type: "date",
-                                        value: "{opening_date}",
-                                        oninput: move |event| opening_date.set(event.value()),
+                                    label { class: "field-label",
+                                        "Balance as of"
+                                        input {
+                                            r#type: "date",
+                                            value: "{opening_date}",
+                                            oninput: move |event| opening_date.set(event.value()),
+                                        }
                                     }
                                 }
                             }
@@ -429,22 +568,35 @@ fn App() -> Element {
                             }
                             div { class: "modal-actions",
                                 button { class: "button button-quiet", r#type: "button", onclick: move |_| modal.set(Modal::None), "Cancel" }
-                                button { class: "button button-primary", r#type: "submit", "Create pool" }
+                                button {
+                                    class: "button button-primary",
+                                    r#type: "submit",
+                                    if editing_pool_id.is_some() { "Save changes" } else { "Create pool" }
+                                }
                             }
                         }
                     }
                 }
             }
 
-            if let Modal::AddTime { pool_id } = current_modal {
+            if let Some(pool_id) = contribution_pool_id {
                 if let Some(pool) = state.pools.iter().find(|pool| pool.id == pool_id) {
                     div { class: "modal-backdrop",
                         section { class: "modal-card", role: "dialog", aria_modal: "true", aria_labelledby: "add-time-title",
                             div { class: "modal-header",
                                 div { class: "modal-icon modal-icon-add", "+" }
                                 div { class: "modal-heading",
-                                    h2 { id: "add-time-title", "Add time to {pool.name}" }
-                                    p { "Choose a one-time addition or set a repeating schedule." }
+                                    h2 {
+                                        id: "add-time-title",
+                                        if is_adding_time { "Add time to {pool.name}" } else { "Edit addition in {pool.name}" }
+                                    }
+                                    p {
+                                        if is_adding_time {
+                                            "Choose a one-time addition or set a repeating schedule."
+                                        } else {
+                                            "Update this addition's amount, date, or schedule."
+                                        }
+                                    }
                                 }
                                 button { class: "icon-button modal-close", aria_label: "Close", onclick: move |_| modal.set(Modal::None), "×" }
                             }
@@ -454,6 +606,8 @@ fn App() -> Element {
                                     event.prevent_default();
                                     let amount = parse_hours(&contribution_amount.read(), false);
                                     let date = contribution_date.read().clone();
+                                    let recurring = contribution_is_recurring();
+                                    let cadence = Cadence::from_form(&contribution_cadence.read());
                                     if amount.is_none() {
                                         form_error.set("Enter an amount greater than zero with up to two decimal places.".to_owned());
                                         return;
@@ -463,39 +617,73 @@ fn App() -> Element {
                                         return;
                                     }
                                     let mut data = store.write();
-                                    let id = data.allocate_id();
-                                    if let Some(pool) = data.pools.iter_mut().find(|pool| pool.id == pool_id) {
-                                        if contribution_is_recurring() {
-                                            pool.recurring.push(RecurringAddition {
-                                                id,
-                                                amount: amount.unwrap_or_default(),
-                                                cadence: Cadence::from_form(&contribution_cadence.read()),
-                                                start_date: date,
-                                            });
-                                        } else {
-                                            pool.additions.push(OneTimeAddition {
-                                                id,
-                                                amount: amount.unwrap_or_default(),
-                                                date,
-                                            });
+                                    let mut changed = false;
+                                    match current_modal {
+                                        Modal::AddTime { pool_id } => {
+                                            let id = data.allocate_id();
+                                            if let Some(pool) = data.pools.iter_mut().find(|pool| pool.id == pool_id) {
+                                                if recurring {
+                                                    pool.recurring.push(RecurringAddition {
+                                                        id,
+                                                        amount: amount.unwrap_or_default(),
+                                                        cadence,
+                                                        start_date: date,
+                                                    });
+                                                } else {
+                                                    pool.additions.push(OneTimeAddition {
+                                                        id,
+                                                        amount: amount.unwrap_or_default(),
+                                                        date,
+                                                    });
+                                                }
+                                                changed = true;
+                                            }
                                         }
+                                        Modal::EditAddition { pool_id, addition_id } => {
+                                            if let Some(addition) = data.pools.iter_mut()
+                                                .find(|pool| pool.id == pool_id)
+                                                .and_then(|pool| pool.additions.iter_mut().find(|addition| addition.id == addition_id))
+                                            {
+                                                addition.amount = amount.unwrap_or_default();
+                                                addition.date = date;
+                                                changed = true;
+                                            }
+                                        }
+                                        Modal::EditRecurring { pool_id, rule_id } => {
+                                            if let Some(rule) = data.pools.iter_mut()
+                                                .find(|pool| pool.id == pool_id)
+                                                .and_then(|pool| pool.recurring.iter_mut().find(|rule| rule.id == rule_id))
+                                            {
+                                                rule.amount = amount.unwrap_or_default();
+                                                rule.cadence = cadence;
+                                                rule.start_date = date;
+                                                changed = true;
+                                            }
+                                        }
+                                        _ => {}
                                     }
                                     drop(data);
+                                    if !changed {
+                                        form_error.set("This addition no longer exists.".to_owned());
+                                        return;
+                                    }
                                     modal.set(Modal::None);
                                     form_error.set(String::new());
                                 },
-                                div { class: "segmented-control",
-                                    button {
-                                        class: if !contribution_is_recurring() { "segment is-active" } else { "segment" },
-                                        r#type: "button",
-                                        onclick: move |_| contribution_is_recurring.set(false),
-                                        "One-time"
-                                    }
-                                    button {
-                                        class: if contribution_is_recurring() { "segment is-active" } else { "segment" },
-                                        r#type: "button",
-                                        onclick: move |_| contribution_is_recurring.set(true),
-                                        "Repeating"
+                                if is_adding_time {
+                                    div { class: "segmented-control",
+                                        button {
+                                            class: if !contribution_is_recurring() { "segment is-active" } else { "segment" },
+                                            r#type: "button",
+                                            onclick: move |_| contribution_is_recurring.set(false),
+                                            "One-time"
+                                        }
+                                        button {
+                                            class: if contribution_is_recurring() { "segment is-active" } else { "segment" },
+                                            r#type: "button",
+                                            onclick: move |_| contribution_is_recurring.set(true),
+                                            "Repeating"
+                                        }
                                     }
                                 }
                                 label { class: "field-label",
@@ -538,7 +726,11 @@ fn App() -> Element {
                                 }
                                 div { class: "modal-actions",
                                     button { class: "button button-quiet", r#type: "button", onclick: move |_| modal.set(Modal::None), "Cancel" }
-                                    button { class: "button button-primary", r#type: "submit", "Save addition" }
+                                    button {
+                                        class: "button button-primary",
+                                        r#type: "submit",
+                                        if is_adding_time { "Save addition" } else { "Save changes" }
+                                    }
                                 }
                             }
                         }
@@ -546,14 +738,23 @@ fn App() -> Element {
                 }
             }
 
-            if current_modal == Modal::NewEvent {
+            if current_modal == Modal::NewEvent || editing_event_id.is_some() {
                 div { class: "modal-backdrop",
                     section { class: "modal-card", role: "dialog", aria_modal: "true", aria_labelledby: "new-event-title",
                         div { class: "modal-header",
                             div { class: "modal-icon modal-icon-event", "↘" }
                             div { class: "modal-heading",
-                                h2 { id: "new-event-title", "Plan some leave" }
-                                p { "We'll take these hours from the pool you select." }
+                                h2 {
+                                    id: "new-event-title",
+                                    if editing_event_id.is_some() { "Edit planned leave" } else { "Plan some leave" }
+                                }
+                                p {
+                                    if editing_event_id.is_some() {
+                                        "Update the event details or move it to another pool."
+                                    } else {
+                                        "We'll take these hours from the pool you select."
+                                    }
+                                }
                             }
                             button { class: "icon-button modal-close", aria_label: "Close", onclick: move |_| modal.set(Modal::None), "×" }
                         }
@@ -582,15 +783,32 @@ fn App() -> Element {
                                     return;
                                 }
                                 let mut data = store.write();
-                                let id = data.allocate_id();
-                                data.events.push(LeaveEvent {
-                                    id,
-                                    name,
-                                    pool_id,
-                                    amount: amount.unwrap_or_default(),
-                                    date,
-                                });
+                                let changed = if let Some(event_id) = editing_event_id {
+                                    if let Some(event) = data.events.iter_mut().find(|event| event.id == event_id) {
+                                        event.name = name;
+                                        event.pool_id = pool_id;
+                                        event.amount = amount.unwrap_or_default();
+                                        event.date = date;
+                                        true
+                                    } else {
+                                        false
+                                    }
+                                } else {
+                                    let id = data.allocate_id();
+                                    data.events.push(LeaveEvent {
+                                        id,
+                                        name,
+                                        pool_id,
+                                        amount: amount.unwrap_or_default(),
+                                        date,
+                                    });
+                                    true
+                                };
                                 drop(data);
+                                if !changed {
+                                    form_error.set("This event no longer exists.".to_owned());
+                                    return;
+                                }
                                 modal.set(Modal::None);
                                 form_error.set(String::new());
                             },
@@ -648,7 +866,11 @@ fn App() -> Element {
                             }
                             div { class: "modal-actions",
                                 button { class: "button button-quiet", r#type: "button", onclick: move |_| modal.set(Modal::None), "Cancel" }
-                                button { class: "button button-primary", r#type: "submit", "Add to plan" }
+                                button {
+                                    class: "button button-primary",
+                                    r#type: "submit",
+                                    if editing_event_id.is_some() { "Save changes" } else { "Add to plan" }
+                                }
                             }
                         }
                     }
