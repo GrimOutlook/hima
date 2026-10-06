@@ -45,13 +45,18 @@ pub enum Cadence {
 pub struct LeaveEvent {
     pub id: u64,
     pub name: String,
-    pub pool_id: u64,
     pub days: Vec<LeaveDay>,
 }
 
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
 pub struct LeaveDay {
     pub date: String,
+    pub allocations: Vec<PoolAllocation>,
+}
+
+#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
+pub struct PoolAllocation {
+    pub pool_id: u64,
     pub hours: f64,
 }
 
@@ -59,29 +64,74 @@ pub struct LeaveDay {
 struct StoredLeaveEvent {
     id: u64,
     name: String,
+    #[serde(default)]
     pool_id: u64,
     #[serde(default)]
-    days: Vec<LeaveDay>,
+    days: Vec<StoredLeaveDay>,
     #[serde(default)]
     date: String,
     #[serde(default)]
     amount: f64,
 }
 
+#[derive(Deserialize)]
+struct StoredLeaveDay {
+    date: String,
+    #[serde(default)]
+    allocations: Vec<PoolAllocation>,
+    #[serde(default)]
+    hours: f64,
+    #[serde(default)]
+    pool_id: u64,
+}
+
 impl From<StoredLeaveEvent> for LeaveEvent {
     fn from(stored: StoredLeaveEvent) -> Self {
+        let legacy_pool_id = stored.pool_id;
         let days = if stored.days.is_empty() && !stored.date.is_empty() && stored.amount > 0.0 {
             vec![LeaveDay {
                 date: stored.date,
-                hours: stored.amount,
+                allocations: vec![PoolAllocation {
+                    pool_id: legacy_pool_id,
+                    hours: stored.amount,
+                }],
             }]
         } else {
-            stored.days
+            stored
+                .days
+                .into_iter()
+                .map(|day| {
+                    let day_pool_id = if day.pool_id == 0 {
+                        legacy_pool_id
+                    } else {
+                        day.pool_id
+                    };
+                    let allocations = if day.allocations.is_empty() && day.hours > 0.0 {
+                        vec![PoolAllocation {
+                            pool_id: day_pool_id,
+                            hours: day.hours,
+                        }]
+                    } else {
+                        day.allocations
+                            .into_iter()
+                            .map(|mut allocation| {
+                                if allocation.pool_id == 0 {
+                                    allocation.pool_id = day_pool_id;
+                                }
+                                allocation
+                            })
+                            .collect()
+                    };
+                    LeaveDay {
+                        date: day.date,
+                        allocations,
+                    }
+                })
+                .collect()
         };
         Self {
             id: stored.id,
             name: stored.name,
-            pool_id: stored.pool_id,
             days,
         }
     }
@@ -159,8 +209,7 @@ impl Store {
         let used = self
             .events
             .iter()
-            .filter(|event| event.pool_id == pool_id)
-            .map(|event| event.hours_through(date))
+            .map(|event| event.hours_from_pool_through(pool_id, date))
             .sum::<f64>();
         accrued - used
     }
@@ -171,12 +220,22 @@ impl LeaveEvent {
         self.days
             .iter()
             .filter(|day| day.date.as_str() <= date)
-            .map(|day| day.hours)
+            .map(LeaveDay::total_hours)
             .sum()
     }
 
     pub fn total_hours(&self) -> f64 {
-        self.days.iter().map(|day| day.hours).sum()
+        self.days.iter().map(LeaveDay::total_hours).sum()
+    }
+
+    pub fn hours_from_pool_through(&self, pool_id: u64, date: &str) -> f64 {
+        self.days
+            .iter()
+            .filter(|day| day.date.as_str() <= date)
+            .flat_map(|day| day.allocations.iter())
+            .filter(|allocation| allocation.pool_id == pool_id)
+            .map(|allocation| allocation.hours)
+            .sum()
     }
 
     pub fn first_date(&self) -> &str {
@@ -193,6 +252,15 @@ impl LeaveEvent {
             .map(|day| day.date.as_str())
             .max()
             .unwrap_or_default()
+    }
+}
+
+impl LeaveDay {
+    pub fn total_hours(&self) -> f64 {
+        self.allocations
+            .iter()
+            .map(|allocation| allocation.hours)
+            .sum()
     }
 }
 
@@ -306,15 +374,20 @@ mod tests {
             events: vec![LeaveEvent {
                 id: 3,
                 name: "Long weekend".to_owned(),
-                pool_id: 1,
                 days: vec![
                     LeaveDay {
                         date: "2026-02-01".to_owned(),
-                        hours: 1.75,
+                        allocations: vec![PoolAllocation {
+                            pool_id: 1,
+                            hours: 1.75,
+                        }],
                     },
                     LeaveDay {
                         date: "2026-02-02".to_owned(),
-                        hours: 2.25,
+                        allocations: vec![PoolAllocation {
+                            pool_id: 1,
+                            hours: 2.25,
+                        }],
                     },
                 ],
             }],
@@ -325,6 +398,72 @@ mod tests {
         assert_eq!(store.totals_on("2026-02-01"), (10.0, 1.75, 8.25));
         assert_eq!(store.totals_on("2026-02-02"), (10.0, 4.0, 6.0));
         assert_eq!(store.pool_balance_on(1, "2026-02-01"), 8.25);
+    }
+
+    #[test]
+    fn one_event_day_can_draw_from_multiple_pools() {
+        let store = Store {
+            pools: vec![
+                Pool {
+                    id: 1,
+                    name: "Personal leave".to_owned(),
+                    additions: vec![OneTimeAddition {
+                        id: 2,
+                        amount: 8.0,
+                        date: "2026-01-01".to_owned(),
+                    }],
+                    recurring: Vec::new(),
+                },
+                Pool {
+                    id: 3,
+                    name: "Carer's leave".to_owned(),
+                    additions: vec![OneTimeAddition {
+                        id: 4,
+                        amount: 6.0,
+                        date: "2026-01-01".to_owned(),
+                    }],
+                    recurring: Vec::new(),
+                },
+            ],
+            events: vec![LeaveEvent {
+                id: 5,
+                name: "Family trip".to_owned(),
+                days: vec![
+                    LeaveDay {
+                        date: "2026-02-01".to_owned(),
+                        allocations: vec![
+                            PoolAllocation {
+                                pool_id: 1,
+                                hours: 1.25,
+                            },
+                            PoolAllocation {
+                                pool_id: 3,
+                                hours: 0.75,
+                            },
+                        ],
+                    },
+                    LeaveDay {
+                        date: "2026-02-02".to_owned(),
+                        allocations: vec![PoolAllocation {
+                            pool_id: 3,
+                            hours: 3.0,
+                        }],
+                    },
+                ],
+            }],
+            next_id: 6,
+        };
+
+        assert_eq!(store.totals_on("2026-02-01"), (14.0, 2.0, 12.0));
+        assert_eq!(store.pool_balance_on(1, "2026-02-01"), 6.75);
+        assert_eq!(store.pool_balance_on(3, "2026-02-01"), 5.25);
+        assert_eq!(store.totals_on("2026-02-02"), (14.0, 5.0, 9.0));
+        assert_eq!(store.pool_balance_on(1, "2026-02-02"), 6.75);
+        assert_eq!(store.pool_balance_on(3, "2026-02-02"), 2.25);
+
+        let saved = serde_json::to_string(&store).unwrap();
+        let restored: Store = serde_json::from_str(&saved).unwrap();
+        assert_eq!(restored, store);
     }
 
     #[test]
@@ -343,7 +482,10 @@ mod tests {
             event.days,
             vec![LeaveDay {
                 date: "2026-04-15".to_owned(),
-                hours: 1.5,
+                allocations: vec![PoolAllocation {
+                    pool_id: 2,
+                    hours: 1.5,
+                }],
             }]
         );
         assert_eq!(event.total_hours(), 1.5);
@@ -352,5 +494,44 @@ mod tests {
         assert!(saved.get("days").is_some());
         assert!(saved.get("date").is_none());
         assert!(saved.get("amount").is_none());
+        assert!(saved.get("pool_id").is_none());
+    }
+
+    #[test]
+    fn older_multiday_events_apply_their_pool_to_each_day_when_migrated() {
+        let old_event = r#"{
+            "id": 9,
+            "name": "Conference",
+            "pool_id": 4,
+            "days": [
+                { "date": "2026-05-10", "hours": 4.0 },
+                { "date": "2026-05-11", "hours": 6.0 }
+            ]
+        }"#;
+
+        let event: LeaveEvent = serde_json::from_str(old_event).unwrap();
+
+        assert_eq!(event.days.len(), 2);
+        assert!(event
+            .days
+            .iter()
+            .all(|day| day.allocations.len() == 1 && day.allocations[0].pool_id == 4));
+    }
+
+    #[test]
+    fn per_day_pool_assignments_migrate_to_single_pool_allocations() {
+        let old_event = r#"{
+            "id": 10,
+            "name": "Two-pool trip",
+            "days": [
+                { "date": "2026-05-10", "hours": 4.0, "pool_id": 2 },
+                { "date": "2026-05-11", "hours": 6.0, "pool_id": 5 }
+            ]
+        }"#;
+
+        let event: LeaveEvent = serde_json::from_str(old_event).unwrap();
+
+        assert_eq!(event.days[0].allocations[0].pool_id, 2);
+        assert_eq!(event.days[1].allocations[0].pool_id, 5);
     }
 }

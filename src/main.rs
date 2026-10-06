@@ -2,7 +2,8 @@ mod model;
 
 use dioxus::prelude::*;
 use model::{
-    parse_date, Cadence, LeaveDay, LeaveEvent, OneTimeAddition, Pool, RecurringAddition, Store,
+    parse_date, Cadence, LeaveDay, LeaveEvent, OneTimeAddition, Pool, PoolAllocation,
+    RecurringAddition, Store,
 };
 use std::collections::HashSet;
 
@@ -24,14 +25,23 @@ enum Modal {
 #[derive(Clone, Debug, PartialEq)]
 struct EventDayInput {
     date: String,
+    allocations: Vec<PoolAllocationInput>,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+struct PoolAllocationInput {
+    pool_id: u64,
     hours: String,
 }
 
 impl EventDayInput {
-    fn new(date: String) -> Self {
+    fn new(date: String, pool_id: u64) -> Self {
         Self {
             date,
-            hours: String::new(),
+            allocations: vec![PoolAllocationInput {
+                pool_id,
+                hours: String::new(),
+            }],
         }
     }
 }
@@ -56,8 +66,7 @@ fn App() -> Element {
     let mut contribution_is_recurring = use_signal(|| false);
     let mut contribution_cadence = use_signal(|| "fortnightly".to_owned());
     let mut event_name = use_signal(String::new);
-    let mut event_days = use_signal(|| vec![EventDayInput::new(today_date())]);
-    let mut event_pool_id = use_signal(|| 0_u64);
+    let mut event_days = use_signal(|| fresh_event_days(0));
 
     use_effect(move || {
         let snapshot = store.read().clone();
@@ -217,13 +226,19 @@ fn App() -> Element {
                                                     }
                                                     button {
                                                         class: "icon-button delete-button",
-                                                        title: "Delete pool and its events",
+                                                        title: "Delete pool",
                                                         aria_label: "Delete {pool.name}",
                                                         onclick: move |_| {
-                                                            if confirm_delete(&format!("Remove ‘{pool_name_for_delete}’ and all events assigned to it?")) {
+                                                            if confirm_delete(&format!("Remove ‘{pool_name_for_delete}’ and event days assigned to it?")) {
                                                                 let mut data = store.write();
                                                                 data.pools.retain(|candidate| candidate.id != pool_id);
-                                                                data.events.retain(|event| event.pool_id != pool_id);
+                                                                for event in &mut data.events {
+                                                                    for day in &mut event.days {
+                                                                        day.allocations.retain(|allocation| allocation.pool_id != pool_id);
+                                                                    }
+                                                                    event.days.retain(|day| !day.allocations.is_empty());
+                                                                }
+                                                                data.events.retain(|event| !event.days.is_empty());
                                                             }
                                                         },
                                                         "×"
@@ -365,17 +380,14 @@ fn App() -> Element {
                                     onclick: move |_| {
                                         form_error.set(String::new());
                                         event_name.set(String::new());
-                                        event_days.set(fresh_event_days());
-                                        if let Some(first_pool_id) = first_pool_id {
-                                            event_pool_id.set(first_pool_id);
-                                        }
+                                        event_days.set(fresh_event_days(first_pool_id.unwrap_or_default()));
                                         modal.set(Modal::NewEvent);
                                     },
                                     span { class: "button-plus", "+" }
                                     "Add event"
                                 }
                             }
-                            p { class: "events-caption", "Leave is deducted from the pool you choose." }
+                            p { class: "events-caption", "Each event day draws from its selected pool." }
 
                             if timeline.is_empty() {
                                 div { class: "events-empty",
@@ -389,10 +401,7 @@ fn App() -> Element {
                                             onclick: move |_| {
                                                 form_error.set(String::new());
                                                 event_name.set(String::new());
-                                                event_days.set(fresh_event_days());
-                                                if let Some(first_pool_id) = first_pool_id {
-                                                    event_pool_id.set(first_pool_id);
-                                                }
+                                                event_days.set(fresh_event_days(first_pool_id.unwrap_or_default()));
                                                 modal.set(Modal::NewEvent);
                                             },
                                             "Add your first event →"
@@ -427,19 +436,20 @@ fn App() -> Element {
                                             let event_days_for_edit = event.days.iter()
                                                 .map(|day| EventDayInput {
                                                     date: day.date.clone(),
-                                                    hours: format_hours(day.hours),
+                                                    allocations: day.allocations.iter()
+                                                        .map(|allocation| PoolAllocationInput {
+                                                            pool_id: allocation.pool_id,
+                                                            hours: format_hours(allocation.hours),
+                                                        })
+                                                        .collect(),
                                                 })
                                                 .collect::<Vec<_>>();
-                                            let event_pool_id_for_edit = event.pool_id;
                                             let event_first_date = event.first_date().to_owned();
                                             let event_date_range = event_date_range_label(event);
                                             let event_day_count = event.days.len();
                                             let event_day_word = plural(event_day_count, "day", "days");
-                                            let event_day_summary = event_day_summary(event);
-                                            let pool_name = state.pools.iter()
-                                                .find(|pool| pool.id == event.pool_id)
-                                                .map(|pool| pool.name.clone())
-                                                .unwrap_or_else(|| "Removed pool".to_owned());
+                                            let event_day_summary = event_day_summary(event, &state.pools);
+                                            let event_pool_summary = event_pool_summary(event, &state.pools);
                                             rsx! {
                                                 article { class: "event-row", key: "event-{event_id}",
                                                     div { class: "event-date-block",
@@ -448,7 +458,7 @@ fn App() -> Element {
                                                     }
                                                     div { class: "event-info",
                                                         strong { "{event.name}" }
-                                                        span { "{pool_name} · {event_day_count} {event_day_word} · {event_date_range}" }
+                                                        span { "{event_pool_summary} · {event_day_count} {event_day_word} · {event_date_range}" }
                                                         span { class: "event-day-details", "{event_day_summary}" }
                                                         span {
                                                             class: event_status_class,
@@ -464,7 +474,6 @@ fn App() -> Element {
                                                             onclick: move |_| {
                                                                 event_name.set(event_name_for_edit.clone());
                                                                 event_days.set(event_days_for_edit.clone());
-                                                                event_pool_id.set(event_pool_id_for_edit);
                                                                 form_error.set(String::new());
                                                                 modal.set(Modal::EditEvent { event_id });
                                                             },
@@ -792,9 +801,9 @@ fn App() -> Element {
                                 }
                                 p {
                                     if editing_event_id.is_some() {
-                                        "Update the event details or move it to another pool."
+                                        "Update dates, hours, or the source pool for any day."
                                     } else {
-                                        "We'll take these hours from the pool you select."
+                                        "Record the hours and source pool for each day."
                                     }
                                 }
                             }
@@ -806,7 +815,6 @@ fn App() -> Element {
                                 event.prevent_default();
                                 let name = event_name.read().trim().to_owned();
                                 let day_inputs = event_days.read().clone();
-                                let pool_id = event_pool_id();
                                 if name.is_empty() {
                                     form_error.set("Give this event a name.".to_owned());
                                     return;
@@ -826,25 +834,40 @@ fn App() -> Element {
                                         form_error.set("Each event day must have a different date.".to_owned());
                                         return;
                                     }
-                                    let Some(hours) = parse_hours(&input.hours, false) else {
-                                        form_error.set("Enter positive hours with up to two decimal places for each day.".to_owned());
+                                    if input.allocations.is_empty() {
+                                        form_error.set("Choose at least one pool for each event day.".to_owned());
                                         return;
-                                    };
+                                    }
+                                    let mut allocations = Vec::with_capacity(input.allocations.len());
+                                    let mut unique_pools = HashSet::new();
+                                    for allocation in input.allocations {
+                                        if !unique_pools.insert(allocation.pool_id) {
+                                            form_error.set("Choose each pool only once per day.".to_owned());
+                                            return;
+                                        }
+                                        if !store.read().pools.iter().any(|pool| pool.id == allocation.pool_id) {
+                                            form_error.set("Choose an existing pool for each event day.".to_owned());
+                                            return;
+                                        }
+                                        let Some(hours) = parse_hours(&allocation.hours, false) else {
+                                            form_error.set("Enter positive hours with up to two decimal places for each pool allocation.".to_owned());
+                                            return;
+                                        };
+                                        allocations.push(PoolAllocation {
+                                            pool_id: allocation.pool_id,
+                                            hours,
+                                        });
+                                    }
                                     days.push(LeaveDay {
                                         date: input.date,
-                                        hours,
+                                        allocations,
                                     });
                                 }
                                 days.sort_by(|left, right| left.date.cmp(&right.date));
-                                if !store.read().pools.iter().any(|pool| pool.id == pool_id) {
-                                    form_error.set("Choose a pool for this event.".to_owned());
-                                    return;
-                                }
                                 let mut data = store.write();
                                 let changed = if let Some(event_id) = editing_event_id {
                                     if let Some(event) = data.events.iter_mut().find(|event| event.id == event_id) {
                                         event.name = name;
-                                        event.pool_id = pool_id;
                                         event.days = days;
                                         true
                                     } else {
@@ -855,7 +878,6 @@ fn App() -> Element {
                                     data.events.push(LeaveEvent {
                                         id,
                                         name,
-                                        pool_id,
                                         days,
                                     });
                                     true
@@ -884,47 +906,119 @@ fn App() -> Element {
                                     span { "Days covered" }
                                     span { "Hours are recorded per day" }
                                 }
-                                for (index, day) in event_days.read().iter().enumerate() {
-                                    div { class: "event-day-row", key: "event-day-{index}",
-                                        label { class: "field-label",
-                                            "Date"
-                                            input {
-                                                r#type: "date",
-                                                value: "{day.date}",
-                                                oninput: move |event| {
-                                                    if let Some(day) = event_days.write().get_mut(index) {
-                                                        day.date = event.value();
+                                for (day_index, day) in event_days.read().iter().enumerate() {
+                                    {
+                                        let available_pool_id = state.pools.iter()
+                                            .find(|pool| !day.allocations.iter().any(|allocation| allocation.pool_id == pool.id))
+                                            .map(|pool| pool.id);
+                                        let can_add_pool = day.allocations.len() < state.pools.len();
+                                        rsx! {
+                                            div { class: "event-day-card", key: "event-day-{day_index}",
+                                                div { class: "event-day-header",
+                                                    label { class: "field-label",
+                                                        "Date"
+                                                        input {
+                                                            r#type: "date",
+                                                            value: "{day.date}",
+                                                            oninput: move |event| {
+                                                                if let Some(day) = event_days.write().get_mut(day_index) {
+                                                                    day.date = event.value();
+                                                                }
+                                                            },
+                                                        }
                                                     }
-                                                },
-                                            }
-                                        }
-                                        label { class: "field-label",
-                                            "Hours"
-                                            input {
-                                                r#type: "number",
-                                                min: "0.01",
-                                                step: "0.01",
-                                                placeholder: "e.g. 7.6",
-                                                value: "{day.hours}",
-                                                oninput: move |event| {
-                                                    if let Some(day) = event_days.write().get_mut(index) {
-                                                        day.hours = event.value();
+                                                    if event_days.read().len() > 1 {
+                                                        button {
+                                                            class: "icon-button event-day-remove",
+                                                            r#type: "button",
+                                                            title: "Remove day",
+                                                            aria_label: "Remove event day",
+                                                            onclick: move |_| {
+                                                                if day_index < event_days.read().len() {
+                                                                    event_days.write().remove(day_index);
+                                                                }
+                                                            },
+                                                            "×"
+                                                        }
                                                     }
-                                                },
-                                            }
-                                        }
-                                        if event_days.read().len() > 1 {
-                                            button {
-                                                class: "icon-button event-day-remove",
-                                                r#type: "button",
-                                                title: "Remove day",
-                                                aria_label: "Remove event day",
-                                                onclick: move |_| {
-                                                    if index < event_days.read().len() {
-                                                        event_days.write().remove(index);
+                                                }
+                                                div { class: "event-allocations",
+                                                    for (allocation_index, allocation) in day.allocations.iter().enumerate() {
+                                                        div { class: "event-allocation-row", key: "event-day-{day_index}-allocation-{allocation_index}",
+                                                            label { class: "field-label",
+                                                                "Pool"
+                                                                select {
+                                                                    value: "{allocation.pool_id}",
+                                                                    onchange: move |event| {
+                                                                        if let Ok(pool_id) = event.value().parse::<u64>() {
+                                                                            if let Some(allocation) = event_days.write()
+                                                                                .get_mut(day_index)
+                                                                                .and_then(|day| day.allocations.get_mut(allocation_index))
+                                                                            {
+                                                                                allocation.pool_id = pool_id;
+                                                                            }
+                                                                        }
+                                                                    },
+                                                                    for pool in state.pools.iter() {
+                                                                        option { value: "{pool.id}", "{pool.name}" }
+                                                                    }
+                                                                }
+                                                            }
+                                                            label { class: "field-label",
+                                                                "Hours"
+                                                                input {
+                                                                    r#type: "number",
+                                                                    min: "0.01",
+                                                                    step: "0.01",
+                                                                    placeholder: "e.g. 3.5",
+                                                                    value: "{allocation.hours}",
+                                                                    oninput: move |event| {
+                                                                        if let Some(allocation) = event_days.write()
+                                                                            .get_mut(day_index)
+                                                                            .and_then(|day| day.allocations.get_mut(allocation_index))
+                                                                        {
+                                                                            allocation.hours = event.value();
+                                                                        }
+                                                                    },
+                                                                }
+                                                            }
+                                                            if day.allocations.len() > 1 {
+                                                                button {
+                                                                    class: "icon-button allocation-remove",
+                                                                    r#type: "button",
+                                                                    title: "Remove pool allocation",
+                                                                    aria_label: "Remove pool allocation",
+                                                                    onclick: move |_| {
+                                                                        if let Some(day) = event_days.write().get_mut(day_index) {
+                                                                            if day.allocations.len() > 1 && allocation_index < day.allocations.len() {
+                                                                                day.allocations.remove(allocation_index);
+                                                                            }
+                                                                        }
+                                                                    },
+                                                                    "×"
+                                                                }
+                                                            }
+                                                        }
                                                     }
-                                                },
-                                                "×"
+                                                    if can_add_pool {
+                                                        button {
+                                                            class: "button button-soft button-small add-day-button",
+                                                            r#type: "button",
+                                                            onclick: move |_| {
+                                                                if let Some(pool_id) = available_pool_id {
+                                                                    if let Some(day) = event_days.write().get_mut(day_index) {
+                                                                        day.allocations.push(PoolAllocationInput {
+                                                                            pool_id,
+                                                                            hours: String::new(),
+                                                                        });
+                                                                    }
+                                                                }
+                                                            },
+                                                            span { class: "button-plus", "+" }
+                                                            "Split this day across another pool"
+                                                        }
+                                                    }
+                                                }
                                             }
                                         }
                                     }
@@ -933,27 +1027,17 @@ fn App() -> Element {
                                     class: "button button-soft button-small add-day-button",
                                     r#type: "button",
                                     onclick: move |_| {
-                                        let date = event_days.read().last()
-                                            .map(|day| next_date_after(&day.date))
-                                            .unwrap_or_else(today_date);
-                                        event_days.write().push(EventDayInput::new(date));
+                                        let default_pool_id = first_pool_id.unwrap_or_default();
+                                        let (date, pool_id) = event_days.read().last()
+                                            .map(|day| (
+                                                next_date_after(&day.date),
+                                                day.allocations.first().map(|allocation| allocation.pool_id).unwrap_or(default_pool_id),
+                                            ))
+                                            .unwrap_or_else(|| (today_date(), first_pool_id.unwrap_or_default()));
+                                        event_days.write().push(EventDayInput::new(date, pool_id));
                                     },
                                     span { class: "button-plus", "+" }
                                     "Add another day"
-                                }
-                            }
-                            label { class: "field-label",
-                                "Take time from"
-                                select {
-                                    value: "{event_pool_id}",
-                                    onchange: move |event| {
-                                        if let Ok(pool_id) = event.value().parse::<u64>() {
-                                            event_pool_id.set(pool_id);
-                                        }
-                                    },
-                                    for pool in state.pools.iter() {
-                                        option { value: "{pool.id}", "{pool.name}" }
-                                    }
                                 }
                             }
                             if !form_error().is_empty() {
@@ -989,8 +1073,8 @@ fn format_hours(value: f64) -> String {
     }
 }
 
-fn fresh_event_days() -> Vec<EventDayInput> {
-    vec![EventDayInput::new(today_date())]
+fn fresh_event_days(pool_id: u64) -> Vec<EventDayInput> {
+    vec![EventDayInput::new(today_date(), pool_id)]
 }
 
 fn parse_hours(value: &str, allow_zero: bool) -> Option<f64> {
@@ -1031,13 +1115,50 @@ fn event_date_range_label(event: &LeaveEvent) -> String {
     }
 }
 
-fn event_day_summary(event: &LeaveEvent) -> String {
+fn event_day_summary(event: &LeaveEvent, pools: &[Pool]) -> String {
     event
         .days
         .iter()
-        .map(|day| format!("{}: {} h", pretty_date(&day.date), format_hours(day.hours)))
+        .map(|day| {
+            let allocations = day
+                .allocations
+                .iter()
+                .map(|allocation| {
+                    let pool_name = pools
+                        .iter()
+                        .find(|pool| pool.id == allocation.pool_id)
+                        .map(|pool| pool.name.as_str())
+                        .unwrap_or("Removed pool");
+                    format!("{} h from {}", format_hours(allocation.hours), pool_name)
+                })
+                .collect::<Vec<_>>()
+                .join(" + ");
+            format!("{}: {allocations}", pretty_date(&day.date))
+        })
         .collect::<Vec<_>>()
         .join(" · ")
+}
+
+fn event_pool_summary(event: &LeaveEvent, pools: &[Pool]) -> String {
+    let mut pool_names = Vec::new();
+    for day in &event.days {
+        for allocation in &day.allocations {
+            let name = pools
+                .iter()
+                .find(|pool| pool.id == allocation.pool_id)
+                .map(|pool| pool.name.clone())
+                .unwrap_or_else(|| "Removed pool".to_owned());
+            if !pool_names.contains(&name) {
+                pool_names.push(name);
+            }
+        }
+    }
+
+    match pool_names.len() {
+        0 => "No pool".to_owned(),
+        1 => pool_names.pop().unwrap_or_default(),
+        _ => format!("Pools: {}", pool_names.join(", ")),
+    }
 }
 
 fn month_label(value: &str) -> String {
