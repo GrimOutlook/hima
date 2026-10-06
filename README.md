@@ -1,24 +1,25 @@
 # hima
 
-A small, browser-based PPL planner built with Dioxus. Create leave pools, add one-time or recurring accruals, log leave events with hours split across pools for each day, see your projected balance on any date, and chart the combined balance over the past year and the year ahead.
+A small, browser-based PPL planner built with React and TypeScript. Create leave pools, add one-time or recurring accruals, log leave events with hours split across pools for each day, see your projected balance on any date, and chart the combined balance over the past year and the year ahead.
 
 All amounts are entered in hours. Your pools and events are saved in this browser's local storage.
 
-## Run with Nix
+## Run locally
 
-Enter the development shell, then start the app with live reload:
-
-```sh
-nix develop
-dx serve --platform web
-```
-
-You can also run `nix run .` to launch the development server directly. Build a production web app with:
+Install Node.js 20 or later, then install the dependencies and start the development server:
 
 ```sh
-dx build --platform web --release
+npm install
+npm run dev
 ```
 
-## Run without Nix
+Run the tests and create a production build with:
 
-Install Rust 1.83 or later and the Dioxus CLI, then run `dx serve --platform web` from this directory. The app does not need an account or a server.
+```sh
+npm test
+npm run build
+```
+
+The generated site is written to `dist/`. Run `npm run preview` to serve the production build locally.
+
+The app does not need an account or a server. Pools and events are stored in this browser's local storage; existing `hima.store.v1` data is retained and older event formats are migrated when loaded.

@@ -1,6 +1,0 @@
-[application]
-name = "hima"
-default_platform = "web"
-
-[web.app]
-title = "hima — PPL planner"
