@@ -278,6 +278,10 @@ export function isValidDate(value: string): boolean {
   );
 }
 
+export function validDateOrFallback(candidate: string, lastValidDate: string): string {
+  return isValidDate(candidate) ? candidate : lastValidDate;
+}
+
 export function todayDate(): string {
   const today = new Date();
   return `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}-${String(today.getDate()).padStart(2, "0")}`;

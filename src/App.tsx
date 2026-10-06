@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { BalanceChart } from "./BalanceChart";
+import { CalendarPicker } from "./CalendarPicker";
 import {
   AdditionModal,
   EventModal,
@@ -281,10 +282,7 @@ function App() {
                 <span className="balance-unit">hours</span>
               </div>
             </div>
-            <label className="date-picker">
-              <span>BALANCE ON</span>
-              <input type="date" value={balanceDate} onChange={(event) => setBalanceDate(event.currentTarget.value)} />
-            </label>
+            <CalendarPicker value={balanceDate} onChange={setBalanceDate} />
           </div>
           <div className="balance-divider" />
           <div className="balance-breakdown">

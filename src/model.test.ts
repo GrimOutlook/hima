@@ -4,11 +4,13 @@ import {
   balanceHistory,
   emptyStore,
   formatHours,
+  isValidDate,
   normalizeStore,
   parseHours,
   poolBalanceOn,
   recurringOccurrencesThrough,
   totalsOn,
+  validDateOrFallback,
   type RecurringAddition,
 } from "./model";
 
@@ -25,6 +27,20 @@ describe("hour amounts", () => {
     expect(parseHours("-1.25", true)).toBeNull();
     expect(formatHours(3.5)).toBe("3.5");
     expect(formatHours(-0.004)).toBe("0");
+  });
+});
+
+describe("calendar date validation", () => {
+  it("accepts real ISO dates and rejects malformed or impossible dates", () => {
+    expect(isValidDate("2024-02-29")).toBe(true);
+    expect(isValidDate("2025-02-29")).toBe(false);
+    expect(isValidDate("2025-13-01")).toBe(false);
+    expect(isValidDate("2025-2-01")).toBe(false);
+  });
+
+  it("keeps the last valid date when a new selection is invalid", () => {
+    expect(validDateOrFallback("2025-02-30", "2025-02-28")).toBe("2025-02-28");
+    expect(validDateOrFallback("2025-03-01", "2025-02-28")).toBe("2025-03-01");
   });
 });
 
