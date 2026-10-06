@@ -7,6 +7,7 @@ import {
   isValidDate,
   normalizeStore,
   parseHours,
+  poolAccruedOn,
   poolBalanceOn,
   recurringOccurrencesThrough,
   totalsOn,
@@ -14,8 +15,13 @@ import {
   type RecurringAddition,
 } from "./model";
 
-function recurring(cadence: RecurringAddition["cadence"], start_date: string, amount = 1): RecurringAddition {
-  return { id: 1, amount, cadence, start_date };
+function recurring(
+  cadence: RecurringAddition["cadence"],
+  start_date: string,
+  amount = 1,
+  end_date?: string,
+): RecurringAddition {
+  return { id: 1, amount, cadence, start_date, ...(end_date ? { end_date } : {}) };
 }
 
 describe("hour amounts", () => {
@@ -64,6 +70,20 @@ describe("recurring accruals", () => {
     expect(recurringOccurrencesThrough(rule, "2025-02-28")).toBe(2);
     expect(recurringOccurrencesThrough(rule, "2025-02-27")).toBe(1);
   });
+
+  it("includes accruals through the optional end date, then stops", () => {
+    const rule = recurring("Weekly", "2026-01-02", 3.5, "2026-01-16");
+    expect(recurringOccurrencesThrough(rule, "2026-01-01")).toBe(0);
+    expect(recurringOccurrencesThrough(rule, "2026-01-15")).toBe(2);
+    expect(recurringOccurrencesThrough(rule, "2026-01-16")).toBe(3);
+    expect(recurringOccurrencesThrough(rule, "2026-02-01")).toBe(3);
+    expect(poolAccruedOn({ id: 1, name: "Leave", additions: [], recurring: [rule] }, "2026-02-01")).toBe(10.5);
+  });
+
+  it("does not accrue when the end date is before the start date", () => {
+    const rule = recurring("Monthly", "2026-01-02", 1, "2026-01-01");
+    expect(recurringOccurrencesThrough(rule, "2026-02-01")).toBe(0);
+  });
 });
 
 describe("balances", () => {
@@ -93,6 +113,25 @@ describe("balances", () => {
 });
 
 describe("saved data compatibility", () => {
+  it("keeps legacy recurring rules open-ended and restores valid end dates", () => {
+    const store = normalizeStore({
+      pools: [{
+        id: 1,
+        name: "Annual leave",
+        additions: [],
+        recurring: [
+          { id: 2, amount: 2, cadence: "Monthly", start_date: "2026-01-01" },
+          { id: 3, amount: 2, cadence: "Monthly", start_date: "2026-01-01", end_date: "2026-02-01" },
+          { id: 4, amount: 2, cadence: "Monthly", start_date: "2026-01-01", end_date: "2026-02-30" },
+        ],
+      }],
+    });
+
+    expect(store.pools[0]?.recurring).toHaveLength(2);
+    expect(store.pools[0]?.recurring[0]?.end_date).toBeUndefined();
+    expect(store.pools[0]?.recurring[1]?.end_date).toBe("2026-02-01");
+  });
+
   it("migrates the previous single-day event format", () => {
     const store = normalizeStore({
       pools: [{ id: 1, name: "Personal leave", additions: [], recurring: [] }],

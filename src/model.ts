@@ -11,6 +11,7 @@ export interface RecurringAddition {
   amount: number;
   cadence: Cadence;
   start_date: string;
+  end_date?: string;
 }
 
 export interface Pool {
@@ -175,9 +176,16 @@ export function normalizeStore(value: unknown): Store {
               const rule = record(value);
               const ruleId = numberValue(rule.id);
               const startDate = stringValue(rule.start_date);
+              const endDate = stringValue(rule.end_date);
               const amount = amountValue(rule.amount);
-              return ruleId && isValidDate(startDate) && amount > 0
-                ? [{ id: ruleId, amount, start_date: startDate, cadence: cadenceValue(rule.cadence) }]
+              return ruleId && isValidDate(startDate) && amount > 0 && (!endDate || isValidDate(endDate))
+                ? [{
+                    id: ruleId,
+                    amount,
+                    start_date: startDate,
+                    cadence: cadenceValue(rule.cadence),
+                    ...(isValidDate(endDate) ? { end_date: endDate } : {}),
+                  }]
                 : [];
             })
           : [];
@@ -338,8 +346,11 @@ export function dayLabel(value: string): string {
   return date ? String(date.getUTCDate()).padStart(2, "0") : "";
 }
 
-export function recurringOccurrencesThrough(rule: RecurringAddition, endDate: string): number {
-  if (!isValidDate(rule.start_date) || !isValidDate(endDate) || endDate < rule.start_date) return 0;
+export function recurringOccurrencesThrough(rule: RecurringAddition, date: string): number {
+  if (!isValidDate(rule.start_date) || !isValidDate(date)) return 0;
+  if (rule.end_date && !isValidDate(rule.end_date)) return 0;
+  const endDate = rule.end_date && date > rule.end_date ? rule.end_date : date;
+  if (endDate < rule.start_date) return 0;
   const start = dateFromParts(rule.start_date)!;
   const end = dateFromParts(endDate)!;
   const elapsedDays = Math.floor((end.getTime() - start.getTime()) / 86_400_000);

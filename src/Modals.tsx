@@ -156,6 +156,7 @@ export interface AdditionFormData {
   date: string;
   recurring: boolean;
   cadence: Cadence;
+  endDate?: string;
 }
 
 interface AdditionModalProps {
@@ -163,6 +164,7 @@ interface AdditionModalProps {
   mode: "add" | "edit-one-time" | "edit-recurring";
   initialAmount?: string;
   initialDate?: string;
+  initialEndDate?: string;
   initialCadence?: Cadence;
   onClose: () => void;
   onSave: (addition: AdditionFormData) => string | null;
@@ -173,6 +175,7 @@ export function AdditionModal({
   mode,
   initialAmount = "",
   initialDate = todayDate(),
+  initialEndDate = "",
   initialCadence = "Fortnightly",
   onClose,
   onSave,
@@ -180,6 +183,7 @@ export function AdditionModal({
   const adding = mode === "add";
   const [amount, setAmount] = useState(initialAmount);
   const [date, setDate] = useState(initialDate);
+  const [endDate, setEndDate] = useState(initialEndDate);
   const [recurring, setRecurring] = useState(mode === "edit-recurring");
   const [cadence, setCadence] = useState<Cadence>(initialCadence);
   const [error, setError] = useState("");
@@ -195,7 +199,21 @@ export function AdditionModal({
       setError("Choose a valid date.");
       return;
     }
-    const saveError = onSave({ amount: parsedAmount, date, recurring, cadence });
+    if (recurring && endDate && !isValidDate(endDate)) {
+      setError("Choose a valid end date.");
+      return;
+    }
+    if (recurring && endDate && endDate < date) {
+      setError("The end date must be on or after the first addition date.");
+      return;
+    }
+    const saveError = onSave({
+      amount: parsedAmount,
+      date,
+      recurring,
+      cadence,
+      ...(recurring && endDate ? { endDate } : {}),
+    });
     if (saveError) setError(saveError);
   }
 
@@ -264,6 +282,17 @@ export function AdditionModal({
           {recurring ? "First addition on" : "Add on"}
           <input type="date" value={date} onChange={(event) => setDate(event.currentTarget.value)} />
         </label>
+        {recurring && (
+          <label className="field-label">
+            End date (inclusive, optional)
+            <input
+              type="date"
+              min={date}
+              value={endDate}
+              onChange={(event) => setEndDate(event.currentTarget.value)}
+            />
+          </label>
+        )}
         {error && <p className="form-error" role="alert">{error}</p>}
         <div className="modal-actions">
           <button className="button button-quiet" type="button" onClick={onClose}>Cancel</button>

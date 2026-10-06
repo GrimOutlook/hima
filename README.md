@@ -1,6 +1,6 @@
 # hima
 
-A small, browser-based PPL planner built with React and TypeScript. Create leave pools, add one-time or recurring accruals, log leave events with hours split across pools for each day, see your projected balance on any date, and chart the combined balance over the past year and the year ahead.
+A small, browser-based PPL planner built with React and TypeScript. Create leave pools, add one-time or recurring accruals with optional end dates, log leave events with hours split across pools for each day, see your projected balance on any date, and chart the combined balance over the past year and the year ahead.
 
 All amounts are entered in hours. Your pools and events are saved in this browser's local storage.
 

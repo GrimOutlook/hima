@@ -198,7 +198,7 @@ button:focus-visible, input:focus-visible, select:focus-visible, a:focus-visible
 .recurring-symbol { color: #598366; background: #eaf2eb; }
 .one-time-symbol { color: #bd876f; background: #f8eee8; }
 .rule-copy { color: #5e695f; font-weight: 600; }
-.rule-date { margin-left: auto; color: #9ba098; white-space: nowrap; }
+.rule-date { margin-left: auto; color: #9ba098; text-align: right; white-space: normal; }
 .rule-actions { display: flex; align-items: center; gap: 1px; margin-left: 2px; }
 .rule-actions .icon-button { width: 24px; height: 24px; font-size: 15px; }
 .rule-delete:hover { color: #b46b59; background: #fbefeb; }

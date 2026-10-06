@@ -173,7 +173,13 @@ function App() {
                   ...pool,
                   recurring: [
                     ...pool.recurring,
-                    { id: ids.firstId, amount: form.amount, cadence: form.cadence, start_date: form.date },
+                    {
+                      id: ids.firstId,
+                      amount: form.amount,
+                      cadence: form.cadence,
+                      start_date: form.date,
+                      ...(form.endDate ? { end_date: form.endDate } : {}),
+                    },
                   ],
                 }
               : {
@@ -207,9 +213,15 @@ function App() {
         pools: current.pools.map((pool) => pool.id !== poolId ? pool : {
           ...pool,
           recurring: pool.recurring.map((rule) =>
-            rule.id === selectedModal.ruleId
-              ? { ...rule, amount: form.amount, cadence: form.cadence, start_date: form.date }
-              : rule,
+              rule.id === selectedModal.ruleId
+                ? {
+                    ...rule,
+                    amount: form.amount,
+                    cadence: form.cadence,
+                    start_date: form.date,
+                    end_date: form.endDate,
+                  }
+                : rule,
           ),
         }),
       };
@@ -541,7 +553,9 @@ function PoolCard({
               <div className="rule-row" key={`recurring-${rule.id}`}>
                 <span className="rule-symbol recurring-symbol">↻</span>
                 <span className="rule-copy">+{formatHours(rule.amount)} h every {cadenceLabel(rule.cadence)}</span>
-                <span className="rule-date">from {prettyDate(rule.start_date)}</span>
+                <span className="rule-date">
+                  from {prettyDate(rule.start_date)}{rule.end_date ? ` · until ${prettyDate(rule.end_date)}` : ""}
+                </span>
                 <div className="rule-actions">
                   <button className="icon-button" type="button" title="Edit recurring addition" aria-label="Edit recurring addition" onClick={() => onEditRecurring(rule.id)}>✎</button>
                   <button className="icon-button rule-delete" type="button" title="Delete recurring addition" aria-label="Delete recurring addition" onClick={() => onDeleteRecurring(rule.id)}>×</button>
@@ -607,6 +621,7 @@ function AdditionModalForState({ modal, pools, onClose, onSave }: AdditionModalF
         mode="edit-recurring"
         initialAmount={formatHours(rule.amount)}
         initialDate={rule.start_date}
+        initialEndDate={rule.end_date}
         initialCadence={rule.cadence}
         onClose={onClose}
         onSave={onSave}
