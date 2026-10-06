@@ -1,5 +1,6 @@
 mod model;
 
+use chrono::{Months, NaiveDate};
 use dioxus::prelude::*;
 use model::{
     parse_date, Cadence, LeaveDay, LeaveEvent, OneTimeAddition, Pool, PoolAllocation,
@@ -46,6 +47,39 @@ impl EventDayInput {
     }
 }
 
+struct BalancePoint {
+    date: NaiveDate,
+    balance: f64,
+    projected: bool,
+}
+
+struct ChartTick {
+    y: f64,
+    label: String,
+    is_zero: bool,
+}
+
+struct ChartDateLabel {
+    x: f64,
+    label: String,
+    anchor: &'static str,
+}
+
+struct BalanceChart {
+    history_line_path: String,
+    history_area_path: String,
+    projection_line_path: String,
+    projection_area_path: String,
+    ticks: Vec<ChartTick>,
+    date_labels: Vec<ChartDateLabel>,
+    zero_y: Option<f64>,
+    today_x: f64,
+    width: f64,
+    today_y: f64,
+    projection_x: f64,
+    projection_y: f64,
+}
+
 fn main() {
     dioxus::launch(App);
 }
@@ -75,6 +109,40 @@ fn App() -> Element {
 
     let selected_date = balance_date();
     let (accrued, used, balance) = state.totals_on(&selected_date);
+    let history_end = today_date();
+    let history = balance_history(&state, &history_end);
+    let history_chart = chart_layout(&history);
+    let history_start_balance = history.first().map(|point| point.balance).unwrap_or(0.0);
+    let history_current_balance = history
+        .iter()
+        .rev()
+        .find(|point| !point.projected)
+        .map(|point| point.balance)
+        .unwrap_or_default();
+    let history_projected_balance = history
+        .last()
+        .map(|point| point.balance)
+        .unwrap_or_default();
+    let history_change = history_current_balance - history_start_balance;
+    let history_start_date = history
+        .first()
+        .map(|point| point.date.format("%b %d, %Y").to_string())
+        .unwrap_or_else(|| history_end.clone());
+    let history_forecast_end = history
+        .last()
+        .map(|point| point.date.format("%b %d, %Y").to_string())
+        .unwrap_or_else(|| history_end.clone());
+
+    let scroll_to_today = history_chart.today_x;
+    use_effect(move || {
+        spawn(async move {
+            let script = format!(
+                r#"const chart = document.getElementById("balance-chart-scroll");
+                if (chart) chart.scrollLeft = Math.max(0, {scroll_to_today} - chart.clientWidth / 2);"#
+            );
+            let _ = document::eval(&script).await;
+        });
+    });
     let first_pool_id = state.pools.first().map(|pool| pool.id);
     let mut timeline = state.events.clone();
     timeline.sort_by(|left, right| left.first_date().cmp(right.first_date()));
@@ -499,6 +567,112 @@ fn App() -> Element {
                                 span { "{format_hours(used)} h used by selected date" }
                             }
                         }
+                    }
+                }
+
+                section { class: "history-panel",
+                    div { class: "history-panel-header",
+                        div {
+                            div { class: "section-overline", "A YEAR AT A GLANCE" }
+                            h2 { "PPL balance history & outlook" }
+                            p { "Past year and twelve-month projection across all pools." }
+                        }
+                        div { class: "history-metrics",
+                            div { class: "history-change",
+                                strong {
+                                    class: if history_change < 0.0 { "history-change-negative" } else { "" },
+                                    "{format_signed_hours(history_change)} h"
+                                }
+                                span { "change over past year" }
+                            }
+                            div { class: "history-projection",
+                                strong { "{format_hours(history_projected_balance)} h" }
+                                span { "projected in twelve months" }
+                            }
+                        }
+                    }
+                    div { class: "balance-chart-wrap",
+                        div { id: "balance-chart-scroll", class: "balance-chart-scroll",
+                            svg {
+                                class: "balance-chart-svg",
+                                width: "{history_chart.width}",
+                                height: "290",
+                                view_box: "0 0 {history_chart.width} 290",
+                                role: "img",
+                                title { "Daily combined PPL balance and forecast for the past and coming year" }
+                                path { class: "history-area", d: "{history_chart.history_area_path}" }
+                                path { class: "projection-area", d: "{history_chart.projection_area_path}" }
+                                for tick in history_chart.ticks.iter() {
+                                    line {
+                                        class: if tick.is_zero { "chart-grid chart-grid-zero" } else { "chart-grid" },
+                                        x1: "68",
+                                        x2: "{history_chart.width - 18.0}",
+                                        y1: "{tick.y:.2}",
+                                        y2: "{tick.y:.2}",
+                                    }
+                                    text {
+                                        class: "chart-y-label",
+                                        x: "60",
+                                        y: "{tick.y + 4.0:.2}",
+                                        text_anchor: "end",
+                                        "{tick.label}"
+                                    }
+                                }
+                                if let Some(zero_y) = history_chart.zero_y {
+                                    line {
+                                        class: "chart-grid chart-grid-zero",
+                                        x1: "68",
+                                        x2: "{history_chart.width - 18.0}",
+                                        y1: "{zero_y:.2}",
+                                        y2: "{zero_y:.2}",
+                                    }
+                                }
+                                line {
+                                    class: "chart-today-line",
+                                    x1: "{history_chart.today_x:.2}",
+                                    x2: "{history_chart.today_x:.2}",
+                                    y1: "18",
+                                    y2: "232",
+                                }
+                                text {
+                                    class: "chart-today-label",
+                                    x: "{history_chart.today_x:.2}",
+                                    y: "13",
+                                    text_anchor: "middle",
+                                    "Today"
+                                }
+                                path { class: "history-line", d: "{history_chart.history_line_path}" }
+                                path { class: "projection-line", d: "{history_chart.projection_line_path}" }
+                                circle {
+                                    class: "history-last-point",
+                                    cx: "{history_chart.today_x:.2}",
+                                    cy: "{history_chart.today_y:.2}",
+                                    r: "4.5",
+                                }
+                                circle {
+                                    class: "projection-last-point",
+                                    cx: "{history_chart.projection_x:.2}",
+                                    cy: "{history_chart.projection_y:.2}",
+                                    r: "4",
+                                }
+                                for label in history_chart.date_labels.iter() {
+                                    text {
+                                        class: "chart-x-label",
+                                        x: "{label.x:.2}",
+                                        y: "274",
+                                        text_anchor: "{label.anchor}",
+                                        "{label.label}"
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    div { class: "history-footnote",
+                        span { class: "history-legend-dot" }
+                        "Actual"
+                        span { class: "history-projection-dot" }
+                        "Projected"
+                        span { class: "history-range", "{pretty_date(&history_start_date)} – {pretty_date(&history_forecast_end)} · scroll horizontally to explore" }
                     }
                 }
 
@@ -1105,6 +1279,165 @@ fn next_date_after(value: &str) -> String {
         .unwrap_or_else(today_date)
 }
 
+fn balance_history(store: &Store, today_date: &str) -> Vec<BalancePoint> {
+    let Some(today) = parse_date(today_date) else {
+        return Vec::new();
+    };
+    let start = today.checked_sub_months(Months::new(12)).unwrap_or(today);
+    let end = today.checked_add_months(Months::new(12)).unwrap_or(today);
+    let mut points = Vec::new();
+    let mut date = start;
+
+    loop {
+        let date_string = date.format("%Y-%m-%d").to_string();
+        points.push(BalancePoint {
+            date,
+            balance: store.totals_on(&date_string).2,
+            projected: date > today,
+        });
+        if date >= end {
+            break;
+        }
+        date = date.succ_opt().unwrap_or(end);
+    }
+
+    points
+}
+
+fn chart_layout(points: &[BalancePoint]) -> BalanceChart {
+    const WIDTH: f64 = 1_600.0;
+    const LEFT: f64 = 68.0;
+    const RIGHT: f64 = WIDTH - 18.0;
+    const TOP: f64 = 18.0;
+    const BOTTOM: f64 = 232.0;
+
+    let first = points
+        .first()
+        .expect("balance history includes its start date");
+    let last = points
+        .last()
+        .expect("balance history includes its end date");
+    let min_balance = points
+        .iter()
+        .map(|point| point.balance)
+        .fold(f64::INFINITY, f64::min);
+    let max_balance = points
+        .iter()
+        .map(|point| point.balance)
+        .fold(f64::NEG_INFINITY, f64::max);
+    let spread = max_balance - min_balance;
+    let padding = if spread < 0.01 { 1.0 } else { spread * 0.12 };
+    let lower = min_balance - padding;
+    let upper = max_balance + padding;
+    let range = upper - lower;
+    let zero_y = (lower <= 0.0 && upper >= 0.0).then(|| TOP + upper / range * (BOTTOM - TOP));
+    let total_days = last
+        .date
+        .signed_duration_since(first.date)
+        .num_days()
+        .max(1) as f64;
+
+    let coordinates = points
+        .iter()
+        .map(|point| {
+            let elapsed = point.date.signed_duration_since(first.date).num_days() as f64;
+            let x = LEFT + elapsed / total_days * (RIGHT - LEFT);
+            let y = TOP + (upper - point.balance) / range * (BOTTOM - TOP);
+            (x, y)
+        })
+        .collect::<Vec<_>>();
+
+    let today_index = points
+        .iter()
+        .rposition(|point| !point.projected)
+        .unwrap_or_default();
+    let today_x = coordinates[today_index].0;
+    let today_y = coordinates[today_index].1;
+    let (projection_x, projection_y) = *coordinates.last().expect("chart has at least one point");
+    let history_coordinates = &coordinates[..=today_index];
+    let projection_coordinates = &coordinates[today_index..];
+    let history_line_path = step_path(history_coordinates);
+    let history_area_path = area_path(history_coordinates, BOTTOM);
+    let projection_line_path = step_path(projection_coordinates);
+    let projection_area_path = area_path(projection_coordinates, BOTTOM);
+
+    let ticks = (0..=4)
+        .map(|index| {
+            let value = lower + range * index as f64 / 4.0;
+            let y = TOP + (upper - value) / range * (BOTTOM - TOP);
+            ChartTick {
+                y,
+                label: format!("{} h", format_hours(value)),
+                is_zero: value.abs() < 1e-7,
+            }
+        })
+        .collect();
+
+    let last_index = points.len() - 1;
+    let date_labels = [(0, "start"), (today_index, "middle"), (last_index, "end")]
+        .into_iter()
+        .fold(Vec::new(), |mut labels, (index, anchor)| {
+            if labels
+                .last()
+                .is_none_or(|label: &ChartDateLabel| label.x != coordinates[index].0)
+            {
+                labels.push(ChartDateLabel {
+                    x: coordinates[index].0,
+                    label: if index == today_index {
+                        "Today".to_owned()
+                    } else {
+                        points[index].date.format("%b %Y").to_string()
+                    },
+                    anchor,
+                });
+            }
+            labels
+        });
+
+    BalanceChart {
+        history_line_path,
+        history_area_path,
+        projection_line_path,
+        projection_area_path,
+        ticks,
+        date_labels,
+        zero_y,
+        today_x,
+        width: WIDTH,
+        today_y,
+        projection_x,
+        projection_y,
+    }
+}
+
+fn step_path(points: &[(f64, f64)]) -> String {
+    let (first_x, first_y) = points.first().expect("chart segment includes a point");
+    let steps = points
+        .iter()
+        .skip(1)
+        .map(|(x, y)| format!("H{x:.2} V{y:.2}"))
+        .collect::<Vec<_>>()
+        .join(" ");
+    format!("M{first_x:.2},{first_y:.2} {steps}")
+}
+
+fn area_path(points: &[(f64, f64)], baseline: f64) -> String {
+    let line = step_path(points);
+    let (first_x, _) = points.first().expect("chart segment includes a point");
+    let (last_x, _) = points.last().expect("chart segment includes a point");
+    format!("{line} L{last_x:.2},{baseline:.2} L{first_x:.2},{baseline:.2} Z")
+}
+
+fn format_signed_hours(value: f64) -> String {
+    if value > 0.0 {
+        format!("+{}", format_hours(value))
+    } else if value < 0.0 {
+        format!("−{}", format_hours(-value))
+    } else {
+        "0".to_owned()
+    }
+}
+
 fn event_date_range_label(event: &LeaveEvent) -> String {
     let first = pretty_date(event.first_date());
     let last = pretty_date(event.last_date());
@@ -1237,7 +1570,7 @@ fn confirm_delete(_: &str) -> bool {
 
 #[cfg(test)]
 mod tests {
-    use super::parse_hours;
+    use super::{balance_history, chart_layout, parse_hours, Store};
 
     #[test]
     fn hour_amounts_allow_up_to_two_decimal_places() {
@@ -1246,5 +1579,37 @@ mod tests {
         assert_eq!(parse_hours("7.654", false), None);
         assert_eq!(parse_hours("0", false), None);
         assert_eq!(parse_hours("-1.25", true), None);
+    }
+
+    #[test]
+    fn balance_history_contains_a_year_of_actuals_and_projections() {
+        let history = balance_history(&Store::default(), "2026-10-06");
+        let chart = chart_layout(&history);
+
+        assert_eq!(history.len(), 731);
+        assert_eq!(
+            history.first().unwrap().date.format("%Y-%m-%d").to_string(),
+            "2025-10-06"
+        );
+        assert_eq!(
+            history
+                .iter()
+                .rev()
+                .find(|point| !point.projected)
+                .unwrap()
+                .date
+                .format("%Y-%m-%d")
+                .to_string(),
+            "2026-10-06"
+        );
+        assert_eq!(
+            history.last().unwrap().date.format("%Y-%m-%d").to_string(),
+            "2027-10-06"
+        );
+        assert_eq!(chart.date_labels.len(), 3);
+        assert_eq!(chart.date_labels[1].label, "Today");
+        assert!(chart.history_line_path.starts_with('M'));
+        assert!(chart.projection_line_path.starts_with('M'));
+        assert_eq!(chart.width, 1600.0);
     }
 }

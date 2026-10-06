@@ -206,6 +206,35 @@ button:focus-visible, input:focus-visible, select:focus-visible, a:focus-visible
 .event-actions .event-delete { font-size: 17px; }
 .events-panel-footer { display: flex; justify-content: space-between; gap: 10px; margin: 0 -19px; padding: 12px 19px; color: #92988f; background: #fbfbf8; font-size: 9px; }
 
+.history-panel { margin-top: 18px; padding: 21px 22px 14px; border: 1px solid #ecebe5; border-radius: 13px; background: #fff; box-shadow: 0 3px 11px rgba(35, 45, 39, .025); }
+.history-panel-header { display: flex; align-items: flex-end; justify-content: space-between; gap: 16px; }
+.history-panel-header h2 { margin: 5px 0 4px; color: #2d3731; font: 700 18px/1.25 'Manrope', sans-serif; letter-spacing: -.45px; }
+.history-panel-header p { margin: 0; color: #969b94; font-size: 10px; }
+.history-metrics { display: flex; align-items: flex-start; gap: 24px; }
+.history-change, .history-projection { display: grid; justify-items: end; gap: 3px; }
+.history-change strong { color: #426a4e; font: 700 18px 'Manrope', sans-serif; }
+.history-change .history-change-negative { color: #ad705c; }
+.history-projection strong { color: #ad765f; font: 700 18px 'Manrope', sans-serif; }
+.history-change span, .history-projection span { color: #969b94; font-size: 9px; }
+.balance-chart-wrap { width: 100%; margin-top: 15px; }
+.balance-chart-scroll { width: 100%; overflow-x: auto; overflow-y: hidden; overscroll-behavior-x: contain; scrollbar-color: #ccd5ca #f5f5f1; scrollbar-width: thin; }
+.balance-chart-svg { display: block; width: 1600px; max-width: none; height: 290px; overflow: visible; }
+.history-area { fill: rgba(83, 130, 92, .1); }
+.projection-area { fill: rgba(193, 135, 110, .1); }
+.history-line { fill: none; stroke: #4b7955; stroke-width: 2.5; stroke-linecap: round; stroke-linejoin: round; vector-effect: non-scaling-stroke; }
+.projection-line { fill: none; stroke: #bd856a; stroke-width: 2.5; stroke-dasharray: 7 5; stroke-linecap: round; stroke-linejoin: round; vector-effect: non-scaling-stroke; }
+.history-last-point { fill: #fff; stroke: #4b7955; stroke-width: 2.5; vector-effect: non-scaling-stroke; }
+.projection-last-point { fill: #fff; stroke: #bd856a; stroke-width: 2.5; vector-effect: non-scaling-stroke; }
+.chart-today-line { stroke: #a6afa5; stroke-width: 1; stroke-dasharray: 3 4; vector-effect: non-scaling-stroke; }
+.chart-today-label { fill: #747e74; font: 700 9px 'DM Sans', sans-serif; }
+.chart-grid { stroke: #eeefe9; stroke-width: 1; vector-effect: non-scaling-stroke; }
+.chart-grid-zero { stroke: #b8c5b9; stroke-dasharray: 4 4; }
+.chart-y-label, .chart-x-label { fill: #969d95; font: 10px 'DM Sans', sans-serif; }
+.history-footnote { display: flex; align-items: center; gap: 7px; padding-top: 8px; color: #92988f; font-size: 9px; }
+.history-legend-dot { width: 7px; height: 7px; border-radius: 50%; background: #4b7955; }
+.history-projection-dot { width: 7px; height: 7px; margin-left: 7px; border-radius: 50%; background: #bd856a; }
+.history-range { margin-left: auto; }
+
 .empty-card { display: flex; align-items: center; flex-direction: column; padding: 33px 26px; text-align: center; }
 .empty-illustration { display: grid; place-items: center; width: 46px; height: 46px; border-radius: 15px; color: #66866d; background: #edf3ee; font-size: 25px; }
 .empty-card h3 { margin: 14px 0 6px; color: #354137; font: 700 16px 'Manrope', sans-serif; }
@@ -271,6 +300,8 @@ button:focus-visible, input:focus-visible, select:focus-visible, a:focus-visible
   .workspace-grid { grid-template-columns: minmax(0, 1fr); }
   .events-column { grid-row: 2; }
   .events-panel { min-height: 220px; }
+  .history-panel { padding: 17px 15px 12px; }
+  .history-panel-header { align-items: flex-start; }
 }
 
 @media (max-width: 560px) {
@@ -305,6 +336,10 @@ button:focus-visible, input:focus-visible, select:focus-visible, a:focus-visible
   .event-row { grid-template-columns: 35px minmax(0, 1fr) auto 46px; gap: 7px; }
   .event-date-block { width: 34px; }
   .event-amount { font-size: 9px; }
+  .history-panel-header { align-items: flex-start; flex-direction: column; gap: 10px; }
+  .history-metrics { gap: 18px; }
+  .history-change, .history-projection { justify-items: start; }
+  .history-range { width: 100%; margin-left: 0; }
   .page-footer { flex-wrap: wrap; gap: 6px; font-size: 9px; }
   .footer-hours { width: 100%; margin-left: 0; }
   .modal-backdrop { align-items: end; padding: 12px; }
