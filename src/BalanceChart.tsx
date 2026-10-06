@@ -1,14 +1,80 @@
-import { useLayoutEffect, useRef } from "react";
-import { chartLayout, formatHours, formatSignedHours, prettyDate, type BalancePoint } from "./model";
+import { useEffect, useMemo, useState } from "react";
+import {
+  Area,
+  AreaChart,
+  Brush,
+  CartesianGrid,
+  ReferenceLine,
+  ResponsiveContainer,
+  Tooltip,
+  XAxis,
+  YAxis,
+  type TooltipContentProps,
+} from "recharts";
+import { formatHours, formatSignedHours, prettyDate, type BalancePoint } from "./model";
 
 interface BalanceChartProps {
   history: BalancePoint[];
   today: string;
 }
 
+interface ChartPoint extends BalancePoint {
+  index: number;
+  actualBalance: number | null;
+  projectedBalance: number | null;
+}
+
+const CHART_HEIGHT = 340;
+const PLOT_LEFT = 68;
+const PLOT_RIGHT = 18;
+const ACTUAL_COLOR = "#4b7955";
+const PROJECTED_COLOR = "#bd856a";
+
+function BalanceTooltip({
+  active,
+  payload,
+}: TooltipContentProps) {
+  const point = payload[0]?.payload as ChartPoint | undefined;
+  if (!active || !point) return null;
+
+  return (
+    <div className="balance-chart-tooltip" role="status">
+      <span className="balance-chart-tooltip-date">{prettyDate(point.date)}</span>
+      <span className="balance-chart-tooltip-kind">
+        <i className={point.projected ? "tooltip-projected-dot" : "tooltip-actual-dot"} />
+        {point.projected ? "Projected balance" : "Actual balance"}
+      </span>
+      <strong>{formatHours(point.balance)} h</strong>
+    </div>
+  );
+}
+
+function monthYearLabel(value: string | undefined): string {
+  if (!value) return "";
+  const date = new Date(`${value}T00:00:00Z`);
+  return new Intl.DateTimeFormat("en-US", {
+    month: "short",
+    year: "numeric",
+    timeZone: "UTC",
+  }).format(date);
+}
+
 export function BalanceChart({ history, today }: BalanceChartProps) {
-  const scrollRef = useRef<HTMLDivElement>(null);
-  const chart = chartLayout(history);
+  const todayIndex = Math.max(0, history.findIndex((point) => point.date === today));
+  const lastIndex = Math.max(0, history.length - 1);
+  const [brushRange, setBrushRange] = useState({ startIndex: 0, endIndex: lastIndex });
+  useEffect(() => {
+    setBrushRange({ startIndex: 0, endIndex: lastIndex });
+  }, [lastIndex]);
+  const chartData = useMemo<ChartPoint[]>(
+    () => history.map((point, index) => ({
+      ...point,
+      index,
+      actualBalance: point.projected ? null : point.balance,
+      projectedBalance: point.projected || index === todayIndex ? point.balance : null,
+    })),
+    [history, todayIndex],
+  );
   const startBalance = history[0]?.balance ?? 0;
   const todayPoint = [...history].reverse().find((point) => !point.projected);
   const currentBalance = todayPoint?.balance ?? 0;
@@ -16,13 +82,22 @@ export function BalanceChart({ history, today }: BalanceChartProps) {
   const change = currentBalance - startBalance;
   const startDate = history[0]?.date ?? today;
   const endDate = history.at(-1)?.date ?? today;
-
-  useLayoutEffect(() => {
-    const chartElement = scrollRef.current;
-    if (chartElement) {
-      chartElement.scrollLeft = Math.max(0, chart.todayX - chartElement.clientWidth / 2);
-    }
-  }, [chart.todayX]);
+  const values = history.map((point) => point.balance);
+  const minBalance = values.length ? Math.min(...values) : 0;
+  const maxBalance = values.length ? Math.max(...values) : 0;
+  const spread = maxBalance - minBalance;
+  const padding = spread < 0.01 ? 1 : spread * 0.12;
+  const domain: [number, number] = [minBalance - padding, maxBalance + padding];
+  const yTicks = Array.from({ length: 5 }, (_, index) =>
+    domain[0] + ((domain[1] - domain[0]) * index) / 4,
+  );
+  const visibleStart = Math.max(0, Math.min(brushRange.startIndex, lastIndex));
+  const visibleEnd = Math.max(visibleStart, Math.min(brushRange.endIndex, lastIndex));
+  const xTicks = [...new Set([
+    visibleStart,
+    ...(todayIndex > visibleStart && todayIndex < visibleEnd ? [todayIndex] : []),
+    visibleEnd,
+  ])];
 
   return (
     <section className="history-panel">
@@ -47,79 +122,127 @@ export function BalanceChart({ history, today }: BalanceChartProps) {
       </div>
       <div className="balance-chart-wrap">
         <div
-          id="balance-chart-scroll"
-          className="balance-chart-scroll"
-          ref={scrollRef}
-          aria-label="Scrollable PPL balance chart"
-          tabIndex={0}
+          className="balance-chart-viewport"
+          role="group"
+          aria-label="PPL balance chart with zoom and pan controls"
         >
-          <svg
-            className="balance-chart-svg"
-            width={chart.width}
-            height="290"
-            viewBox={`0 0 ${chart.width} 290`}
-            role="img"
-            aria-labelledby="balance-chart-title"
-          >
-            <title id="balance-chart-title">
-              Daily combined PPL balance and forecast for the past and coming year
-            </title>
-            <path className="history-area" d={chart.historyAreaPath} />
-            <path className="projection-area" d={chart.projectionAreaPath} />
-            {chart.ticks.map((tick, index) => (
-              <g key={index}>
-                <line
-                  className={tick.isZero ? "chart-grid chart-grid-zero" : "chart-grid"}
-                  x1="68"
-                  x2={chart.width - 18}
-                  y1={tick.y}
-                  y2={tick.y}
-                />
-                <text className="chart-y-label" x="60" y={tick.y + 4} textAnchor="end">
-                  {tick.label}
-                </text>
-              </g>
-            ))}
-            {chart.zeroY !== null && (
-              <line
-                className="chart-grid chart-grid-zero"
-                x1="68"
-                x2={chart.width - 18}
-                y1={chart.zeroY}
-                y2={chart.zeroY}
+          <ResponsiveContainer width="100%" height={CHART_HEIGHT}>
+            <AreaChart
+              className="balance-chart-inner"
+              data={chartData}
+              margin={{ top: 38, right: PLOT_RIGHT, bottom: 0, left: 0 }}
+              accessibilityLayer
+              aria-label="Daily combined PPL balance and forecast for the past and coming year"
+            >
+              <CartesianGrid stroke="#eeefe9" vertical={false} />
+              <XAxis
+                dataKey="index"
+                type="number"
+                domain={[visibleStart, visibleEnd]}
+                ticks={xTicks}
+                tickFormatter={(value: number) => value === todayIndex
+                  ? "Today"
+                  : monthYearLabel(history[Math.round(value)]?.date)}
+                axisLine={false}
+                tickLine={false}
+                tickMargin={9}
+                height={30}
+                tick={{ fill: "#969d95", fontSize: 10, fontFamily: "DM Sans, sans-serif" }}
+                allowDataOverflow
               />
-            )}
-            <line
-              className="chart-today-line"
-              x1={chart.todayX}
-              x2={chart.todayX}
-              y1="18"
-              y2="232"
-            />
-            <text className="chart-today-label" x={chart.todayX} y="13" textAnchor="middle">
-              Today
-            </text>
-            <path className="history-line" d={chart.historyLinePath} />
-            <path className="projection-line" d={chart.projectionLinePath} />
-            <circle className="history-last-point" cx={chart.todayX} cy={chart.todayY} r="4.5" />
-            <circle
-              className="projection-last-point"
-              cx={chart.projectionX}
-              cy={chart.projectionY}
-              r="4"
-            />
-            {chart.dateLabels.map((label, index) => (
-              <text
-                className="chart-x-label"
-                key={`${label.x}-${index}`}
-                x={label.x}
-                y="274"
-                textAnchor={label.anchor}
+              <YAxis
+                type="number"
+                domain={domain}
+                ticks={yTicks}
+                tickFormatter={(value: number) => `${formatHours(value)} h`}
+                axisLine={false}
+                tickLine={false}
+                tickMargin={8}
+                width={PLOT_LEFT}
+                tick={{ fill: "#969d95", fontSize: 10, fontFamily: "DM Sans, sans-serif" }}
+                allowDecimals
+              />
+              <ReferenceLine
+                x={todayIndex}
+                stroke="#a6afa5"
+                strokeDasharray="3 4"
+                label={{
+                  value: "Today",
+                  position: "insideTop",
+                  fill: "#747e74",
+                  fontSize: 9,
+                  className: "chart-today-label",
+                }}
+              />
+              {domain[0] <= 0 && domain[1] >= 0 && (
+                <ReferenceLine y={0} stroke="#b8c5b9" strokeDasharray="4 4" />
+              )}
+              <Area
+                name="Actual"
+                dataKey="actualBalance"
+                type="monotoneX"
+                baseValue={domain[0]}
+                stroke={ACTUAL_COLOR}
+                strokeWidth={2.5}
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                fill={ACTUAL_COLOR}
+                fillOpacity={0.1}
+                connectNulls={false}
+                dot={false}
+                activeDot={{ r: 5, fill: "#fff", stroke: ACTUAL_COLOR, strokeWidth: 2 }}
+                isAnimationActive={false}
+              />
+              <Area
+                name="Projected"
+                dataKey="projectedBalance"
+                type="monotoneX"
+                baseValue={domain[0]}
+                stroke={PROJECTED_COLOR}
+                strokeWidth={2.5}
+                strokeDasharray="7 5"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                fill={PROJECTED_COLOR}
+                fillOpacity={0.1}
+                connectNulls={false}
+                dot={false}
+                activeDot={{ r: 5, fill: "#fff", stroke: PROJECTED_COLOR, strokeWidth: 2 }}
+                isAnimationActive={false}
+              />
+              <Tooltip
+                content={(props) => <BalanceTooltip {...props} />}
+                cursor={{ stroke: "#a6afa5", strokeDasharray: "3 4" }}
+                isAnimationActive={false}
+              />
+              <Brush
+                dataKey="index"
+                startIndex={brushRange.startIndex}
+                endIndex={brushRange.endIndex}
+                onChange={({ startIndex, endIndex }) => {
+                  setBrushRange({ startIndex, endIndex });
+                }}
+                ariaLabel="Select a date range to zoom; drag the selected range to pan"
+                height={42}
+                travellerWidth={10}
+                stroke="#a6afa5"
+                fill="#f6f7f3"
+                tickFormatter={(value) => monthYearLabel(history[Math.round(Number(value))]?.date)}
               >
-                {label.label}
-              </text>
-            ))}
-          </svg>
+                <AreaChart margin={{ top: 2, right: 2, bottom: 2, left: 2 }}>
+                  <Area
+                    dataKey="balance"
+                    type="monotoneX"
+                    stroke={ACTUAL_COLOR}
+                    strokeWidth={1}
+                    fill={ACTUAL_COLOR}
+                    fillOpacity={0.12}
+                    isAnimationActive={false}
+                  />
+                </AreaChart>
+              </Brush>
+            </AreaChart>
+          </ResponsiveContainer>
         </div>
       </div>
       <div className="history-footnote">
@@ -128,7 +251,7 @@ export function BalanceChart({ history, today }: BalanceChartProps) {
         <span className="history-projection-dot" />
         Projected
         <span className="history-range">
-          {prettyDate(startDate)} – {prettyDate(endDate)} · scroll horizontally to explore
+          {prettyDate(startDate)} – {prettyDate(endDate)} · hover for daily balances; drag the range handles to zoom and the selection to pan
         </span>
       </div>
     </section>

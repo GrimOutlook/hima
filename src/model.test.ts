@@ -2,7 +2,6 @@ import { describe, expect, it } from "vitest";
 import {
   allocateIds,
   balanceHistory,
-  chartLayout,
   emptyStore,
   formatHours,
   normalizeStore,
@@ -107,14 +106,12 @@ describe("saved data compatibility", () => {
 describe("balance chart", () => {
   it("contains a year of actual history and a year of projected balances", () => {
     const history = balanceHistory(emptyStore(), "2026-10-06");
-    const chart = chartLayout(history);
     expect(history).toHaveLength(731);
     expect(history[0]?.date).toBe("2025-10-06");
     expect([...history].reverse().find((point) => !point.projected)?.date).toBe("2026-10-06");
     expect(history.at(-1)?.date).toBe("2027-10-06");
-    expect(chart.dateLabels).toHaveLength(3);
-    expect(chart.dateLabels[1]?.label).toBe("Today");
-    expect(chart.historyLinePath).toMatch(/^M/);
-    expect(chart.projectionLinePath).toMatch(/^M/);
+    expect(history[0]?.projected).toBe(false);
+    expect(history.find((point) => point.date === "2026-10-06")?.projected).toBe(false);
+    expect(history.at(-1)?.projected).toBe(true);
   });
 });

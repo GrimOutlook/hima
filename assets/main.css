@@ -217,19 +217,19 @@ button:focus-visible, input:focus-visible, select:focus-visible, a:focus-visible
 .history-projection strong { color: #ad765f; font: 700 18px 'Manrope', sans-serif; }
 .history-change span, .history-projection span { color: #969b94; font-size: 9px; }
 .balance-chart-wrap { width: 100%; margin-top: 15px; }
-.balance-chart-scroll { width: 100%; overflow-x: auto; overflow-y: hidden; overscroll-behavior-x: contain; scrollbar-color: #ccd5ca #f5f5f1; scrollbar-width: thin; }
-.balance-chart-svg { display: block; width: 1600px; max-width: none; height: 290px; overflow: visible; }
-.history-area { fill: rgba(83, 130, 92, .1); }
-.projection-area { fill: rgba(193, 135, 110, .1); }
-.history-line { fill: none; stroke: #4b7955; stroke-width: 2.5; stroke-linecap: round; stroke-linejoin: round; vector-effect: non-scaling-stroke; }
-.projection-line { fill: none; stroke: #bd856a; stroke-width: 2.5; stroke-dasharray: 7 5; stroke-linecap: round; stroke-linejoin: round; vector-effect: non-scaling-stroke; }
-.history-last-point { fill: #fff; stroke: #4b7955; stroke-width: 2.5; vector-effect: non-scaling-stroke; }
-.projection-last-point { fill: #fff; stroke: #bd856a; stroke-width: 2.5; vector-effect: non-scaling-stroke; }
-.chart-today-line { stroke: #a6afa5; stroke-width: 1; stroke-dasharray: 3 4; vector-effect: non-scaling-stroke; }
-.chart-today-label { fill: #747e74; font: 700 9px 'DM Sans', sans-serif; }
-.chart-grid { stroke: #eeefe9; stroke-width: 1; vector-effect: non-scaling-stroke; }
-.chart-grid-zero { stroke: #b8c5b9; stroke-dasharray: 4 4; }
-.chart-y-label, .chart-x-label { fill: #969d95; font: 10px 'DM Sans', sans-serif; }
+.balance-chart-viewport { width: 100%; min-width: 0; height: 340px; }
+.balance-chart-inner { display: block; width: 100%; height: 340px; overflow: visible; }
+.chart-today-label { font: 700 9px 'DM Sans', sans-serif; }
+.balance-chart-viewport .recharts-tooltip-wrapper { z-index: 3; outline: 0; }
+.balance-chart-viewport .recharts-brush-slide { cursor: grab; }
+.balance-chart-viewport .recharts-brush-slide:active { cursor: grabbing; }
+.balance-chart-tooltip { display: grid; gap: 5px; min-width: 142px; padding: 10px 12px; border: 1px solid #e8e9e3; border-radius: 9px; color: #414a42; background: rgba(255, 255, 255, .98); box-shadow: 0 6px 20px rgba(35, 45, 39, .13); font-size: 10px; }
+.balance-chart-tooltip-date { color: #59645a; font-weight: 600; }
+.balance-chart-tooltip-kind { display: flex; align-items: center; gap: 6px; color: #92988f; font-size: 9px; }
+.tooltip-actual-dot, .tooltip-projected-dot { display: inline-block; width: 7px; height: 7px; border-radius: 50%; }
+.tooltip-actual-dot { background: #4b7955; }
+.tooltip-projected-dot { background: #bd856a; }
+.balance-chart-tooltip strong { color: #2d4437; font: 700 15px 'Manrope', sans-serif; }
 .history-footnote { display: flex; align-items: center; gap: 7px; padding-top: 8px; color: #92988f; font-size: 9px; }
 .history-legend-dot { width: 7px; height: 7px; border-radius: 50%; background: #4b7955; }
 .history-projection-dot { width: 7px; height: 7px; margin-left: 7px; border-radius: 50%; background: #bd856a; }

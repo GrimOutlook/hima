@@ -302,6 +302,8 @@ function App() {
           </div>
         </section>
 
+        <BalanceChart history={history} today={chartHistoryEnd} />
+
         <div className="section-heading-row">
           <div>
             <div className="section-overline">THE BIG PICTURE</div>
@@ -436,8 +438,6 @@ function App() {
             </div>
           </section>
         </div>
-
-        <BalanceChart history={history} today={chartHistoryEnd} />
 
         <footer className="page-footer">
           <span className="footer-brand">hima</span>

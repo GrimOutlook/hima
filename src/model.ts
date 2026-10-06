@@ -58,33 +58,6 @@ export interface BalancePoint {
   projected: boolean;
 }
 
-export interface ChartTick {
-  y: number;
-  label: string;
-  isZero: boolean;
-}
-
-export interface ChartDateLabel {
-  x: number;
-  label: string;
-  anchor: "start" | "middle" | "end";
-}
-
-export interface BalanceChartLayout {
-  historyLinePath: string;
-  historyAreaPath: string;
-  projectionLinePath: string;
-  projectionAreaPath: string;
-  ticks: ChartTick[];
-  dateLabels: ChartDateLabel[];
-  zeroY: number | null;
-  todayX: number;
-  width: number;
-  todayY: number;
-  projectionX: number;
-  projectionY: number;
-}
-
 const STORAGE_KEY = "hima.store.v1";
 
 export function emptyStore(): Store {
@@ -475,12 +448,6 @@ export function eventPoolSummary(event: LeaveEvent, pools: Pool[]): string {
   return `Pools: ${[...names].join(", ")}`;
 }
 
-function daysBetween(start: string, end: string): number {
-  const first = dateFromParts(start)!;
-  const last = dateFromParts(end)!;
-  return Math.round((last.getTime() - first.getTime()) / 86_400_000);
-}
-
 export function balanceHistory(store: Store, today: string): BalancePoint[] {
   if (!isValidDate(today)) return [];
   const start = addMonths(today, -12);
@@ -490,121 +457,4 @@ export function balanceHistory(store: Store, today: string): BalancePoint[] {
     points.push({ date, balance: totalsOn(store, date).balance, projected: date > today });
   }
   return points;
-}
-
-function stepPath(points: Array<[number, number]>): string {
-  const first = points[0];
-  if (!first) return "";
-  const steps = points
-    .slice(1)
-    .map(([x, y]) => `H${x.toFixed(2)} V${y.toFixed(2)}`)
-    .join(" ");
-  return `M${first[0].toFixed(2)},${first[1].toFixed(2)} ${steps}`;
-}
-
-function areaPath(points: Array<[number, number]>, baseline: number): string {
-  const first = points[0];
-  const last = points.at(-1);
-  if (!first || !last) return "";
-  return `${stepPath(points)} L${last[0].toFixed(2)},${baseline.toFixed(2)} L${first[0].toFixed(2)},${baseline.toFixed(2)} Z`;
-}
-
-export function chartLayout(points: BalancePoint[]): BalanceChartLayout {
-  const width = 1600;
-  const left = 68;
-  const right = width - 18;
-  const top = 18;
-  const bottom = 232;
-  const first = points[0];
-  const last = points.at(-1);
-  if (!first || !last) {
-    return {
-      historyLinePath: "",
-      historyAreaPath: "",
-      projectionLinePath: "",
-      projectionAreaPath: "",
-      ticks: [],
-      dateLabels: [],
-      zeroY: null,
-      todayX: left,
-      width,
-      todayY: bottom,
-      projectionX: right,
-      projectionY: bottom,
-    };
-  }
-
-  const balances = points.map((point) => point.balance);
-  const minBalance = Math.min(...balances);
-  const maxBalance = Math.max(...balances);
-  const spread = maxBalance - minBalance;
-  const padding = spread < 0.01 ? 1 : spread * 0.12;
-  const lower = minBalance - padding;
-  const upper = maxBalance + padding;
-  const range = upper - lower;
-  const zeroY = lower <= 0 && upper >= 0 ? top + (upper / range) * (bottom - top) : null;
-  const totalDays = Math.max(1, daysBetween(first.date, last.date));
-  const coordinates = points.map((point): [number, number] => {
-    const elapsed = daysBetween(first.date, point.date);
-    return [left + (elapsed / totalDays) * (right - left), top + ((upper - point.balance) / range) * (bottom - top)];
-  });
-  let todayIndex = 0;
-  for (let index = points.length - 1; index >= 0; index -= 1) {
-    if (!points[index]?.projected) {
-      todayIndex = index;
-      break;
-    }
-  }
-  const todayCoordinate = coordinates[todayIndex] ?? [left, bottom];
-  const projectionCoordinate = coordinates.at(-1) ?? [right, bottom];
-  const historyCoordinates = coordinates.slice(0, todayIndex + 1);
-  const projectionCoordinates = coordinates.slice(todayIndex);
-  const ticks = Array.from({ length: 5 }, (_, index) => {
-    const value = lower + (range * index) / 4;
-    return {
-      y: top + ((upper - value) / range) * (bottom - top),
-      label: `${formatHours(value)} h`,
-      isZero: Math.abs(value) < 1e-7,
-    };
-  });
-
-  const lastIndex = points.length - 1;
-  const labelDefinitions: Array<[number, ChartDateLabel["anchor"]]> = [
-    [0, "start"],
-    [todayIndex, "middle"],
-    [lastIndex, "end"],
-  ];
-  const dateLabels: ChartDateLabel[] = [];
-  for (const [index, anchor] of labelDefinitions) {
-    const coordinate = coordinates[index];
-    const point = points[index];
-    if (!coordinate || !point || dateLabels.at(-1)?.x === coordinate[0]) continue;
-    dateLabels.push({
-      x: coordinate[0],
-      label: index === todayIndex ? "Today" : prettyMonth(point.date),
-      anchor,
-    });
-  }
-
-  return {
-    historyLinePath: stepPath(historyCoordinates),
-    historyAreaPath: areaPath(historyCoordinates, bottom),
-    projectionLinePath: stepPath(projectionCoordinates),
-    projectionAreaPath: areaPath(projectionCoordinates, bottom),
-    ticks,
-    dateLabels,
-    zeroY,
-    todayX: todayCoordinate[0],
-    width,
-    todayY: todayCoordinate[1],
-    projectionX: projectionCoordinate[0],
-    projectionY: projectionCoordinate[1],
-  };
-}
-
-function prettyMonth(value: string): string {
-  const date = dateFromParts(value);
-  return date
-    ? new Intl.DateTimeFormat("en-US", { month: "short", year: "numeric", timeZone: "UTC" }).format(date)
-    : value;
 }
