@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   Area,
   AreaChart,
@@ -16,6 +16,7 @@ import { formatHours, formatSignedHours, prettyDate, type BalancePoint } from ".
 interface BalanceChartProps {
   history: BalancePoint[];
   today: string;
+  selectedDate: string;
 }
 
 interface ChartPoint extends BalancePoint {
@@ -59,13 +60,26 @@ function monthYearLabel(value: string | undefined): string {
   }).format(date);
 }
 
-export function BalanceChart({ history, today }: BalanceChartProps) {
+export function BalanceChart({ history, today, selectedDate }: BalanceChartProps) {
   const todayIndex = Math.max(0, history.findIndex((point) => point.date === today));
+  const selectedIndex = history.findIndex((point) => point.date === selectedDate);
   const lastIndex = Math.max(0, history.length - 1);
   const [brushRange, setBrushRange] = useState({ startIndex: 0, endIndex: lastIndex });
+  const previousSelectedIndex = useRef(selectedIndex);
   useEffect(() => {
     setBrushRange({ startIndex: 0, endIndex: lastIndex });
   }, [lastIndex]);
+  useEffect(() => {
+    if (previousSelectedIndex.current === selectedIndex) return;
+    previousSelectedIndex.current = selectedIndex;
+    if (
+      selectedIndex < 0 ||
+      (selectedIndex >= brushRange.startIndex && selectedIndex <= brushRange.endIndex)
+    ) return;
+    const rangeSize = brushRange.endIndex - brushRange.startIndex;
+    const startIndex = Math.max(0, Math.min(selectedIndex - Math.floor(rangeSize / 2), lastIndex - rangeSize));
+    setBrushRange({ startIndex, endIndex: Math.min(lastIndex, startIndex + rangeSize) });
+  }, [selectedIndex, lastIndex]);
   const chartData = useMemo<ChartPoint[]>(
     () => history.map((point, index) => ({
       ...point,
@@ -96,6 +110,7 @@ export function BalanceChart({ history, today }: BalanceChartProps) {
   const xTicks = [...new Set([
     visibleStart,
     ...(todayIndex > visibleStart && todayIndex < visibleEnd ? [todayIndex] : []),
+    ...(selectedIndex >= visibleStart && selectedIndex <= visibleEnd ? [selectedIndex] : []),
     visibleEnd,
   ])];
 
@@ -167,13 +182,27 @@ export function BalanceChart({ history, today }: BalanceChartProps) {
                 stroke="#a6afa5"
                 strokeDasharray="3 4"
                 label={{
-                  value: "Today",
+                  value: selectedIndex === todayIndex ? "Today · selected date" : "Today",
                   position: "insideTop",
                   fill: "#747e74",
                   fontSize: 9,
                   className: "chart-today-label",
                 }}
               />
+              {selectedIndex >= 0 && selectedIndex !== todayIndex && (
+                <ReferenceLine
+                  x={selectedIndex}
+                  stroke={PROJECTED_COLOR}
+                  strokeDasharray="5 4"
+                  label={{
+                    value: "Selected date",
+                    position: "insideBottom",
+                    fill: PROJECTED_COLOR,
+                    fontSize: 9,
+                    className: "chart-selected-date-label",
+                  }}
+                />
+              )}
               {domain[0] <= 0 && domain[1] >= 0 && (
                 <ReferenceLine y={0} stroke="#b8c5b9" strokeDasharray="4 4" />
               )}

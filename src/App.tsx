@@ -302,7 +302,7 @@ function App() {
           </div>
         </section>
 
-        <BalanceChart history={history} today={chartHistoryEnd} />
+        <BalanceChart history={history} today={chartHistoryEnd} selectedDate={balanceDate} />
 
         <div className="section-heading-row">
           <div>
