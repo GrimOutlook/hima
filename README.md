@@ -1,6 +1,6 @@
 # hima
 
-A small, browser-based PPL planner built with Dioxus. Create leave pools, add one-time or recurring accruals, log events against a pool, and see your projected balance on any date.
+A small, browser-based PPL planner built with Dioxus. Create leave pools, add one-time or recurring accruals, log leave events with hours recorded for each day, and see your projected balance on any date.
 
 All amounts are entered in hours. Your pools and events are saved in this browser's local storage.
 

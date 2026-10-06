@@ -1,7 +1,10 @@
 mod model;
 
 use dioxus::prelude::*;
-use model::{parse_date, Cadence, LeaveEvent, OneTimeAddition, Pool, RecurringAddition, Store};
+use model::{
+    parse_date, Cadence, LeaveDay, LeaveEvent, OneTimeAddition, Pool, RecurringAddition, Store,
+};
+use std::collections::HashSet;
 
 #[cfg(target_arch = "wasm32")]
 const STORAGE_KEY: &str = "hima.store.v1";
@@ -16,6 +19,21 @@ enum Modal {
     EditRecurring { pool_id: u64, rule_id: u64 },
     NewEvent,
     EditEvent { event_id: u64 },
+}
+
+#[derive(Clone, Debug, PartialEq)]
+struct EventDayInput {
+    date: String,
+    hours: String,
+}
+
+impl EventDayInput {
+    fn new(date: String) -> Self {
+        Self {
+            date,
+            hours: String::new(),
+        }
+    }
 }
 
 fn main() {
@@ -38,8 +56,7 @@ fn App() -> Element {
     let mut contribution_is_recurring = use_signal(|| false);
     let mut contribution_cadence = use_signal(|| "fortnightly".to_owned());
     let mut event_name = use_signal(String::new);
-    let mut event_amount = use_signal(String::new);
-    let mut event_date = use_signal(today_date);
+    let mut event_days = use_signal(|| vec![EventDayInput::new(today_date())]);
     let mut event_pool_id = use_signal(|| 0_u64);
 
     use_effect(move || {
@@ -51,7 +68,7 @@ fn App() -> Element {
     let (accrued, used, balance) = state.totals_on(&selected_date);
     let first_pool_id = state.pools.first().map(|pool| pool.id);
     let mut timeline = state.events.clone();
-    timeline.sort_by(|left, right| left.date.cmp(&right.date));
+    timeline.sort_by(|left, right| left.first_date().cmp(right.first_date()));
     let event_word = plural(timeline.len(), "event", "events");
     let current_modal = modal();
     let editing_pool_id = match current_modal {
@@ -348,8 +365,7 @@ fn App() -> Element {
                                     onclick: move |_| {
                                         form_error.set(String::new());
                                         event_name.set(String::new());
-                                        event_amount.set(String::new());
-                                        event_date.set(today_date());
+                                        event_days.set(fresh_event_days());
                                         if let Some(first_pool_id) = first_pool_id {
                                             event_pool_id.set(first_pool_id);
                                         }
@@ -373,8 +389,7 @@ fn App() -> Element {
                                             onclick: move |_| {
                                                 form_error.set(String::new());
                                                 event_name.set(String::new());
-                                                event_amount.set(String::new());
-                                                event_date.set(today_date());
+                                                event_days.set(fresh_event_days());
                                                 if let Some(first_pool_id) = first_pool_id {
                                                     event_pool_id.set(first_pool_id);
                                                 }
@@ -389,11 +404,38 @@ fn App() -> Element {
                                     for event in timeline.iter() {
                                         {
                                             let event_id = event.id;
-                                            let event_is_counted = event.date.as_str() <= selected_date.as_str();
+                                            let event_included_days = event
+                                                .days
+                                                .iter()
+                                                .filter(|day| day.date.as_str() <= selected_date.as_str())
+                                                .count();
+                                            let event_status_class = if event_included_days == event.days.len() {
+                                                "event-status event-status-counted"
+                                            } else if event_included_days > 0 {
+                                                "event-status event-status-partial"
+                                            } else {
+                                                "event-status"
+                                            };
+                                            let event_status_label = if event_included_days == event.days.len() {
+                                                "Included in balance"
+                                            } else if event_included_days > 0 {
+                                                "Partly included"
+                                            } else {
+                                                "After selected date"
+                                            };
                                             let event_name_for_edit = event.name.clone();
-                                            let event_amount_for_edit = event.amount;
-                                            let event_date_for_edit = event.date.clone();
+                                            let event_days_for_edit = event.days.iter()
+                                                .map(|day| EventDayInput {
+                                                    date: day.date.clone(),
+                                                    hours: format_hours(day.hours),
+                                                })
+                                                .collect::<Vec<_>>();
                                             let event_pool_id_for_edit = event.pool_id;
+                                            let event_first_date = event.first_date().to_owned();
+                                            let event_date_range = event_date_range_label(event);
+                                            let event_day_count = event.days.len();
+                                            let event_day_word = plural(event_day_count, "day", "days");
+                                            let event_day_summary = event_day_summary(event);
                                             let pool_name = state.pools.iter()
                                                 .find(|pool| pool.id == event.pool_id)
                                                 .map(|pool| pool.name.clone())
@@ -401,18 +443,19 @@ fn App() -> Element {
                                             rsx! {
                                                 article { class: "event-row", key: "event-{event_id}",
                                                     div { class: "event-date-block",
-                                                        span { class: "event-month", "{month_label(&event.date)}" }
-                                                        strong { "{day_label(&event.date)}" }
+                                                        span { class: "event-month", "{month_label(&event_first_date)}" }
+                                                        strong { "{day_label(&event_first_date)}" }
                                                     }
                                                     div { class: "event-info",
                                                         strong { "{event.name}" }
-                                                        span { "{pool_name} · {pretty_date(&event.date)}" }
+                                                        span { "{pool_name} · {event_day_count} {event_day_word} · {event_date_range}" }
+                                                        span { class: "event-day-details", "{event_day_summary}" }
                                                         span {
-                                                            class: if event_is_counted { "event-status event-status-counted" } else { "event-status" },
-                                                            if event_is_counted { "Included in balance" } else { "After selected date" }
+                                                            class: event_status_class,
+                                                            "{event_status_label}"
                                                         }
                                                     }
-                                                    div { class: "event-amount", "−{format_hours(event.amount)} h" }
+                                                    div { class: "event-amount", "−{format_hours(event.total_hours())} h" }
                                                     div { class: "event-actions",
                                                         button {
                                                             class: "icon-button",
@@ -420,8 +463,7 @@ fn App() -> Element {
                                                             aria_label: "Edit {event.name}",
                                                             onclick: move |_| {
                                                                 event_name.set(event_name_for_edit.clone());
-                                                                event_amount.set(format_hours(event_amount_for_edit));
-                                                                event_date.set(event_date_for_edit.clone());
+                                                                event_days.set(event_days_for_edit.clone());
                                                                 event_pool_id.set(event_pool_id_for_edit);
                                                                 form_error.set(String::new());
                                                                 modal.set(Modal::EditEvent { event_id });
@@ -763,21 +805,37 @@ fn App() -> Element {
                             onsubmit: move |event| {
                                 event.prevent_default();
                                 let name = event_name.read().trim().to_owned();
-                                let amount = parse_hours(&event_amount.read(), false);
-                                let date = event_date.read().clone();
+                                let day_inputs = event_days.read().clone();
                                 let pool_id = event_pool_id();
                                 if name.is_empty() {
                                     form_error.set("Give this event a name.".to_owned());
                                     return;
                                 }
-                                if amount.is_none() {
-                                    form_error.set("Enter an amount greater than zero with up to two decimal places.".to_owned());
+                                if day_inputs.is_empty() {
+                                    form_error.set("Add at least one day to this event.".to_owned());
                                     return;
                                 }
-                                if parse_date(&date).is_none() {
-                                    form_error.set("Choose a valid date.".to_owned());
-                                    return;
+                                let mut days = Vec::with_capacity(day_inputs.len());
+                                let mut unique_dates = HashSet::new();
+                                for input in day_inputs {
+                                    if parse_date(&input.date).is_none() {
+                                        form_error.set("Choose a valid date for each event day.".to_owned());
+                                        return;
+                                    }
+                                    if !unique_dates.insert(input.date.clone()) {
+                                        form_error.set("Each event day must have a different date.".to_owned());
+                                        return;
+                                    }
+                                    let Some(hours) = parse_hours(&input.hours, false) else {
+                                        form_error.set("Enter positive hours with up to two decimal places for each day.".to_owned());
+                                        return;
+                                    };
+                                    days.push(LeaveDay {
+                                        date: input.date,
+                                        hours,
+                                    });
                                 }
+                                days.sort_by(|left, right| left.date.cmp(&right.date));
                                 if !store.read().pools.iter().any(|pool| pool.id == pool_id) {
                                     form_error.set("Choose a pool for this event.".to_owned());
                                     return;
@@ -787,8 +845,7 @@ fn App() -> Element {
                                     if let Some(event) = data.events.iter_mut().find(|event| event.id == event_id) {
                                         event.name = name;
                                         event.pool_id = pool_id;
-                                        event.amount = amount.unwrap_or_default();
-                                        event.date = date;
+                                        event.days = days;
                                         true
                                     } else {
                                         false
@@ -799,8 +856,7 @@ fn App() -> Element {
                                         id,
                                         name,
                                         pool_id,
-                                        amount: amount.unwrap_or_default(),
-                                        date,
+                                        days,
                                     });
                                     true
                                 };
@@ -823,28 +879,67 @@ fn App() -> Element {
                                     oninput: move |event| event_name.set(event.value()),
                                 }
                             }
-                            div { class: "form-two-columns",
-                                label { class: "field-label",
-                                    "Time used"
-                                    div { class: "input-with-suffix",
-                                        input {
-                                            r#type: "number",
-                                            min: "0.01",
-                                            step: "0.01",
-                                            placeholder: "e.g. 7.6",
-                                            value: "{event_amount}",
-                                            oninput: move |event| event_amount.set(event.value()),
+                            div { class: "event-days-editor",
+                                div { class: "event-days-heading",
+                                    span { "Days covered" }
+                                    span { "Hours are recorded per day" }
+                                }
+                                for (index, day) in event_days.read().iter().enumerate() {
+                                    div { class: "event-day-row", key: "event-day-{index}",
+                                        label { class: "field-label",
+                                            "Date"
+                                            input {
+                                                r#type: "date",
+                                                value: "{day.date}",
+                                                oninput: move |event| {
+                                                    if let Some(day) = event_days.write().get_mut(index) {
+                                                        day.date = event.value();
+                                                    }
+                                                },
+                                            }
                                         }
-                                        span { "hours" }
+                                        label { class: "field-label",
+                                            "Hours"
+                                            input {
+                                                r#type: "number",
+                                                min: "0.01",
+                                                step: "0.01",
+                                                placeholder: "e.g. 7.6",
+                                                value: "{day.hours}",
+                                                oninput: move |event| {
+                                                    if let Some(day) = event_days.write().get_mut(index) {
+                                                        day.hours = event.value();
+                                                    }
+                                                },
+                                            }
+                                        }
+                                        if event_days.read().len() > 1 {
+                                            button {
+                                                class: "icon-button event-day-remove",
+                                                r#type: "button",
+                                                title: "Remove day",
+                                                aria_label: "Remove event day",
+                                                onclick: move |_| {
+                                                    if index < event_days.read().len() {
+                                                        event_days.write().remove(index);
+                                                    }
+                                                },
+                                                "×"
+                                            }
+                                        }
                                     }
                                 }
-                                label { class: "field-label",
-                                    "Leave date"
-                                    input {
-                                        r#type: "date",
-                                        value: "{event_date}",
-                                        oninput: move |event| event_date.set(event.value()),
-                                    }
+                                button {
+                                    class: "button button-soft button-small add-day-button",
+                                    r#type: "button",
+                                    onclick: move |_| {
+                                        let date = event_days.read().last()
+                                            .map(|day| next_date_after(&day.date))
+                                            .unwrap_or_else(today_date);
+                                        event_days.write().push(EventDayInput::new(date));
+                                    },
+                                    span { class: "button-plus", "+" }
+                                    "Add another day"
                                 }
                             }
                             label { class: "field-label",
@@ -894,6 +989,10 @@ fn format_hours(value: f64) -> String {
     }
 }
 
+fn fresh_event_days() -> Vec<EventDayInput> {
+    vec![EventDayInput::new(today_date())]
+}
+
 fn parse_hours(value: &str, allow_zero: bool) -> Option<f64> {
     let amount = value.trim().parse::<f64>().ok()?;
     let cents = amount * 100.0;
@@ -913,6 +1012,32 @@ fn pretty_date(value: &str) -> String {
     parse_date(value)
         .map(|date| date.format("%b %d, %Y").to_string())
         .unwrap_or_else(|| value.to_owned())
+}
+
+fn next_date_after(value: &str) -> String {
+    parse_date(value)
+        .and_then(|date| date.succ_opt())
+        .map(|date| date.format("%Y-%m-%d").to_string())
+        .unwrap_or_else(today_date)
+}
+
+fn event_date_range_label(event: &LeaveEvent) -> String {
+    let first = pretty_date(event.first_date());
+    let last = pretty_date(event.last_date());
+    if first == last {
+        first
+    } else {
+        format!("{first} – {last}")
+    }
+}
+
+fn event_day_summary(event: &LeaveEvent) -> String {
+    event
+        .days
+        .iter()
+        .map(|day| format!("{}: {} h", pretty_date(&day.date), format_hours(day.hours)))
+        .collect::<Vec<_>>()
+        .join(" · ")
 }
 
 fn month_label(value: &str) -> String {

@@ -41,12 +41,50 @@ pub enum Cadence {
 }
 
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
+#[serde(from = "StoredLeaveEvent")]
 pub struct LeaveEvent {
     pub id: u64,
     pub name: String,
     pub pool_id: u64,
-    pub amount: f64,
+    pub days: Vec<LeaveDay>,
+}
+
+#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
+pub struct LeaveDay {
     pub date: String,
+    pub hours: f64,
+}
+
+#[derive(Deserialize)]
+struct StoredLeaveEvent {
+    id: u64,
+    name: String,
+    pool_id: u64,
+    #[serde(default)]
+    days: Vec<LeaveDay>,
+    #[serde(default)]
+    date: String,
+    #[serde(default)]
+    amount: f64,
+}
+
+impl From<StoredLeaveEvent> for LeaveEvent {
+    fn from(stored: StoredLeaveEvent) -> Self {
+        let days = if stored.days.is_empty() && !stored.date.is_empty() && stored.amount > 0.0 {
+            vec![LeaveDay {
+                date: stored.date,
+                hours: stored.amount,
+            }]
+        } else {
+            stored.days
+        };
+        Self {
+            id: stored.id,
+            name: stored.name,
+            pool_id: stored.pool_id,
+            days,
+        }
+    }
 }
 
 impl Cadence {
@@ -106,8 +144,7 @@ impl Store {
         let used = self
             .events
             .iter()
-            .filter(|event| event.date.as_str() <= date)
-            .map(|event| event.amount)
+            .map(|event| event.hours_through(date))
             .sum::<f64>();
         (accrued, used, accrued - used)
     }
@@ -122,10 +159,40 @@ impl Store {
         let used = self
             .events
             .iter()
-            .filter(|event| event.pool_id == pool_id && event.date.as_str() <= date)
-            .map(|event| event.amount)
+            .filter(|event| event.pool_id == pool_id)
+            .map(|event| event.hours_through(date))
             .sum::<f64>();
         accrued - used
+    }
+}
+
+impl LeaveEvent {
+    pub fn hours_through(&self, date: &str) -> f64 {
+        self.days
+            .iter()
+            .filter(|day| day.date.as_str() <= date)
+            .map(|day| day.hours)
+            .sum()
+    }
+
+    pub fn total_hours(&self) -> f64 {
+        self.days.iter().map(|day| day.hours).sum()
+    }
+
+    pub fn first_date(&self) -> &str {
+        self.days
+            .iter()
+            .map(|day| day.date.as_str())
+            .min()
+            .unwrap_or_default()
+    }
+
+    pub fn last_date(&self) -> &str {
+        self.days
+            .iter()
+            .map(|day| day.date.as_str())
+            .max()
+            .unwrap_or_default()
     }
 }
 
@@ -240,14 +307,50 @@ mod tests {
                 id: 3,
                 name: "Long weekend".to_owned(),
                 pool_id: 1,
-                amount: 4.0,
-                date: "2026-02-01".to_owned(),
+                days: vec![
+                    LeaveDay {
+                        date: "2026-02-01".to_owned(),
+                        hours: 1.75,
+                    },
+                    LeaveDay {
+                        date: "2026-02-02".to_owned(),
+                        hours: 2.25,
+                    },
+                ],
             }],
             next_id: 4,
         };
 
         assert_eq!(store.totals_on("2026-01-31"), (10.0, 0.0, 10.0));
-        assert_eq!(store.totals_on("2026-02-01"), (10.0, 4.0, 6.0));
-        assert_eq!(store.pool_balance_on(1, "2026-02-01"), 6.0);
+        assert_eq!(store.totals_on("2026-02-01"), (10.0, 1.75, 8.25));
+        assert_eq!(store.totals_on("2026-02-02"), (10.0, 4.0, 6.0));
+        assert_eq!(store.pool_balance_on(1, "2026-02-01"), 8.25);
+    }
+
+    #[test]
+    fn old_single_day_events_migrate_to_a_daily_breakdown() {
+        let old_event = r#"{
+            "id": 8,
+            "name": "Doctor appointment",
+            "pool_id": 2,
+            "date": "2026-04-15",
+            "amount": 1.5
+        }"#;
+
+        let event: LeaveEvent = serde_json::from_str(old_event).unwrap();
+
+        assert_eq!(
+            event.days,
+            vec![LeaveDay {
+                date: "2026-04-15".to_owned(),
+                hours: 1.5,
+            }]
+        );
+        assert_eq!(event.total_hours(), 1.5);
+
+        let saved = serde_json::to_value(event).unwrap();
+        assert!(saved.get("days").is_some());
+        assert!(saved.get("date").is_none());
+        assert!(saved.get("amount").is_none());
     }
 }
