@@ -3,16 +3,19 @@ import {
   addDays,
   capRangesOverlap,
   freshEventDays,
+  formatHours,
   isValidDate,
   MONTH_NAMES,
   NTH_WEEKDAYS,
   parseHours,
+  prettyDate,
   sortDays,
   todayDate,
   WEEKDAYS,
   type Cadence,
   type EventDayInput,
   type LeaveDay,
+  type LeaveEvent,
   type NthWeekday,
   type Pool,
   type PoolCap,
@@ -26,6 +29,7 @@ interface ModalFrameProps {
   description: string;
   labelledBy: string;
   onClose: () => void;
+  className?: string;
   children: ReactNode;
 }
 
@@ -36,11 +40,12 @@ function ModalFrame({
   description,
   labelledBy,
   onClose,
+  className = "",
   children,
 }: ModalFrameProps) {
   return (
     <div className="modal-backdrop">
-      <section className="modal-card" role="dialog" aria-modal="true" aria-labelledby={labelledBy}>
+      <section className={className ? `modal-card ${className}` : "modal-card"} role="dialog" aria-modal="true" aria-labelledby={labelledBy}>
         <div className="modal-header">
           <div className={`modal-icon ${iconClass}`}>{icon}</div>
           <div className="modal-heading">
@@ -286,6 +291,74 @@ export function PoolModal({
           </button>
         </div>
       </form>
+    </ModalFrame>
+  );
+}
+
+interface PoolUsageModalProps {
+  pool: Pick<Pool, "id" | "name">;
+  events: LeaveEvent[];
+  onClose: () => void;
+}
+
+export function PoolUsageModal({ pool, events, onClose }: PoolUsageModalProps) {
+  const usageByEventDay = new Map<string, { eventId: number; eventName: string; date: string; hours: number }>();
+  for (const event of events) {
+    for (const day of event.days) {
+      const hours = day.allocations
+        .filter((allocation) => allocation.pool_id === pool.id)
+        .reduce((total, allocation) => total + allocation.hours, 0);
+      if (hours === 0) continue;
+      const key = `${event.id}:${day.date}`;
+      const existing = usageByEventDay.get(key);
+      if (existing) {
+        existing.hours += hours;
+      } else {
+        usageByEventDay.set(key, { eventId: event.id, eventName: event.name, date: day.date, hours });
+      }
+    }
+  }
+  const usageEntries = [...usageByEventDay.values()].sort(
+    (left, right) => left.date.localeCompare(right.date) || left.eventName.localeCompare(right.eventName),
+  );
+  const totalUsageHours = usageEntries.reduce((total, entry) => total + entry.hours, 0);
+
+  return (
+    <ModalFrame
+      icon="▤"
+      iconClass="modal-icon-ledger"
+      title={`${pool.name} usage`}
+      description="Dates, events, and hours allocated from this pool."
+      labelledBy={`pool-usage-modal-title-${pool.id}`}
+      onClose={onClose}
+      className="pool-usage-modal"
+    >
+      {usageEntries.length === 0 ? (
+        <p className="pool-usage-modal-empty">No event days are allocated to this pool yet.</p>
+      ) : (
+        <div className="pool-usage-modal-table-scroll">
+          <table className="pool-usage-table">
+            <thead>
+              <tr><th scope="col">Date</th><th scope="col">Event</th><th scope="col">Hours</th></tr>
+            </thead>
+            <tbody>
+              {usageEntries.map((entry) => (
+                <tr key={`${entry.eventId}-${entry.date}`}>
+                  <td><time dateTime={entry.date}>{prettyDate(entry.date)}</time></td>
+                  <td title={entry.eventName}>{entry.eventName}</td>
+                  <td>{formatHours(entry.hours)} h</td>
+                </tr>
+              ))}
+            </tbody>
+            <tfoot>
+              <tr><th scope="row" colSpan={2}>Total allocated</th><td>{formatHours(totalUsageHours)} h</td></tr>
+            </tfoot>
+          </table>
+        </div>
+      )}
+      <div className="modal-actions">
+        <button className="button button-quiet" type="button" onClick={onClose}>Done</button>
+      </div>
     </ModalFrame>
   );
 }

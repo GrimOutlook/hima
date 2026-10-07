@@ -5,6 +5,7 @@ import {
   AdditionModal,
   EventModal,
   PoolModal,
+  PoolUsageModal,
   eventInputDays,
   type AdditionFormData,
   type PoolCapFormData,
@@ -42,6 +43,7 @@ import {
 type ModalState =
   | { type: "new-pool" }
   | { type: "edit-pool"; poolId: number }
+  | { type: "pool-usage"; poolId: number }
   | { type: "add-time"; poolId: number }
   | { type: "edit-addition"; poolId: number; additionId: number }
   | { type: "edit-recurring"; poolId: number; ruleId: number }
@@ -84,6 +86,9 @@ function App() {
     ? poolTotalsOn(store, usesFilterPool.id, balanceDate).used
     : balance.used;
   const selectedModal = modal;
+  const usagePool = selectedModal?.type === "pool-usage"
+    ? store.pools.find((pool) => pool.id === selectedModal.poolId)
+    : undefined;
 
   useEffect(() => {
     saveStore(store);
@@ -113,6 +118,18 @@ function App() {
           ? window.innerHeight
           : 1);
       const target = event.target;
+      const usageLedger = target instanceof Element
+        ? target.closest<HTMLElement>(".pool-usage-modal-table-scroll")
+        : null;
+      if (usageLedger) {
+        const canScrollLedger = deltaY < 0
+          ? usageLedger.scrollTop > 0
+          : usageLedger.scrollTop + usageLedger.clientHeight < usageLedger.scrollHeight - 1;
+        if (canScrollLedger) return;
+        event.preventDefault();
+        return;
+      }
+
       const list = target instanceof Element
         ? target.closest<HTMLElement>(".pools-column, .timeline-list")
         : null;
@@ -508,6 +525,7 @@ function App() {
                 store={store}
                 isSelected={usesFilterPool?.id === pool.id}
                 onSelect={() => setSelectedUsesPoolId((current) => current === pool.id ? null : pool.id)}
+                onViewUsage={() => setModal({ type: "pool-usage", poolId: pool.id })}
                 onEdit={() => setModal({ type: "edit-pool", poolId: pool.id })}
                 onDelete={() => removePool(pool.id, pool.name)}
                 onAddTime={() => setModal({ type: "add-time", poolId: pool.id })}
@@ -649,6 +667,14 @@ function App() {
           onSave={savePool}
         />
       )}
+      {usagePool && (
+        <PoolUsageModal
+          key={`pool-usage-${usagePool.id}`}
+          pool={usagePool}
+          events={store.events}
+          onClose={() => setModal(null)}
+        />
+      )}
       {(selectedModal?.type === "add-time" ||
         selectedModal?.type === "edit-addition" ||
         selectedModal?.type === "edit-recurring") && (
@@ -681,6 +707,7 @@ interface PoolCardProps {
   store: Store;
   isSelected: boolean;
   onSelect: () => void;
+  onViewUsage: () => void;
   onEdit: () => void;
   onDelete: () => void;
   onAddTime: () => void;
@@ -696,6 +723,7 @@ function PoolCard({
   store,
   isSelected,
   onSelect,
+  onViewUsage,
   onEdit,
   onDelete,
   onAddTime,
@@ -733,6 +761,12 @@ function PoolCard({
           </div>
         </div>
         <div className="pool-actions">
+          <button className="icon-button" type="button" title="View pool usage" aria-label={`View usage ledger for ${pool.name}`} onClick={onViewUsage}>
+            <svg className="ledger-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+              <path d="M7 4.5h11a1.5 1.5 0 0 1 1.5 1.5v12A1.5 1.5 0 0 1 18 19.5H7a2.5 2.5 0 0 1-2.5-2.5V7A2.5 2.5 0 0 1 7 4.5Z" />
+              <path d="M7 4.5v15M10 8h6M10 11.5h6M10 15h4" />
+            </svg>
+          </button>
           <button className="icon-button" type="button" title="Edit pool" aria-label={`Edit ${pool.name}`} onClick={onEdit}>✎</button>
           <button className="icon-button delete-button" type="button" title="Delete pool" aria-label={`Delete ${pool.name}`} onClick={onDelete}>×</button>
         </div>
