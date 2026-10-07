@@ -617,15 +617,33 @@ export function eventPoolSummary(event: LeaveEvent, pools: Pool[]): string {
 
 export function balanceHistory(store: Store, today: string, poolId?: number): BalancePoint[] {
   if (!isValidDate(today)) return [];
-  const start = addMonths(today, -12);
+  const pools = poolId === undefined
+    ? store.pools
+    : store.pools.filter((pool) => pool.id === poolId);
+  const poolIds = new Set(pools.map((pool) => pool.id));
+  const relevantDates = [
+    ...pools.flatMap((pool) => [
+      ...pool.additions.map((addition) => addition.date),
+      ...pool.recurring.map((rule) => rule.start_date),
+      ...pool.caps.map((cap) => cap.start_date),
+    ]),
+    ...store.events.flatMap((event) =>
+      event.days
+        .filter((day) => day.allocations.some((allocation) => poolIds.has(allocation.pool_id)))
+        .map((day) => day.date),
+    ),
+  ].filter(isValidDate);
+  const defaultStart = addMonths(today, -12);
+  const earliestDate = relevantDates.reduce(
+    (earliest, date) => date < earliest ? date : earliest,
+    defaultStart,
+  );
+  const start = earliestDate;
   const end = addMonths(today, 12);
   const dates: string[] = [];
   for (let date = start; date <= end; date = addDays(date, 1)) {
     dates.push(date);
   }
-  const pools = poolId === undefined
-    ? store.pools
-    : store.pools.filter((pool) => pool.id === poolId);
   const ledgers = pools.map((pool) => poolLedgerForDates(pool, store.events, dates));
   return dates.map((date, index) => ({
     date,

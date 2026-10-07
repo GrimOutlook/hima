@@ -11,7 +11,7 @@ import {
   YAxis,
   type TooltipContentProps,
 } from "recharts";
-import { formatHours, formatSignedHours, prettyDate, type BalancePoint, type Pool } from "./model";
+import { addMonths, formatHours, formatSignedHours, prettyDate, type BalancePoint, type Pool } from "./model";
 
 interface BalanceChartProps {
   history: BalancePoint[];
@@ -33,6 +33,28 @@ const PLOT_LEFT = 68;
 const PLOT_RIGHT = 18;
 const ACTUAL_COLOR = "#4b7955";
 const PROJECTED_COLOR = "#bd856a";
+const TIMELINE_PRESETS = ["YTD", "6 month", "3 month", "1 year", "5 year", "all time"] as const;
+
+type TimelinePreset = typeof TIMELINE_PRESETS[number];
+
+function timelineRange(
+  preset: TimelinePreset,
+  history: BalancePoint[],
+  today: string,
+  todayIndex: number,
+  lastIndex: number,
+) {
+  if (preset === "all time") return { startIndex: 0, endIndex: lastIndex };
+
+  const startDate = preset === "YTD"
+    ? `${today.slice(0, 4)}-01-01`
+    : addMonths(today, preset === "6 month" ? -6 : preset === "3 month" ? -3 : preset === "5 year" ? -60 : -12);
+  const startIndex = history.findIndex((point) => point.date >= startDate);
+  return {
+    startIndex: startIndex < 0 ? 0 : startIndex,
+    endIndex: todayIndex,
+  };
+}
 
 function BalanceTooltip({
   active,
@@ -75,11 +97,18 @@ export function BalanceChart({
   const todayIndex = Math.max(0, history.findIndex((point) => point.date === today));
   const selectedIndex = history.findIndex((point) => point.date === selectedDate);
   const lastIndex = Math.max(0, history.length - 1);
-  const [brushRange, setBrushRange] = useState({ startIndex: 0, endIndex: lastIndex });
+  const [selectedPreset, setSelectedPreset] = useState<TimelinePreset | null>("1 year");
+  const [brushRange, setBrushRange] = useState(() =>
+    timelineRange("1 year", history, today, todayIndex, lastIndex),
+  );
+  const selectedPresetRef = useRef<TimelinePreset | null>("1 year");
   const previousSelectedIndex = useRef(selectedIndex);
   useEffect(() => {
-    setBrushRange({ startIndex: 0, endIndex: lastIndex });
-  }, [lastIndex]);
+    const activePreset = selectedPresetRef.current;
+    setBrushRange(activePreset
+      ? timelineRange(activePreset, history, today, todayIndex, lastIndex)
+      : { startIndex: 0, endIndex: lastIndex });
+  }, [history[0]?.date, today, todayIndex, lastIndex]);
   useEffect(() => {
     if (previousSelectedIndex.current === selectedIndex) return;
     previousSelectedIndex.current = selectedIndex;
@@ -90,6 +119,8 @@ export function BalanceChart({
     const rangeSize = brushRange.endIndex - brushRange.startIndex;
     const startIndex = Math.max(0, Math.min(selectedIndex - Math.floor(rangeSize / 2), lastIndex - rangeSize));
     setBrushRange({ startIndex, endIndex: Math.min(lastIndex, startIndex + rangeSize) });
+    selectedPresetRef.current = null;
+    setSelectedPreset(null);
   }, [selectedIndex, lastIndex]);
   const chartData = useMemo<ChartPoint[]>(
     () => history.map((point, index) => ({
@@ -100,14 +131,17 @@ export function BalanceChart({
     })),
     [history, todayIndex],
   );
-  const startBalance = history[0]?.balance ?? 0;
-  const todayPoint = [...history].reverse().find((point) => !point.projected);
+  const todayPoint = history[todayIndex];
   const currentBalance = todayPoint?.balance ?? 0;
   const projectionBalance = history.at(-1)?.balance ?? 0;
-  const change = currentBalance - startBalance;
-  const startDate = history[0]?.date ?? today;
-  const endDate = history.at(-1)?.date ?? today;
-  const values = history.map((point) => point.balance);
+  const yearAgoDate = addMonths(today, -12);
+  const yearAgoBalance = history.find((point) => point.date === yearAgoDate)?.balance ?? currentBalance;
+  const change = currentBalance - yearAgoBalance;
+  const visibleStart = Math.max(0, Math.min(brushRange.startIndex, lastIndex));
+  const visibleEnd = Math.max(visibleStart, Math.min(brushRange.endIndex, lastIndex));
+  const visibleStartDate = history[visibleStart]?.date ?? today;
+  const visibleEndDate = history[visibleEnd]?.date ?? today;
+  const values = history.slice(visibleStart, visibleEnd + 1).map((point) => point.balance);
   const minBalance = values.length ? Math.min(...values) : 0;
   const maxBalance = values.length ? Math.max(...values) : 0;
   const spread = maxBalance - minBalance;
@@ -116,8 +150,6 @@ export function BalanceChart({
   const yTicks = Array.from({ length: 5 }, (_, index) =>
     domain[0] + ((domain[1] - domain[0]) * index) / 4,
   );
-  const visibleStart = Math.max(0, Math.min(brushRange.startIndex, lastIndex));
-  const visibleEnd = Math.max(visibleStart, Math.min(brushRange.endIndex, lastIndex));
   const xTicks = [...new Set([
     visibleStart,
     ...(todayIndex > visibleStart && todayIndex < visibleEnd ? [todayIndex] : []),
@@ -129,12 +161,12 @@ export function BalanceChart({
     <section className="history-panel">
       <div className="history-panel-header">
         <div>
-          <div className="section-overline">A YEAR AT A GLANCE</div>
+          <div className="section-overline">BALANCE TIMELINE</div>
           <h2>{selectedPool ? `${selectedPool.name} balance history & outlook` : "PPL balance history & outlook"}</h2>
           <p>
             {selectedPool
-              ? `Past year and twelve-month projection for ${selectedPool.name}.`
-              : "Past year and twelve-month projection across all pools."}
+              ? `Balance history and a twelve-month projection for ${selectedPool.name}.`
+              : "Balance history and a twelve-month projection across all pools."}
           </p>
           {pools.length > 0 && (
             <label className="history-pool-filter">
@@ -167,11 +199,29 @@ export function BalanceChart({
           </div>
         </div>
       </div>
+      <div className="history-timeline-controls" role="group" aria-label="Graph timeline presets">
+        <span>Timeline</span>
+        {TIMELINE_PRESETS.map((preset) => (
+          <button
+            key={preset}
+            className={`history-timeline-preset${selectedPreset === preset ? " is-active" : ""}`}
+            type="button"
+            aria-pressed={selectedPreset === preset}
+            onClick={() => {
+              selectedPresetRef.current = preset;
+              setSelectedPreset(preset);
+              setBrushRange(timelineRange(preset, history, today, todayIndex, lastIndex));
+            }}
+          >
+            {preset}
+          </button>
+        ))}
+      </div>
       <div className="balance-chart-wrap">
         <div
           className="balance-chart-viewport"
           role="group"
-          aria-label={`${selectedPool?.name ?? "Combined PPL"} balance chart with zoom and pan controls`}
+          aria-label={`${selectedPool?.name ?? "Combined PPL"} balance chart with timeline presets, zoom, and pan controls`}
         >
           <ResponsiveContainer width="100%" height={CHART_HEIGHT}>
             <AreaChart
@@ -179,7 +229,7 @@ export function BalanceChart({
               data={chartData}
               margin={{ top: 38, right: PLOT_RIGHT, bottom: 0, left: 0 }}
               accessibilityLayer
-              aria-label={`Daily ${selectedPool ? `${selectedPool.name} ` : "combined PPL "}balance and forecast for the past and coming year`}
+              aria-label={`Daily ${selectedPool ? `${selectedPool.name} ` : "combined PPL "}balance history and twelve-month forecast`}
             >
               <CartesianGrid stroke="#eeefe9" vertical={false} />
               <XAxis
@@ -282,6 +332,8 @@ export function BalanceChart({
                 endIndex={brushRange.endIndex}
                 onChange={({ startIndex, endIndex }) => {
                   setBrushRange({ startIndex, endIndex });
+                  selectedPresetRef.current = null;
+                  setSelectedPreset(null);
                 }}
                 ariaLabel="Select a date range to zoom; drag the selected range to pan"
                 height={42}
@@ -312,7 +364,7 @@ export function BalanceChart({
         <span className="history-projection-dot" />
         Projected
         <span className="history-range">
-          {prettyDate(startDate)} – {prettyDate(endDate)} · hover for daily balances; drag the range handles to zoom and the selection to pan
+          {prettyDate(visibleStartDate)} – {prettyDate(visibleEndDate)} · hover for daily balances; drag the range handles to zoom and the selection to pan
         </span>
       </div>
     </section>

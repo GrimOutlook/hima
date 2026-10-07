@@ -368,4 +368,17 @@ describe("balance chart", () => {
     expect(selected.find((point) => point.date === "2026-01-02")?.balance).toBe(8);
     expect(selected.at(-1)?.balance).toBe(8);
   });
+
+  it("keeps all available history for the timeline's all-time preset", () => {
+    const store = normalizeStore({
+      pools: [
+        { id: 1, name: "Annual leave", additions: [{ id: 3, amount: 10, date: "2019-04-10" }] },
+        { id: 2, name: "Personal leave", additions: [{ id: 4, amount: 20, date: "2012-06-01" }] },
+      ],
+      events: [],
+    });
+
+    expect(balanceHistory(store, "2026-10-06")[0]?.date).toBe("2012-06-01");
+    expect(balanceHistory(store, "2026-10-06", 1)[0]?.date).toBe("2019-04-10");
+  });
 });
