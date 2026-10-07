@@ -282,6 +282,29 @@ export function normalizeStore(value: unknown): Store {
   return { pools, events, next_id: Math.max(storedNextId, largestId + 1, 1) };
 }
 
+export function serializeStoreJson(store: Store): string {
+  return JSON.stringify(store, null, 2);
+}
+
+export function parseStoreJson(json: string): Store {
+  let value: unknown;
+  try {
+    value = JSON.parse(json) as unknown;
+  } catch {
+    throw new Error("The selected file is not valid JSON.");
+  }
+
+  if (value === null || typeof value !== "object" || Array.isArray(value)) {
+    throw new Error("This file does not contain a hima data export.");
+  }
+  const source = value as Record<string, unknown>;
+  if (!Array.isArray(source.pools) || !Array.isArray(source.events)) {
+    throw new Error("This file does not contain a hima data export.");
+  }
+
+  return normalizeStore(source);
+}
+
 export function loadStore(): Store {
   try {
     const saved = window.localStorage.getItem(STORAGE_KEY);

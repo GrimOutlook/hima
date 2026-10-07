@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState, type ChangeEvent } from "react";
 import { BalanceChart } from "./BalanceChart";
 import { CalendarPicker } from "./CalendarPicker";
 import {
@@ -22,11 +22,13 @@ import {
   loadStore,
   monthLabel,
   parseHours,
+  parseStoreJson,
   poolBalanceOn,
   poolTotalsOn,
   prettyDate,
   recurringScheduleDescription,
   saveStore,
+  serializeStoreJson,
   todayDate,
   totalsOn,
   type EventDayInput,
@@ -50,6 +52,7 @@ function App() {
   const [store, setStore] = useState<Store>(loadStore);
   const [balanceDate, setBalanceDate] = useState(todayDate);
   const [modal, setModal] = useState<ModalState | null>(null);
+  const importInputRef = useRef<HTMLInputElement>(null);
   const chartHistoryEnd = todayDate();
   const balance = totalsOn(store, balanceDate);
   const history = useMemo(
@@ -73,6 +76,39 @@ function App() {
   function createEvent() {
     if (firstPoolId !== undefined) {
       setModal({ type: "new-event", initialDays: freshEventDays(firstPoolId) });
+    }
+  }
+
+  function exportData() {
+    const blob = new Blob([serializeStoreJson(store)], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = `hima-backup-${todayDate()}.json`;
+    document.body.append(link);
+    link.click();
+    link.remove();
+    window.setTimeout(() => URL.revokeObjectURL(url), 0);
+  }
+
+  async function importData(event: ChangeEvent<HTMLInputElement>) {
+    const input = event.currentTarget;
+    const file = input.files?.[0];
+    input.value = "";
+    if (!file) return;
+
+    try {
+      const imported = parseStoreJson(await file.text());
+      const confirmed = window.confirm(
+        `Replace the data saved in this browser with ${imported.pools.length} ${imported.pools.length === 1 ? "pool" : "pools"} and ${imported.events.length} ${imported.events.length === 1 ? "event" : "events"}?`,
+      );
+      if (!confirmed) return;
+      setStore(imported);
+      setBalanceDate(todayDate());
+      setModal(null);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "The file could not be read.";
+      window.alert(`Could not import data: ${message}`);
     }
   }
 
@@ -301,6 +337,24 @@ function App() {
             <span className="privacy-dot" />
             Saved on this device
           </span>
+          <button className="button button-outline button-small" type="button" onClick={exportData}>
+            Export JSON
+          </button>
+          <button
+            className="button button-outline button-small"
+            type="button"
+            onClick={() => importInputRef.current?.click()}
+          >
+            Import JSON
+          </button>
+          <input
+            ref={importInputRef}
+            type="file"
+            accept=".json,application/json"
+            hidden
+            aria-label="Choose a JSON backup to import"
+            onChange={importData}
+          />
           <button className="button button-primary" type="button" onClick={createPool}>
             <span className="button-plus">+</span>
             New pool

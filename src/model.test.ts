@@ -8,11 +8,13 @@ import {
   isValidDate,
   nthWeekdayInMonth,
   normalizeStore,
+  parseStoreJson,
   parseHours,
   poolAccruedOn,
   poolBalanceOn,
   poolTotalsOn,
   recurringOccurrencesThrough,
+  serializeStoreJson,
   totalsOn,
   validDateOrFallback,
   type LeaveEvent,
@@ -294,6 +296,41 @@ describe("saved data compatibility", () => {
     });
     expect(store.events[0]?.days.map((day) => day.allocations[0]?.pool_id)).toEqual([2, 4]);
     expect(store.next_id).toBe(20);
+  });
+});
+
+describe("JSON data backups", () => {
+  it("round-trips pools, schedules, caps, and leave events", () => {
+    const store = normalizeStore({
+      next_id: 9,
+      pools: [{
+        id: 1,
+        name: "Personal leave",
+        additions: [{ id: 2, amount: 8, date: "2026-01-01" }],
+        recurring: [{
+          id: 3,
+          amount: 2,
+          cadence: "YearlyNthWeekday",
+          start_date: "2026-02-01",
+          month: 8,
+          nth_weekday: "First",
+          weekday: "Friday",
+        }],
+        caps: [{ id: 4, max_balance: 80, start_date: "2026-01-01", end_date: "2026-12-31" }],
+      }],
+      events: [{
+        id: 5,
+        name: "Long weekend",
+        days: [{ date: "2026-04-15", allocations: [{ pool_id: 1, hours: 3.5 }] }],
+      }],
+    });
+
+    expect(parseStoreJson(serializeStoreJson(store))).toEqual(store);
+  });
+
+  it("rejects malformed JSON and files without pool and event data", () => {
+    expect(() => parseStoreJson("{")).toThrow("not valid JSON");
+    expect(() => parseStoreJson(JSON.stringify({ preferences: {} }))).toThrow("hima data export");
   });
 });
 
