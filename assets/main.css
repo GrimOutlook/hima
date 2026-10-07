@@ -178,12 +178,17 @@ button:focus-visible, input:focus-visible, select:focus-visible, a:focus-visible
 .workspace-grid { display: grid; grid-template-columns: minmax(0, 1.18fr) minmax(330px, .82fr); align-items: start; gap: 19px; }
 .pools-column { display: grid; gap: 14px; }
 .pool-card, .events-panel, .empty-card { border: 1px solid #ecebe5; border-radius: 13px; background: var(--surface); box-shadow: 0 3px 11px rgba(35, 45, 39, .025); }
-.pool-card { padding: 19px 20px 14px; }
+.pool-card { padding: 19px 20px 14px; cursor: pointer; transition: border-color .15s, box-shadow .15s; }
+.pool-card:hover { border-color: #d3ded4; box-shadow: 0 4px 15px rgba(35, 45, 39, .07); }
+.pool-card.pool-card-selected { border-color: #8eaa94; box-shadow: 0 0 0 2px rgba(110, 146, 117, .14); }
 .pool-card-header { display: flex; align-items: center; justify-content: space-between; }
 .pool-actions { display: flex; align-items: center; gap: 3px; }
 .pool-title-group { display: flex; align-items: center; gap: 11px; min-width: 0; }
 .pool-icon { display: grid; place-items: center; flex: 0 0 37px; height: 37px; border-radius: 11px; color: #54765f; background: #edf3ee; font-size: 24px; line-height: 1; }
 .pool-title-group h3 { margin: 0; color: #333e37; font: 700 14px 'Manrope', sans-serif; }
+.pool-select-button { padding: 0; border: 0; color: inherit; background: transparent; cursor: pointer; font: inherit; text-align: left; }
+.pool-select-button:hover { text-decoration: underline; }
+.pool-select-button:focus-visible { outline: 2px solid #9cb5a0; outline-offset: 3px; border-radius: 2px; }
 .pool-subtitle { margin-top: 3px; color: #9a9f99; font-size: 10px; }
 .icon-button { display: grid; place-items: center; flex: 0 0 auto; width: 30px; height: 30px; border: 0; border-radius: 8px; color: #8c928b; background: transparent; cursor: pointer; font-size: 20px; line-height: 1; transition: background .15s, color .15s; }
 .icon-button:hover { color: #48574d; background: #f3f4ef; }
@@ -216,7 +221,8 @@ button:focus-visible, input:focus-visible, select:focus-visible, a:focus-visible
 .events-panel { overflow: hidden; padding: 19px 19px 0; }
 .events-panel-header { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
 .events-panel-header h2 { font-size: 18px; }
-.events-caption { margin: 7px 0 0; color: #969b94; font-size: 10px; }
+.events-caption { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin: 7px 0 0; color: #969b94; font-size: 10px; }
+.events-caption .text-button { flex: 0 0 auto; }
 .events-empty { display: flex; align-items: center; flex-direction: column; padding: 39px 16px 42px; text-align: center; }
 .events-empty-mark { display: grid; place-items: center; width: 37px; height: 37px; border-radius: 12px; background: #f0f4ef; color: #78917e; font-size: 18px; }
 .events-empty p { margin: 12px 0 5px; color: #646e65; font-size: 12px; }

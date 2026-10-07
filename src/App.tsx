@@ -52,6 +52,7 @@ function App() {
   const [store, setStore] = useState<Store>(loadStore);
   const [balanceDate, setBalanceDate] = useState(todayDate);
   const [selectedChartPoolId, setSelectedChartPoolId] = useState<number | null>(null);
+  const [selectedUsesPoolId, setSelectedUsesPoolId] = useState<number | null>(null);
   const [modal, setModal] = useState<ModalState | null>(null);
   const importInputRef = useRef<HTMLInputElement>(null);
   const chartHistoryEnd = todayDate();
@@ -67,6 +68,19 @@ function App() {
   const timeline = [...store.events].sort((left, right) =>
     left.days[0]?.date.localeCompare(right.days[0]?.date ?? "") ?? 0,
   );
+  const usesFilterPool = store.pools.find((pool) => pool.id === selectedUsesPoolId);
+  const visibleTimeline = usesFilterPool
+    ? timeline.flatMap((event) => {
+        const days = event.days.flatMap((day) => {
+          const allocations = day.allocations.filter((allocation) => allocation.pool_id === usesFilterPool.id);
+          return allocations.length > 0 ? [{ ...day, allocations }] : [];
+        });
+        return days.length > 0 ? [{ ...event, days }] : [];
+      })
+    : timeline;
+  const visibleUsedHours = usesFilterPool
+    ? poolTotalsOn(store, usesFilterPool.id, balanceDate).used
+    : balance.used;
   const selectedModal = modal;
 
   useEffect(() => {
@@ -435,6 +449,8 @@ function App() {
                 pool={pool}
                 balanceDate={balanceDate}
                 store={store}
+                isSelected={usesFilterPool?.id === pool.id}
+                onSelect={() => setSelectedUsesPoolId((current) => current === pool.id ? null : pool.id)}
                 onEdit={() => setModal({ type: "edit-pool", poolId: pool.id })}
                 onDelete={() => removePool(pool.id, pool.name)}
                 onAddTime={() => setModal({ type: "add-time", poolId: pool.id })}
@@ -463,13 +479,20 @@ function App() {
                   Add event
                 </button>
               </div>
-              <p className="events-caption">Each event day draws from its selected pool.</p>
+              <p className="events-caption">
+                {usesFilterPool ? `Showing leave using ${usesFilterPool.name}.` : "Each event day draws from its selected pool."}
+                {usesFilterPool && (
+                  <button className="text-button" type="button" onClick={() => setSelectedUsesPoolId(null)}>
+                    Show all
+                  </button>
+                )}
+              </p>
 
-              {timeline.length === 0 ? (
+              {visibleTimeline.length === 0 ? (
                 <div className="events-empty">
                   <span className="events-empty-mark">↗</span>
-                  <p>Your plans will show up here.</p>
-                  {store.pools.length === 0 ? (
+                  <p>{usesFilterPool ? `No planned leave uses ${usesFilterPool.name} yet.` : "Your plans will show up here."}</p>
+                  {usesFilterPool ? null : store.pools.length === 0 ? (
                     <span className="events-empty-subtitle">Create a pool first to log leave.</span>
                   ) : (
                     <button className="text-button" type="button" onClick={createEvent}>
@@ -479,7 +502,7 @@ function App() {
                 </div>
               ) : (
                 <div className="timeline-list">
-                  {timeline.map((event) => {
+                  {visibleTimeline.map((event) => {
                     const includedDays = event.days.filter((day) => day.date <= balanceDate).length;
                     const statusClass = includedDays === event.days.length
                       ? "event-status event-status-counted"
@@ -537,8 +560,8 @@ function App() {
               )}
 
               <div className="events-panel-footer">
-                <span>{timeline.length} {timeline.length === 1 ? "event" : "events"}</span>
-                <span>{formatHours(balance.used)} h used by selected date</span>
+                <span>{visibleTimeline.length} {visibleTimeline.length === 1 ? "event" : "events"}</span>
+                <span>{formatHours(visibleUsedHours)} h used by selected date</span>
               </div>
             </div>
           </section>
@@ -599,6 +622,8 @@ interface PoolCardProps {
   pool: Pool;
   balanceDate: string;
   store: Store;
+  isSelected: boolean;
+  onSelect: () => void;
   onEdit: () => void;
   onDelete: () => void;
   onAddTime: () => void;
@@ -612,6 +637,8 @@ function PoolCard({
   pool,
   balanceDate,
   store,
+  isSelected,
+  onSelect,
   onEdit,
   onDelete,
   onAddTime,
@@ -623,12 +650,28 @@ function PoolCard({
   const currentBalance = poolBalanceOn(store, pool.id, balanceDate);
   const lifetimeTotals = poolTotalsOn(store, pool.id, todayDate());
   return (
-    <article className="pool-card">
+    <article
+      className={isSelected ? "pool-card pool-card-selected" : "pool-card"}
+      onClick={(event) => {
+        if (event.target instanceof Element && event.target.closest("button")) return;
+        onSelect();
+      }}
+    >
       <div className="pool-card-header">
         <div className="pool-title-group">
           <div className="pool-icon">◌</div>
           <div>
-            <h3>{pool.name}</h3>
+            <h3>
+              <button
+                className="pool-select-button"
+                type="button"
+                aria-label={`Show planned leave using ${pool.name}`}
+                aria-pressed={isSelected}
+                onClick={onSelect}
+              >
+                {pool.name}
+              </button>
+            </h3>
             <div className="pool-subtitle">Personal leave pool</div>
           </div>
         </div>
