@@ -11,12 +11,15 @@ import {
   YAxis,
   type TooltipContentProps,
 } from "recharts";
-import { formatHours, formatSignedHours, prettyDate, type BalancePoint } from "./model";
+import { formatHours, formatSignedHours, prettyDate, type BalancePoint, type Pool } from "./model";
 
 interface BalanceChartProps {
   history: BalancePoint[];
   today: string;
   selectedDate: string;
+  pools: Pool[];
+  selectedPoolId: number | null;
+  onPoolChange: (poolId: number | null) => void;
 }
 
 interface ChartPoint extends BalancePoint {
@@ -60,7 +63,15 @@ function monthYearLabel(value: string | undefined): string {
   }).format(date);
 }
 
-export function BalanceChart({ history, today, selectedDate }: BalanceChartProps) {
+export function BalanceChart({
+  history,
+  today,
+  selectedDate,
+  pools,
+  selectedPoolId,
+  onPoolChange,
+}: BalanceChartProps) {
+  const selectedPool = pools.find((pool) => pool.id === selectedPoolId);
   const todayIndex = Math.max(0, history.findIndex((point) => point.date === today));
   const selectedIndex = history.findIndex((point) => point.date === selectedDate);
   const lastIndex = Math.max(0, history.length - 1);
@@ -119,8 +130,29 @@ export function BalanceChart({ history, today, selectedDate }: BalanceChartProps
       <div className="history-panel-header">
         <div>
           <div className="section-overline">A YEAR AT A GLANCE</div>
-          <h2>PPL balance history &amp; outlook</h2>
-          <p>Past year and twelve-month projection across all pools.</p>
+          <h2>{selectedPool ? `${selectedPool.name} balance history & outlook` : "PPL balance history & outlook"}</h2>
+          <p>
+            {selectedPool
+              ? `Past year and twelve-month projection for ${selectedPool.name}.`
+              : "Past year and twelve-month projection across all pools."}
+          </p>
+          {pools.length > 0 && (
+            <label className="history-pool-filter">
+              <span>Show</span>
+              <select
+                aria-label="Pool shown in graph"
+                value={selectedPoolId ?? ""}
+                onChange={(event) => {
+                  const value = event.currentTarget.value;
+                  onPoolChange(value === "" ? null : Number(value));
+                }}
+              >
+                <option value="">All pools</option>
+                {pools.map((pool) => <option key={pool.id} value={pool.id}>{pool.name}</option>)}
+              </select>
+              <span>in graph</span>
+            </label>
+          )}
         </div>
         <div className="history-metrics">
           <div className="history-change">
@@ -139,7 +171,7 @@ export function BalanceChart({ history, today, selectedDate }: BalanceChartProps
         <div
           className="balance-chart-viewport"
           role="group"
-          aria-label="PPL balance chart with zoom and pan controls"
+          aria-label={`${selectedPool?.name ?? "Combined PPL"} balance chart with zoom and pan controls`}
         >
           <ResponsiveContainer width="100%" height={CHART_HEIGHT}>
             <AreaChart
@@ -147,7 +179,7 @@ export function BalanceChart({ history, today, selectedDate }: BalanceChartProps
               data={chartData}
               margin={{ top: 38, right: PLOT_RIGHT, bottom: 0, left: 0 }}
               accessibilityLayer
-              aria-label="Daily combined PPL balance and forecast for the past and coming year"
+              aria-label={`Daily ${selectedPool ? `${selectedPool.name} ` : "combined PPL "}balance and forecast for the past and coming year`}
             >
               <CartesianGrid stroke="#eeefe9" vertical={false} />
               <XAxis

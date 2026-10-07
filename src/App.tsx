@@ -51,13 +51,17 @@ type ModalState =
 function App() {
   const [store, setStore] = useState<Store>(loadStore);
   const [balanceDate, setBalanceDate] = useState(todayDate);
+  const [selectedChartPoolId, setSelectedChartPoolId] = useState<number | null>(null);
   const [modal, setModal] = useState<ModalState | null>(null);
   const importInputRef = useRef<HTMLInputElement>(null);
   const chartHistoryEnd = todayDate();
   const balance = totalsOn(store, balanceDate);
+  const chartPoolId = selectedChartPoolId !== null && store.pools.some((pool) => pool.id === selectedChartPoolId)
+    ? selectedChartPoolId
+    : null;
   const history = useMemo(
-    () => balanceHistory(store, chartHistoryEnd),
-    [store, chartHistoryEnd],
+    () => balanceHistory(store, chartHistoryEnd, chartPoolId ?? undefined),
+    [store, chartHistoryEnd, chartPoolId],
   );
   const firstPoolId = store.pools[0]?.id;
   const timeline = [...store.events].sort((left, right) =>
@@ -396,7 +400,14 @@ function App() {
           </div>
         </section>
 
-        <BalanceChart history={history} today={chartHistoryEnd} selectedDate={balanceDate} />
+        <BalanceChart
+          history={history}
+          today={chartHistoryEnd}
+          selectedDate={balanceDate}
+          pools={store.pools}
+          selectedPoolId={chartPoolId}
+          onPoolChange={setSelectedChartPoolId}
+        />
 
         <div className="section-heading-row">
           <div>

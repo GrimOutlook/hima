@@ -345,4 +345,27 @@ describe("balance chart", () => {
     expect(history.find((point) => point.date === "2026-10-06")?.projected).toBe(false);
     expect(history.at(-1)?.projected).toBe(true);
   });
+
+  it("shows the balance history for one selected pool", () => {
+    const store = normalizeStore({
+      pools: [
+        { id: 1, name: "Annual leave", additions: [{ id: 3, amount: 10, date: "2025-01-02" }] },
+        { id: 2, name: "Personal leave", additions: [{ id: 4, amount: 20, date: "2025-01-02" }] },
+      ],
+      events: [{
+        id: 5,
+        name: "Day off",
+        days: [{
+          date: "2026-01-02",
+          allocations: [{ pool_id: 1, hours: 2 }, { pool_id: 2, hours: 3 }],
+        }],
+      }],
+    });
+    const combined = balanceHistory(store, "2026-01-02");
+    const selected = balanceHistory(store, "2026-01-02", 1);
+
+    expect(combined.find((point) => point.date === "2026-01-02")?.balance).toBe(25);
+    expect(selected.find((point) => point.date === "2026-01-02")?.balance).toBe(8);
+    expect(selected.at(-1)?.balance).toBe(8);
+  });
 });
