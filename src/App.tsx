@@ -23,6 +23,7 @@ import {
   monthLabel,
   parseHours,
   poolBalanceOn,
+  poolTotalsOn,
   prettyDate,
   recurringScheduleDescription,
   saveStore,
@@ -555,6 +556,7 @@ function PoolCard({
   onDeleteRecurring,
 }: PoolCardProps) {
   const currentBalance = poolBalanceOn(store, pool.id, balanceDate);
+  const lifetimeTotals = poolTotalsOn(store, pool.id, todayDate());
   return (
     <article className="pool-card">
       <div className="pool-card-header">
@@ -574,6 +576,16 @@ function PoolCard({
         {formatHours(currentBalance)}<span>h</span>
       </div>
       <div className="pool-balance-caption">available on {prettyDate(balanceDate)}</div>
+      <div className="pool-lifetime-metrics" aria-label={`Lifetime totals for ${pool.name} through today`}>
+        <div className="pool-lifetime-metric">
+          <span>Lifetime accrued</span>
+          <strong>{formatHours(lifetimeTotals.accrued)}<small> h</small></strong>
+        </div>
+        <div className="pool-lifetime-metric">
+          <span>Lifetime used</span>
+          <strong>{formatHours(lifetimeTotals.used)}<small> h</small></strong>
+        </div>
+      </div>
       <div className="pool-rules">
         {pool.additions.length === 0 && pool.recurring.length === 0 && pool.caps.length === 0 ? (
           <p className="no-rules">No time added yet. Add a balance or set a schedule.</p>

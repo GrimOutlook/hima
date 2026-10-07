@@ -11,6 +11,7 @@ import {
   parseHours,
   poolAccruedOn,
   poolBalanceOn,
+  poolTotalsOn,
   recurringOccurrencesThrough,
   totalsOn,
   validDateOrFallback,
@@ -140,12 +141,14 @@ describe("recurring accruals", () => {
       days: [
         { date: "2026-01-10", allocations: [{ pool_id: 1, hours: 4 }] },
         { date: "2026-01-28", allocations: [{ pool_id: 1, hours: 4 }] },
+        { date: "2026-02-07", allocations: [{ pool_id: 1, hours: 2 }] },
       ],
     }];
     const store = normalizeStore({ pools: [pool], events });
 
     expect(poolAccruedOn(pool, "2026-02-06", events)).toBe(23);
     expect(poolBalanceOn(store, 1, "2026-02-06")).toBe(15);
+    expect(poolTotalsOn(store, 1, "2026-02-06")).toEqual({ accrued: 23, used: 8, balance: 15 });
     expect(totalsOn(store, "2026-02-06")).toEqual({ accrued: 23, used: 8, balance: 15 });
   });
 

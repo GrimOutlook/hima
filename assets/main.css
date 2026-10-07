@@ -192,6 +192,11 @@ button:focus-visible, input:focus-visible, select:focus-visible, a:focus-visible
 .pool-balance span { padding-left: 5px; color: #7e8a80; font: 500 12px 'DM Sans', sans-serif; letter-spacing: 0; }
 .pool-balance-negative { color: #b86350; }
 .pool-balance-caption { margin-top: 5px; color: #969b94; font-size: 10px; }
+.pool-lifetime-metrics { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin-top: 14px; padding: 10px 12px; border-radius: 9px; background: #fafaf7; }
+.pool-lifetime-metric { display: grid; gap: 3px; }
+.pool-lifetime-metric span { color: #92988f; font-size: 9px; }
+.pool-lifetime-metric strong { color: #3f5144; font: 700 14px 'Manrope', sans-serif; }
+.pool-lifetime-metric small { color: #89938a; font: 500 9px 'DM Sans', sans-serif; }
 .pool-rules { display: grid; gap: 8px; min-height: 39px; margin-top: 15px; padding: 12px 0; border-top: 1px solid #f0f0eb; }
 .rule-row { display: flex; align-items: center; gap: 8px; min-width: 0; font-size: 10px; }
 .rule-symbol { display: grid; place-items: center; width: 19px; height: 19px; flex: 0 0 auto; border-radius: 6px; font-size: 13px; }

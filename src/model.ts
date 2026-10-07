@@ -536,8 +536,18 @@ export function totalsOn(store: Store, date: string): { accrued: number; used: n
 }
 
 export function poolBalanceOn(store: Store, poolId: number, date: string): number {
+  return poolTotalsOn(store, poolId, date).balance;
+}
+
+export function poolTotalsOn(
+  store: Store,
+  poolId: number,
+  date: string,
+): PoolLedgerSnapshot {
   const pool = store.pools.find((candidate) => candidate.id === poolId);
-  return pool ? poolLedgerForDates(pool, store.events, [date])[0]?.balance ?? 0 : 0;
+  return pool
+    ? poolLedgerForDates(pool, store.events, [date])[0] ?? { accrued: 0, used: 0, balance: 0 }
+    : { accrued: 0, used: 0, balance: 0 };
 }
 
 export function sortDays(days: LeaveDay[]): LeaveDay[] {
