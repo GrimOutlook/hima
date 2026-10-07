@@ -1,15 +1,22 @@
 import { useState, type FormEvent, type ReactNode } from "react";
 import {
   addDays,
+  capRangesOverlap,
   freshEventDays,
   isValidDate,
+  MONTH_NAMES,
+  NTH_WEEKDAYS,
   parseHours,
   sortDays,
   todayDate,
+  WEEKDAYS,
   type Cadence,
   type EventDayInput,
   type LeaveDay,
+  type NthWeekday,
   type Pool,
+  type PoolCap,
+  type Weekday,
 } from "./model";
 
 interface ModalFrameProps {
@@ -54,20 +61,42 @@ interface PoolModalProps {
   editing: boolean;
   initialName?: string;
   initialDate?: string;
+  initialCaps?: PoolCap[];
   onClose: () => void;
-  onSave: (name: string, openingAmount: string, openingDate: string) => string | null;
+  onSave: (name: string, openingAmount: string, openingDate: string, caps: PoolCapFormData[]) => string | null;
+}
+
+export interface PoolCapFormData {
+  id?: number;
+  max_balance: number;
+  start_date: string;
+  end_date: string;
+}
+
+interface PoolCapDraft {
+  id?: number;
+  maxBalance: string;
+  startDate: string;
+  endDate: string;
 }
 
 export function PoolModal({
   editing,
   initialName = "",
   initialDate = todayDate(),
+  initialCaps = [],
   onClose,
   onSave,
 }: PoolModalProps) {
   const [name, setName] = useState(initialName);
   const [openingAmount, setOpeningAmount] = useState("");
   const [openingDate, setOpeningDate] = useState(initialDate);
+  const [caps, setCaps] = useState<PoolCapDraft[]>(() => initialCaps.map((cap) => ({
+    id: cap.id,
+    maxBalance: String(cap.max_balance),
+    startDate: cap.start_date,
+    endDate: cap.end_date,
+  })));
   const [error, setError] = useState("");
 
   function submit(event: FormEvent<HTMLFormElement>) {
@@ -85,7 +114,37 @@ export function PoolModal({
       setError("Choose a valid starting date.");
       return;
     }
-    const saveError = onSave(trimmedName, openingAmount, openingDate);
+    const savedCaps: PoolCapFormData[] = [];
+    for (const cap of caps) {
+      if (cap.maxBalance.trim() === "") {
+        setError("Enter a maximum balance for each cap.");
+        return;
+      }
+      const maxBalance = parseHours(cap.maxBalance, true);
+      if (maxBalance === null) {
+        setError("Enter cap balances with up to two decimal places.");
+        return;
+      }
+      if (!isValidDate(cap.startDate) || !isValidDate(cap.endDate)) {
+        setError("Choose a valid start and end date for each cap.");
+        return;
+      }
+      if (cap.endDate < cap.startDate) {
+        setError("A cap's end date must be on or after its start date.");
+        return;
+      }
+      savedCaps.push({
+        ...(cap.id !== undefined ? { id: cap.id } : {}),
+        max_balance: maxBalance,
+        start_date: cap.startDate,
+        end_date: cap.endDate,
+      });
+    }
+    if (capRangesOverlap(savedCaps)) {
+      setError("Cap date ranges must not overlap.");
+      return;
+    }
+    const saveError = onSave(trimmedName, openingAmount, openingDate, savedCaps);
     if (saveError) setError(saveError);
   }
 
@@ -95,7 +154,7 @@ export function PoolModal({
       title={editing ? "Edit pool" : "Create a pool"}
       description={
         editing
-          ? "Rename this pool. Its balance is calculated from its additions and events."
+          ? "Manage this pool's name and balance caps. Its balance is calculated from additions and events."
           : "Give a kind of leave its own little home."
       }
       labelledBy="pool-modal-title"
@@ -139,6 +198,86 @@ export function PoolModal({
             </label>
           </div>
         )}
+        <div className="pool-caps-editor">
+          <div className="pool-caps-heading">
+            <div>
+              <strong>Balance caps</strong>
+              <p>Limit balances for specific date ranges. Extra accrual is discarded; leave usage can make room again.</p>
+            </div>
+            <button
+              className="button button-soft button-small"
+              type="button"
+              onClick={() => setCaps((current) => [
+                ...current,
+                { maxBalance: "", startDate: "", endDate: "" },
+              ])}
+            >
+              <span className="button-plus">+</span>
+              Add cap
+            </button>
+          </div>
+          {caps.length === 0 ? (
+            <p className="no-rules">No caps configured.</p>
+          ) : caps.map((cap, index) => (
+            <div className="pool-cap-row" key={cap.id ?? `new-cap-${index}`}>
+              <label className="field-label pool-cap-amount">
+                Maximum balance
+                <div className="input-with-suffix">
+                  <input
+                    type="number"
+                    min="0"
+                    step="0.01"
+                    placeholder="e.g. 80"
+                    value={cap.maxBalance}
+                    onChange={(event) => {
+                      const maxBalance = event.currentTarget.value;
+                      setCaps((current) => current.map((item, itemIndex) =>
+                        itemIndex === index ? { ...item, maxBalance } : item,
+                      ));
+                    }}
+                  />
+                  <span>hours</span>
+                </div>
+              </label>
+              <label className="field-label pool-cap-start">
+                Starts on
+                <input
+                  type="date"
+                  value={cap.startDate}
+                  onChange={(event) => {
+                    const startDate = event.currentTarget.value;
+                    setCaps((current) => current.map((item, itemIndex) =>
+                      itemIndex === index ? { ...item, startDate } : item,
+                    ));
+                  }}
+                />
+              </label>
+              <label className="field-label pool-cap-end">
+                Ends on
+                <input
+                  type="date"
+                  min={cap.startDate || undefined}
+                  value={cap.endDate}
+                  onChange={(event) => {
+                    const endDate = event.currentTarget.value;
+                    setCaps((current) => current.map((item, itemIndex) =>
+                      itemIndex === index ? { ...item, endDate } : item,
+                    ));
+                  }}
+                />
+              </label>
+              <button
+                className="icon-button pool-cap-remove"
+                type="button"
+                aria-label={`Remove balance cap ${index + 1}`}
+                title="Remove cap"
+                onClick={() => setCaps((current) => current.filter((_, itemIndex) => itemIndex !== index))}
+              >
+                ×
+              </button>
+            </div>
+          ))}
+        </div>
         {error && <p className="form-error" role="alert">{error}</p>}
         <div className="modal-actions">
           <button className="button button-quiet" type="button" onClick={onClose}>Cancel</button>
@@ -157,6 +296,9 @@ export interface AdditionFormData {
   recurring: boolean;
   cadence: Cadence;
   endDate?: string;
+  month?: number;
+  nthWeekday?: NthWeekday;
+  weekday?: Weekday;
 }
 
 interface AdditionModalProps {
@@ -166,6 +308,9 @@ interface AdditionModalProps {
   initialDate?: string;
   initialEndDate?: string;
   initialCadence?: Cadence;
+  initialMonth?: number;
+  initialNthWeekday?: NthWeekday;
+  initialWeekday?: Weekday;
   onClose: () => void;
   onSave: (addition: AdditionFormData) => string | null;
 }
@@ -177,6 +322,9 @@ export function AdditionModal({
   initialDate = todayDate(),
   initialEndDate = "",
   initialCadence = "Fortnightly",
+  initialMonth = Number(todayDate().slice(5, 7)),
+  initialNthWeekday = "First",
+  initialWeekday = "Friday",
   onClose,
   onSave,
 }: AdditionModalProps) {
@@ -186,6 +334,9 @@ export function AdditionModal({
   const [endDate, setEndDate] = useState(initialEndDate);
   const [recurring, setRecurring] = useState(mode === "edit-recurring");
   const [cadence, setCadence] = useState<Cadence>(initialCadence);
+  const [month, setMonth] = useState(initialMonth);
+  const [nthWeekday, setNthWeekday] = useState<NthWeekday>(initialNthWeekday);
+  const [weekday, setWeekday] = useState<Weekday>(initialWeekday);
   const [error, setError] = useState("");
 
   function submit(event: FormEvent<HTMLFormElement>) {
@@ -197,6 +348,14 @@ export function AdditionModal({
     }
     if (!isValidDate(date)) {
       setError("Choose a valid date.");
+      return;
+    }
+    if (
+      recurring &&
+      cadence === "YearlyNthWeekday" &&
+      (!Number.isInteger(month) || month < 1 || month > 12 || !nthWeekday || !weekday)
+    ) {
+      setError("Choose a valid occurrence, weekday, and month.");
       return;
     }
     if (recurring && endDate && !isValidDate(endDate)) {
@@ -213,6 +372,7 @@ export function AdditionModal({
       recurring,
       cadence,
       ...(recurring && endDate ? { endDate } : {}),
+      ...(recurring && cadence === "YearlyNthWeekday" ? { month, nthWeekday, weekday } : {}),
     });
     if (saveError) setError(saveError);
   }
@@ -275,11 +435,38 @@ export function AdditionModal({
               <option value="Fortnightly">Fortnight</option>
               <option value="Monthly">Month</option>
               <option value="Yearly">Year</option>
+              <option value="YearlyNthWeekday">Nth weekday each year</option>
             </select>
           </label>
         )}
+        {recurring && cadence === "YearlyNthWeekday" && (
+          <div className="nth-weekday-fields">
+            <label className="field-label">
+              Occurrence
+              <select value={nthWeekday} onChange={(event) => setNthWeekday(event.currentTarget.value as NthWeekday)}>
+                {NTH_WEEKDAYS.map((occurrence) => <option key={occurrence} value={occurrence}>{occurrence}</option>)}
+              </select>
+            </label>
+            <label className="field-label">
+              Weekday
+              <select value={weekday} onChange={(event) => setWeekday(event.currentTarget.value as Weekday)}>
+                {WEEKDAYS.map((day) => <option key={day} value={day}>{day}</option>)}
+              </select>
+            </label>
+            <label className="field-label nth-weekday-month">
+              Month
+              <select value={month} onChange={(event) => setMonth(Number(event.currentTarget.value))}>
+                {MONTH_NAMES.map((monthName, index) => (
+                  <option key={monthName} value={index + 1}>{monthName}</option>
+                ))}
+              </select>
+            </label>
+          </div>
+        )}
         <label className="field-label">
-          {recurring ? "First addition on" : "Add on"}
+          {recurring
+            ? cadence === "YearlyNthWeekday" ? "Start schedule on" : "First addition on"
+            : "Add on"}
           <input type="date" value={date} onChange={(event) => setDate(event.currentTarget.value)} />
         </label>
         {recurring && (

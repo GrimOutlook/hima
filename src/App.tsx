@@ -7,11 +7,11 @@ import {
   PoolModal,
   eventInputDays,
   type AdditionFormData,
+  type PoolCapFormData,
 } from "./Modals";
 import {
   allocateIds,
   balanceHistory,
-  cadenceLabel,
   dayLabel,
   eventDateRangeLabel,
   eventDaySummary,
@@ -24,6 +24,7 @@ import {
   parseHours,
   poolBalanceOn,
   prettyDate,
+  recurringScheduleDescription,
   saveStore,
   todayDate,
   totalsOn,
@@ -109,27 +110,45 @@ function App() {
     }));
   }
 
-  function savePool(name: string, openingAmount: string, openingDate: string): string | null {
+  function savePool(
+    name: string,
+    openingAmount: string,
+    openingDate: string,
+    capFormData: PoolCapFormData[],
+  ): string | null {
     if (selectedModal?.type === "edit-pool") {
       if (!store.pools.some((pool) => pool.id === selectedModal.poolId)) return "This pool no longer exists.";
-      setStore((current) => ({
-        ...current,
-        pools: current.pools.map((pool) =>
-          pool.id === selectedModal.poolId ? { ...pool, name } : pool,
-        ),
-      }));
+      setStore((current) => {
+        const newCapCount = capFormData.filter((cap) => cap.id === undefined).length;
+        const ids = allocateIds(current, newCapCount);
+        let nextCapId = ids.firstId;
+        const caps = capFormData.map((cap) => ({
+          ...cap,
+          id: cap.id ?? nextCapId++,
+        }));
+        return {
+          ...current,
+          next_id: newCapCount > 0 ? ids.nextId : current.next_id,
+          pools: current.pools.map((pool) =>
+            pool.id === selectedModal.poolId ? { ...pool, name, caps } : pool,
+          ),
+        };
+      });
     } else {
       const initialAmount = openingAmount.trim() === "" ? 0 : parseHours(openingAmount, true);
       if (initialAmount === null) return "Enter a starting balance with up to two decimal places.";
       setStore((current) => {
-        const currentIds = allocateIds(current, initialAmount > 0 ? 2 : 1);
+        const openingAdditionCount = initialAmount > 0 ? 1 : 0;
+        const currentIds = allocateIds(current, 1 + openingAdditionCount + capFormData.length);
         const additions: OneTimeAddition[] = initialAmount > 0
           ? [{ id: currentIds.firstId + 1, amount: initialAmount, date: openingDate }]
           : [];
+        const firstCapId = currentIds.firstId + 1 + openingAdditionCount;
+        const caps = capFormData.map((cap, index) => ({ ...cap, id: firstCapId + index }));
         return {
           ...current,
           next_id: currentIds.nextId,
-          pools: [...current.pools, { id: currentIds.firstId, name, additions, recurring: [] }],
+          pools: [...current.pools, { id: currentIds.firstId, name, additions, recurring: [], caps }],
         };
       });
     }
@@ -179,6 +198,13 @@ function App() {
                       cadence: form.cadence,
                       start_date: form.date,
                       ...(form.endDate ? { end_date: form.endDate } : {}),
+                      ...(form.cadence === "YearlyNthWeekday"
+                        ? {
+                            month: form.month,
+                            nth_weekday: form.nthWeekday,
+                            weekday: form.weekday,
+                          }
+                        : {}),
                     },
                   ],
                 }
@@ -220,6 +246,9 @@ function App() {
                     cadence: form.cadence,
                     start_date: form.date,
                     end_date: form.endDate,
+                    month: form.cadence === "YearlyNthWeekday" ? form.month : undefined,
+                    nth_weekday: form.cadence === "YearlyNthWeekday" ? form.nthWeekday : undefined,
+                    weekday: form.cadence === "YearlyNthWeekday" ? form.weekday : undefined,
                   }
                 : rule,
           ),
@@ -469,6 +498,7 @@ function App() {
           key={`edit-pool-${selectedModal.poolId}`}
           editing
           initialName={store.pools.find((pool) => pool.id === selectedModal.poolId)?.name ?? ""}
+          initialCaps={store.pools.find((pool) => pool.id === selectedModal.poolId)?.caps ?? []}
           onClose={() => setModal(null)}
           onSave={savePool}
         />
@@ -545,16 +575,24 @@ function PoolCard({
       </div>
       <div className="pool-balance-caption">available on {prettyDate(balanceDate)}</div>
       <div className="pool-rules">
-        {pool.additions.length === 0 && pool.recurring.length === 0 ? (
+        {pool.additions.length === 0 && pool.recurring.length === 0 && pool.caps.length === 0 ? (
           <p className="no-rules">No time added yet. Add a balance or set a schedule.</p>
         ) : (
           <>
+            {pool.caps.map((cap) => (
+              <div className="rule-row" key={`cap-${cap.id}`}>
+                <span className="rule-symbol cap-symbol">≤</span>
+                <span className="rule-copy">Maximum balance {formatHours(cap.max_balance)} h</span>
+                <span className="rule-date">{prettyDate(cap.start_date)} – {prettyDate(cap.end_date)}</span>
+              </div>
+            ))}
             {pool.recurring.map((rule) => (
               <div className="rule-row" key={`recurring-${rule.id}`}>
                 <span className="rule-symbol recurring-symbol">↻</span>
-                <span className="rule-copy">+{formatHours(rule.amount)} h every {cadenceLabel(rule.cadence)}</span>
+                <span className="rule-copy">+{formatHours(rule.amount)} h {recurringScheduleDescription(rule)}</span>
                 <span className="rule-date">
-                  from {prettyDate(rule.start_date)}{rule.end_date ? ` · until ${prettyDate(rule.end_date)}` : ""}
+                  {rule.cadence === "YearlyNthWeekday" ? "starting " : "from "}{prettyDate(rule.start_date)}
+                  {rule.end_date ? ` · until ${prettyDate(rule.end_date)}` : ""}
                 </span>
                 <div className="rule-actions">
                   <button className="icon-button" type="button" title="Edit recurring addition" aria-label="Edit recurring addition" onClick={() => onEditRecurring(rule.id)}>✎</button>
@@ -623,6 +661,9 @@ function AdditionModalForState({ modal, pools, onClose, onSave }: AdditionModalF
         initialDate={rule.start_date}
         initialEndDate={rule.end_date}
         initialCadence={rule.cadence}
+        initialMonth={rule.month}
+        initialNthWeekday={rule.nth_weekday}
+        initialWeekday={rule.weekday}
         onClose={onClose}
         onSave={onSave}
       />

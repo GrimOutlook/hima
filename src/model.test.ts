@@ -2,9 +2,11 @@ import { describe, expect, it } from "vitest";
 import {
   allocateIds,
   balanceHistory,
+  capRangesOverlap,
   emptyStore,
   formatHours,
   isValidDate,
+  nthWeekdayInMonth,
   normalizeStore,
   parseHours,
   poolAccruedOn,
@@ -12,6 +14,8 @@ import {
   recurringOccurrencesThrough,
   totalsOn,
   validDateOrFallback,
+  type LeaveEvent,
+  type Pool,
   type RecurringAddition,
 } from "./model";
 
@@ -71,18 +75,125 @@ describe("recurring accruals", () => {
     expect(recurringOccurrencesThrough(rule, "2025-02-27")).toBe(1);
   });
 
+  it("calculates yearly nth-weekday accrual dates", () => {
+    expect(nthWeekdayInMonth(2026, 8, "First", "Friday")).toBe("2026-08-07");
+    expect(nthWeekdayInMonth(2027, 8, "First", "Friday")).toBe("2027-08-06");
+    expect(nthWeekdayInMonth(2026, 8, "Fifth", "Friday")).toBeNull();
+    expect(nthWeekdayInMonth(2026, 2, "Last", "Monday")).toBe("2026-02-23");
+
+    const rule: RecurringAddition = {
+      id: 1,
+      amount: 8,
+      cadence: "YearlyNthWeekday",
+      start_date: "2026-01-01",
+      month: 8,
+      nth_weekday: "First",
+      weekday: "Friday",
+    };
+    expect(recurringOccurrencesThrough(rule, "2026-08-06")).toBe(0);
+    expect(recurringOccurrencesThrough(rule, "2026-08-07")).toBe(1);
+    expect(recurringOccurrencesThrough(rule, "2027-08-06")).toBe(2);
+  });
+
+  it("starts nth-weekday schedules at the next matching date and honors their end date", () => {
+    const rule: RecurringAddition = {
+      id: 1,
+      amount: 8,
+      cadence: "YearlyNthWeekday",
+      start_date: "2026-08-08",
+      end_date: "2027-08-06",
+      month: 8,
+      nth_weekday: "First",
+      weekday: "Friday",
+    };
+    expect(recurringOccurrencesThrough(rule, "2026-08-07")).toBe(0);
+    expect(recurringOccurrencesThrough(rule, "2027-08-05")).toBe(0);
+    expect(recurringOccurrencesThrough(rule, "2027-08-06")).toBe(1);
+    expect(recurringOccurrencesThrough(rule, "2028-08-04")).toBe(1);
+  });
+
   it("includes accruals through the optional end date, then stops", () => {
     const rule = recurring("Weekly", "2026-01-02", 3.5, "2026-01-16");
     expect(recurringOccurrencesThrough(rule, "2026-01-01")).toBe(0);
     expect(recurringOccurrencesThrough(rule, "2026-01-15")).toBe(2);
     expect(recurringOccurrencesThrough(rule, "2026-01-16")).toBe(3);
     expect(recurringOccurrencesThrough(rule, "2026-02-01")).toBe(3);
-    expect(poolAccruedOn({ id: 1, name: "Leave", additions: [], recurring: [rule] }, "2026-02-01")).toBe(10.5);
+    expect(poolAccruedOn({ id: 1, name: "Leave", additions: [], recurring: [rule], caps: [] }, "2026-02-01")).toBe(10.5);
   });
 
   it("does not accrue when the end date is before the start date", () => {
     const rule = recurring("Monthly", "2026-01-02", 1, "2026-01-01");
     expect(recurringOccurrencesThrough(rule, "2026-02-01")).toBe(0);
+  });
+
+  it("limits accruals to the active pool cap, discards excess, and resumes when room opens", () => {
+    const pool: Pool = {
+      id: 1,
+      name: "Leave",
+      additions: [{ id: 2, amount: 8, date: "2026-01-01" }],
+      recurring: [{ ...recurring("Weekly", "2026-01-02", 5), id: 5 }],
+      caps: [{ id: 3, max_balance: 10, start_date: "2026-01-02", end_date: "2026-01-30" }],
+    };
+    const events: LeaveEvent[] = [{
+      id: 4,
+      name: "Time off",
+      days: [
+        { date: "2026-01-10", allocations: [{ pool_id: 1, hours: 4 }] },
+        { date: "2026-01-28", allocations: [{ pool_id: 1, hours: 4 }] },
+      ],
+    }];
+    const store = normalizeStore({ pools: [pool], events });
+
+    expect(poolAccruedOn(pool, "2026-02-06", events)).toBe(23);
+    expect(poolBalanceOn(store, 1, "2026-02-06")).toBe(15);
+    expect(totalsOn(store, "2026-02-06")).toEqual({ accrued: 23, used: 8, balance: 15 });
+  });
+
+  it("keeps an existing over-cap balance and resumes accrual after usage frees room", () => {
+    const pool: Pool = {
+      id: 1,
+      name: "Leave",
+      additions: [{ id: 2, amount: 8, date: "2026-01-01" }],
+      recurring: [{ ...recurring("Weekly", "2026-01-02", 2), id: 4 }],
+      caps: [{ id: 3, max_balance: 5, start_date: "2026-01-02", end_date: "2026-01-16" }],
+    };
+    const events: LeaveEvent[] = [{
+      id: 5,
+      name: "Time off",
+      days: [{ date: "2026-01-09", allocations: [{ pool_id: 1, hours: 4 }] }],
+    }];
+
+    expect(poolAccruedOn(pool, "2026-01-02", events)).toBe(8);
+    expect(poolBalanceOn(normalizeStore({ pools: [pool], events }), 1, "2026-01-16")).toBe(5);
+  });
+
+  it("treats cap date ranges as inclusive when checking overlap", () => {
+    expect(capRangesOverlap([
+      { start_date: "2026-01-01", end_date: "2026-01-31" },
+      { start_date: "2026-01-31", end_date: "2026-02-28" },
+    ])).toBe(true);
+    expect(capRangesOverlap([
+      { start_date: "2026-01-01", end_date: "2026-01-31" },
+      { start_date: "2026-02-01", end_date: "2026-02-28" },
+    ])).toBe(false);
+  });
+
+  it("normalizes caps without overlapping dates and includes cap ids in allocation", () => {
+    const store = normalizeStore({
+      pools: [{
+        id: 1,
+        name: "Leave",
+        additions: [],
+        recurring: [],
+        caps: [
+          { id: 2, max_balance: 40, start_date: "2026-01-01", end_date: "2026-01-31" },
+          { id: 3, max_balance: 60, start_date: "2026-01-31", end_date: "2026-02-28" },
+        ],
+      }],
+    });
+    expect(store.pools[0]?.caps).toHaveLength(1);
+    expect(store.next_id).toBe(3);
+    expect(allocateIds(store).firstId).toBe(3);
   });
 });
 
@@ -130,6 +241,31 @@ describe("saved data compatibility", () => {
     expect(store.pools[0]?.recurring).toHaveLength(2);
     expect(store.pools[0]?.recurring[0]?.end_date).toBeUndefined();
     expect(store.pools[0]?.recurring[1]?.end_date).toBe("2026-02-01");
+  });
+
+  it("preserves valid yearly nth-weekday schedule details", () => {
+    const store = normalizeStore({
+      pools: [{
+        id: 1,
+        name: "Leave",
+        additions: [],
+        recurring: [{
+          id: 2,
+          amount: 8,
+          cadence: "YearlyNthWeekday",
+          start_date: "2026-01-01",
+          month: 8,
+          nth_weekday: "First",
+          weekday: "Friday",
+        }],
+      }],
+    });
+    expect(store.pools[0]?.recurring[0]).toMatchObject({
+      cadence: "YearlyNthWeekday",
+      month: 8,
+      nth_weekday: "First",
+      weekday: "Friday",
+    });
   });
 
   it("migrates the previous single-day event format", () => {

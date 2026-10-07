@@ -1,4 +1,13 @@
-export type Cadence = "Weekly" | "Fortnightly" | "Monthly" | "Yearly";
+export const NTH_WEEKDAYS = ["First", "Second", "Third", "Fourth", "Fifth", "Last"] as const;
+export const WEEKDAYS = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"] as const;
+export const MONTH_NAMES = [
+  "January", "February", "March", "April", "May", "June",
+  "July", "August", "September", "October", "November", "December",
+] as const;
+
+export type NthWeekday = typeof NTH_WEEKDAYS[number];
+export type Weekday = typeof WEEKDAYS[number];
+export type Cadence = "Weekly" | "Fortnightly" | "Monthly" | "Yearly" | "YearlyNthWeekday";
 
 export interface OneTimeAddition {
   id: number;
@@ -12,6 +21,16 @@ export interface RecurringAddition {
   cadence: Cadence;
   start_date: string;
   end_date?: string;
+  month?: number;
+  nth_weekday?: NthWeekday;
+  weekday?: Weekday;
+}
+
+export interface PoolCap {
+  id: number;
+  max_balance: number;
+  start_date: string;
+  end_date: string;
 }
 
 export interface Pool {
@@ -19,6 +38,7 @@ export interface Pool {
   name: string;
   additions: OneTimeAddition[];
   recurring: RecurringAddition[];
+  caps: PoolCap[];
 }
 
 export interface PoolAllocation {
@@ -85,6 +105,13 @@ function stringValue(value: unknown, fallback = ""): string {
   return typeof value === "string" ? value : fallback;
 }
 
+export function capRangesOverlap(
+  ranges: Array<Pick<PoolCap, "start_date" | "end_date">>,
+): boolean {
+  const sorted = [...ranges].sort((left, right) => left.start_date.localeCompare(right.start_date));
+  return sorted.some((range, index) => index > 0 && sorted[index - 1]!.end_date >= range.start_date);
+}
+
 function cadenceValue(value: unknown): Cadence {
   switch (value) {
     case "Weekly":
@@ -96,9 +123,20 @@ function cadenceValue(value: unknown): Cadence {
     case "Yearly":
     case "yearly":
       return "Yearly";
+    case "YearlyNthWeekday":
+    case "yearly_nth_weekday":
+      return "YearlyNthWeekday";
     default:
       return "Monthly";
   }
+}
+
+function nthWeekdayValue(value: unknown): NthWeekday | null {
+  return NTH_WEEKDAYS.find((occurrence) => occurrence === value) ?? null;
+}
+
+function weekdayValue(value: unknown): Weekday | null {
+  return WEEKDAYS.find((weekday) => weekday === value) ?? null;
 }
 
 function normalizeAllocation(value: unknown, fallbackPoolId: number): PoolAllocation | null {
@@ -178,18 +216,50 @@ export function normalizeStore(value: unknown): Store {
               const startDate = stringValue(rule.start_date);
               const endDate = stringValue(rule.end_date);
               const amount = amountValue(rule.amount);
-              return ruleId && isValidDate(startDate) && amount > 0 && (!endDate || isValidDate(endDate))
+              const cadence = cadenceValue(rule.cadence);
+              const nthWeekday = nthWeekdayValue(rule.nth_weekday);
+              const weekday = weekdayValue(rule.weekday);
+              const month = numberValue(rule.month);
+              const validNthWeekdayRule =
+                cadence !== "YearlyNthWeekday" ||
+                (nthWeekday !== null && weekday !== null && month >= 1 && month <= 12);
+              return ruleId && isValidDate(startDate) && amount > 0 && (!endDate || isValidDate(endDate)) && validNthWeekdayRule
                 ? [{
                     id: ruleId,
                     amount,
                     start_date: startDate,
-                    cadence: cadenceValue(rule.cadence),
+                    cadence,
                     ...(isValidDate(endDate) ? { end_date: endDate } : {}),
+                    ...(cadence === "YearlyNthWeekday"
+                      ? { month, nth_weekday: nthWeekday!, weekday: weekday! }
+                      : {}),
                   }]
                 : [];
             })
           : [];
-        return [{ id, name, additions, recurring }];
+        const capCandidates = Array.isArray(pool.caps)
+          ? pool.caps.flatMap((value): PoolCap[] => {
+              const cap = record(value);
+              const capId = numberValue(cap.id);
+              const rawMaxBalance = cap.max_balance;
+              const maxBalance = amountValue(rawMaxBalance);
+              const hasValidMaxBalance =
+                (typeof rawMaxBalance === "number" ||
+                  (typeof rawMaxBalance === "string" && rawMaxBalance.trim() !== "")) &&
+                Number.isFinite(Number(rawMaxBalance));
+              const startDate = stringValue(cap.start_date);
+              const endDate = stringValue(cap.end_date);
+              return capId && hasValidMaxBalance && maxBalance >= 0 && isValidDate(startDate) && isValidDate(endDate) && startDate <= endDate
+                ? [{ id: capId, max_balance: maxBalance, start_date: startDate, end_date: endDate }]
+                : [];
+            })
+          : [];
+        const caps: PoolCap[] = [];
+        for (const cap of capCandidates.sort((left, right) => left.start_date.localeCompare(right.start_date))) {
+          const previous = caps.at(-1);
+          if (!previous || previous.end_date < cap.start_date) caps.push(cap);
+        }
+        return [{ id, name, additions, recurring, caps }];
       })
     : [];
   const events = Array.isArray(source.events)
@@ -199,7 +269,12 @@ export function normalizeStore(value: unknown): Store {
     : [];
 
   const largestId = [
-    ...pools.flatMap((pool) => [pool.id, ...pool.additions.map((addition) => addition.id), ...pool.recurring.map((rule) => rule.id)]),
+    ...pools.flatMap((pool) => [
+      pool.id,
+      ...pool.additions.map((addition) => addition.id),
+      ...pool.recurring.map((rule) => rule.id),
+      ...pool.caps.map((cap) => cap.id),
+    ]),
     ...events.map((event) => event.id),
   ].reduce((largest, id) => Math.max(largest, id), 0);
   const storedNextId = numberValue(source.next_id, 1);
@@ -226,7 +301,12 @@ export function saveStore(store: Store): void {
 
 export function allocateIds(store: Store, count = 1): { firstId: number; nextId: number } {
   const largestId = [
-    ...store.pools.flatMap((pool) => [pool.id, ...pool.additions.map((addition) => addition.id), ...pool.recurring.map((rule) => rule.id)]),
+    ...store.pools.flatMap((pool) => [
+      pool.id,
+      ...pool.additions.map((addition) => addition.id),
+      ...pool.recurring.map((rule) => rule.id),
+      ...pool.caps.map((cap) => cap.id),
+    ]),
     ...store.events.map((event) => event.id),
   ].reduce((largest, id) => Math.max(largest, id), 0);
   const firstId = Math.max(store.next_id, largestId + 1, 1);
@@ -242,8 +322,24 @@ export function cadenceLabel(cadence: Cadence): string {
     case "Monthly":
       return "month";
     case "Yearly":
+    case "YearlyNthWeekday":
       return "year";
   }
+}
+
+export function recurringScheduleDescription(rule: RecurringAddition): string {
+  if (
+    rule.cadence === "YearlyNthWeekday" &&
+    rule.month !== undefined &&
+    rule.nth_weekday &&
+    rule.weekday
+  ) {
+    const month = MONTH_NAMES[rule.month - 1];
+    if (month) {
+      return `on the ${rule.nth_weekday.toLowerCase()} ${rule.weekday} of ${month} each year`;
+    }
+  }
+  return `every ${cadenceLabel(rule.cadence)}`;
 }
 
 export function parseHours(value: string, allowZero = false): number | null {
@@ -346,11 +442,44 @@ export function dayLabel(value: string): string {
   return date ? String(date.getUTCDate()).padStart(2, "0") : "";
 }
 
+export function nthWeekdayInMonth(
+  year: number,
+  month: number,
+  nthWeekday: NthWeekday,
+  weekday: Weekday,
+): string | null {
+  if (!Number.isInteger(year) || year < 1 || year > 9999 || !Number.isInteger(month) || month < 1 || month > 12) {
+    return null;
+  }
+  const weekdayIndex = WEEKDAYS.indexOf(weekday);
+  const daysInMonth = new Date(Date.UTC(year, month, 0)).getUTCDate();
+  let day: number;
+  if (nthWeekday === "Last") {
+    const lastWeekday = new Date(Date.UTC(year, month - 1, daysInMonth)).getUTCDay();
+    day = daysInMonth - ((lastWeekday - weekdayIndex + 7) % 7);
+  } else {
+    const firstWeekday = new Date(Date.UTC(year, month - 1, 1)).getUTCDay();
+    const occurrence = NTH_WEEKDAYS.indexOf(nthWeekday) + 1;
+    day = 1 + ((weekdayIndex - firstWeekday + 7) % 7) + (occurrence - 1) * 7;
+    if (day > daysInMonth) return null;
+  }
+  return `${String(year).padStart(4, "0")}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
+}
+
 export function recurringOccurrencesThrough(rule: RecurringAddition, date: string): number {
   if (!isValidDate(rule.start_date) || !isValidDate(date)) return 0;
   if (rule.end_date && !isValidDate(rule.end_date)) return 0;
   const endDate = rule.end_date && date > rule.end_date ? rule.end_date : date;
   if (endDate < rule.start_date) return 0;
+  if (rule.cadence === "YearlyNthWeekday") {
+    if (rule.month === undefined || !rule.nth_weekday || !rule.weekday) return 0;
+    let occurrences = 0;
+    for (let year = Number(rule.start_date.slice(0, 4)); year <= Number(endDate.slice(0, 4)); year += 1) {
+      const occurrence = nthWeekdayInMonth(year, rule.month, rule.nth_weekday, rule.weekday);
+      if (occurrence && occurrence >= rule.start_date && occurrence <= endDate) occurrences += 1;
+    }
+    return occurrences;
+  }
   const start = dateFromParts(rule.start_date)!;
   const end = dateFromParts(endDate)!;
   const elapsedDays = Math.floor((end.getTime() - start.getTime()) / 86_400_000);
@@ -370,15 +499,8 @@ export function recurringOccurrencesThrough(rule: RecurringAddition, date: strin
   return 0;
 }
 
-export function poolAccruedOn(pool: Pool, date: string): number {
-  const oneTime = pool.additions
-    .filter((addition) => addition.date <= date)
-    .reduce((total, addition) => total + addition.amount, 0);
-  const recurring = pool.recurring.reduce(
-    (total, rule) => total + rule.amount * recurringOccurrencesThrough(rule, date),
-    0,
-  );
-  return oneTime + recurring;
+export function poolAccruedOn(pool: Pool, date: string, events: LeaveEvent[] = []): number {
+  return poolLedgerForDates(pool, events, [date])[0]?.accrued ?? 0;
 }
 
 export function eventTotalHours(event: LeaveEvent): number {
@@ -406,19 +528,16 @@ export function eventHoursFromPoolThrough(event: LeaveEvent, poolId: number, dat
 }
 
 export function totalsOn(store: Store, date: string): { accrued: number; used: number; balance: number } {
-  const accrued = store.pools.reduce((total, pool) => total + poolAccruedOn(pool, date), 0);
-  const used = store.events.reduce((total, event) => total + eventHoursThrough(event, date), 0);
-  return { accrued, used, balance: accrued - used };
+  const ledgers = store.pools.map((pool) => poolLedgerForDates(pool, store.events, [date])[0]);
+  const accrued = ledgers.reduce((total, ledger) => total + (ledger?.accrued ?? 0), 0);
+  const used = ledgers.reduce((total, ledger) => total + (ledger?.used ?? 0), 0);
+  const balance = ledgers.reduce((total, ledger) => total + (ledger?.balance ?? 0), 0);
+  return { accrued, used, balance };
 }
 
 export function poolBalanceOn(store: Store, poolId: number, date: string): number {
   const pool = store.pools.find((candidate) => candidate.id === poolId);
-  const accrued = pool ? poolAccruedOn(pool, date) : 0;
-  const used = store.events.reduce(
-    (total, event) => total + eventHoursFromPoolThrough(event, poolId, date),
-    0,
-  );
-  return accrued - used;
+  return pool ? poolLedgerForDates(pool, store.events, [date])[0]?.balance ?? 0 : 0;
 }
 
 export function sortDays(days: LeaveDay[]): LeaveDay[] {
@@ -467,9 +586,135 @@ export function balanceHistory(store: Store, today: string): BalancePoint[] {
   if (!isValidDate(today)) return [];
   const start = addMonths(today, -12);
   const end = addMonths(today, 12);
-  const points: BalancePoint[] = [];
+  const dates: string[] = [];
   for (let date = start; date <= end; date = addDays(date, 1)) {
-    points.push({ date, balance: totalsOn(store, date).balance, projected: date > today });
+    dates.push(date);
   }
-  return points;
+  const ledgers = store.pools.map((pool) => poolLedgerForDates(pool, store.events, dates));
+  return dates.map((date, index) => ({
+    date,
+    balance: ledgers.reduce((total, ledger) => total + (ledger[index]?.balance ?? 0), 0),
+    projected: date > today,
+  }));
+}
+
+interface PoolLedgerSnapshot {
+  accrued: number;
+  used: number;
+  balance: number;
+}
+
+interface PoolDailyActions {
+  accrued: number;
+  used: number;
+}
+
+function poolLedgerForDates(pool: Pool, events: LeaveEvent[], dates: string[]): PoolLedgerSnapshot[] {
+  if (pool.caps.length === 0) {
+    return dates.map((date) => {
+      if (!isValidDate(date)) return { accrued: 0, used: 0, balance: 0 };
+      const oneTime = pool.additions
+        .filter((addition) => addition.date <= date)
+        .reduce((total, addition) => total + addition.amount, 0);
+      const recurring = pool.recurring.reduce(
+        (total, rule) => total + rule.amount * recurringOccurrencesThrough(rule, date),
+        0,
+      );
+      const accrued = oneTime + recurring;
+      const used = events.reduce(
+        (total, event) => total + eventHoursFromPoolThrough(event, pool.id, date),
+        0,
+      );
+      return { accrued, used, balance: accrued - used };
+    });
+  }
+
+  const throughDate = dates.at(-1);
+  if (!throughDate || !isValidDate(throughDate)) return dates.map(() => ({ accrued: 0, used: 0, balance: 0 }));
+
+  const actions = new Map<string, PoolDailyActions>();
+  const actionForDate = (date: string): PoolDailyActions => {
+    const existing = actions.get(date);
+    if (existing) return existing;
+    const created = { accrued: 0, used: 0 };
+    actions.set(date, created);
+    return created;
+  };
+
+  for (const addition of pool.additions) {
+    if (isValidDate(addition.date) && addition.date <= throughDate) {
+      actionForDate(addition.date).accrued += addition.amount;
+    }
+  }
+
+  for (const rule of pool.recurring) {
+    if (!isValidDate(rule.start_date) || (rule.end_date && !isValidDate(rule.end_date))) continue;
+    if (
+      rule.cadence === "YearlyNthWeekday" &&
+      (rule.month === undefined || !rule.nth_weekday || !rule.weekday)
+    ) continue;
+    const recurringEnd = rule.end_date && rule.end_date < throughDate ? rule.end_date : throughDate;
+    if (rule.start_date > recurringEnd) continue;
+
+    let occurrenceIndex = 0;
+    let previousOccurrence = "";
+    while (true) {
+      let occurrenceDate: string | null;
+      if (rule.cadence === "YearlyNthWeekday") {
+        const occurrenceYear = Number(rule.start_date.slice(0, 4)) + occurrenceIndex;
+        if (occurrenceYear > Number(recurringEnd.slice(0, 4))) break;
+        occurrenceDate = nthWeekdayInMonth(occurrenceYear, rule.month!, rule.nth_weekday!, rule.weekday!);
+        occurrenceIndex += 1;
+        if (!occurrenceDate || occurrenceDate < rule.start_date) continue;
+      } else {
+        occurrenceDate =
+          rule.cadence === "Weekly"
+            ? addDays(rule.start_date, occurrenceIndex * 7)
+            : rule.cadence === "Fortnightly"
+              ? addDays(rule.start_date, occurrenceIndex * 14)
+              : addMonths(rule.start_date, occurrenceIndex * (rule.cadence === "Monthly" ? 1 : 12));
+      }
+      if (
+        !isValidDate(occurrenceDate) ||
+        occurrenceDate > recurringEnd ||
+        occurrenceDate <= previousOccurrence
+      ) break;
+      actionForDate(occurrenceDate).accrued += rule.amount;
+      previousOccurrence = occurrenceDate;
+      if (rule.cadence !== "YearlyNthWeekday") occurrenceIndex += 1;
+    }
+  }
+
+  for (const event of events) {
+    for (const day of event.days) {
+      if (!isValidDate(day.date) || day.date > throughDate) continue;
+      const hours = day.allocations
+        .filter((allocation) => allocation.pool_id === pool.id)
+        .reduce((total, allocation) => total + allocation.hours, 0);
+      if (hours > 0) actionForDate(day.date).used += hours;
+    }
+  }
+
+  const orderedActions = [...actions.entries()].sort(([left], [right]) => left.localeCompare(right));
+  let actionIndex = 0;
+  let balance = 0;
+  let accrued = 0;
+  let used = 0;
+  return dates.map((date) => {
+    while (actionIndex < orderedActions.length && orderedActions[actionIndex]![0] <= date) {
+      const [actionDate, daily] = orderedActions[actionIndex]!;
+      const activeCap = pool.caps.find(
+        (cap) => cap.start_date <= actionDate && actionDate <= cap.end_date,
+      );
+      // Cap each credit when posted; same-day leave use is applied after accrual.
+      const acceptedAccrual = activeCap
+        ? Math.min(daily.accrued, Math.max(0, activeCap.max_balance - balance))
+        : daily.accrued;
+      balance += acceptedAccrual - daily.used;
+      accrued += acceptedAccrual;
+      used += daily.used;
+      actionIndex += 1;
+    }
+    return { accrued, used, balance };
+  });
 }
