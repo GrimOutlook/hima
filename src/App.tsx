@@ -53,8 +53,10 @@ function App() {
   const [balanceDate, setBalanceDate] = useState(todayDate);
   const [selectedChartPoolId, setSelectedChartPoolId] = useState<number | null>(null);
   const [selectedUsesPoolId, setSelectedUsesPoolId] = useState<number | null>(null);
+  const [listsActive, setListsActive] = useState(false);
   const [modal, setModal] = useState<ModalState | null>(null);
   const importInputRef = useRef<HTMLInputElement>(null);
+  const poolsSectionRef = useRef<HTMLDivElement>(null);
   const chartHistoryEnd = todayDate();
   const balance = totalsOn(store, balanceDate);
   const chartPoolId = selectedChartPoolId !== null && store.pools.some((pool) => pool.id === selectedChartPoolId)
@@ -86,6 +88,61 @@ function App() {
   useEffect(() => {
     saveStore(store);
   }, [store]);
+
+  useEffect(() => {
+    function getMaxScroll() {
+      const section = poolsSectionRef.current;
+      return section ? section.getBoundingClientRect().top + window.scrollY : null;
+    }
+
+    function keepPoolsSectionAtTop() {
+      const maxScroll = getMaxScroll();
+      if (maxScroll === null) return;
+      setListsActive(window.scrollY >= maxScroll - 1);
+      if (window.scrollY > maxScroll) window.scrollTo(0, maxScroll);
+    }
+
+    function stopWheelPastPoolsSection(event: WheelEvent) {
+      if (event.deltaY === 0 || event.ctrlKey) return;
+
+      const maxScroll = getMaxScroll();
+      if (maxScroll === null) return;
+      const deltaY = event.deltaY * (event.deltaMode === WheelEvent.DOM_DELTA_LINE
+        ? 16
+        : event.deltaMode === WheelEvent.DOM_DELTA_PAGE
+          ? window.innerHeight
+          : 1);
+      const target = event.target;
+      const list = target instanceof Element
+        ? target.closest<HTMLElement>(".pools-column, .timeline-list")
+        : null;
+
+      const beforeBoundary = window.scrollY < maxScroll - 1;
+      if (beforeBoundary) {
+        if (deltaY < 0) return;
+        if (window.scrollY + deltaY < maxScroll - 1) return;
+        event.preventDefault();
+        setListsActive(true);
+        window.scrollTo(0, maxScroll);
+        return;
+      }
+
+      if (deltaY < 0) return;
+      const listCanScroll = list !== null &&
+        list.scrollHeight > list.clientHeight &&
+        list.scrollTop + list.clientHeight < list.scrollHeight - 1;
+      if (!listCanScroll) event.preventDefault();
+    }
+
+    window.addEventListener("scroll", keepPoolsSectionAtTop, { passive: true });
+    window.addEventListener("resize", keepPoolsSectionAtTop);
+    window.addEventListener("wheel", stopWheelPastPoolsSection, { passive: false, capture: true });
+    return () => {
+      window.removeEventListener("scroll", keepPoolsSectionAtTop);
+      window.removeEventListener("resize", keepPoolsSectionAtTop);
+      window.removeEventListener("wheel", stopWheelPastPoolsSection, true);
+    };
+  }, []);
 
   function createPool() {
     setModal({ type: "new-pool" });
@@ -344,7 +401,7 @@ function App() {
   }
 
   return (
-    <div className="app-shell">
+    <div className={listsActive ? "app-shell lists-active" : "app-shell"}>
       <header className="topbar">
         <a className="brand" href="#top" aria-label="hima home">
           <span className="brand-mark">h</span>
@@ -423,7 +480,7 @@ function App() {
           onPoolChange={setSelectedChartPoolId}
         />
 
-        <div className="section-heading-row">
+        <div className="section-heading-row" ref={poolsSectionRef}>
           <div>
             <div className="section-overline">THE BIG PICTURE</div>
             <h2>Your pools</h2>
