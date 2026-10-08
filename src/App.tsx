@@ -438,10 +438,6 @@ function App() {
             aria-label="Choose a JSON backup to import"
             onChange={importData}
           />
-          <button className="button button-primary" type="button" onClick={createPool}>
-            <span className="button-plus">+</span>
-            New pool
-          </button>
         </div>
       </header>
 
@@ -491,7 +487,13 @@ function App() {
         <div className="section-heading-row">
           <div>
             <div className="section-overline">THE BIG PICTURE</div>
-            <h2>Your pools</h2>
+            <div className="pools-heading">
+              <h2>Your pools</h2>
+              <button className="button button-primary button-small" type="button" onClick={createPool}>
+                <span className="button-plus">+</span>
+                Add pool
+              </button>
+            </div>
           </div>
           <span className="as-of-label">Balances as of {prettyDate(balanceDate)}</span>
         </div>
