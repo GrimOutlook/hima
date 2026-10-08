@@ -136,7 +136,14 @@ export function BalanceChart({
     document.addEventListener("pointerdown", closePoolDropdown);
     return () => document.removeEventListener("pointerdown", closePoolDropdown);
   }, []);
-  const selectedPools = pools.filter((pool) => poolSelections[pool.id] ?? !pool.hidden_from_graph);
+  const eventPoolIds = useMemo(() => selectedEvent
+    ? new Set(selectedEvent.days.flatMap((day) => day.allocations
+      .filter((allocation) => allocation.hours > 0)
+      .map((allocation) => allocation.pool_id)))
+    : null, [selectedEvent]);
+  const selectedPools = useMemo(() => pools.filter((pool) => eventPoolIds
+    ? eventPoolIds.has(pool.id)
+    : poolSelections[pool.id] ?? !pool.hidden_from_graph), [pools, poolSelections, eventPoolIds]);
   const selectedPool = selectedPools.length === 1 ? selectedPools[0] : undefined;
   const series = combinedTotals && selectedPools.length > 0
     ? [{ key: "combined", name: "Combined Totals", color: ACTUAL_COLOR }]
@@ -152,7 +159,7 @@ export function BalanceChart({
       }
     }
     return timelineHistory.map((point) => ({ ...point, balance: balances.get(point.date) ?? 0 }));
-  }, [timelineHistory, poolHistories, pools, poolSelections]);
+  }, [timelineHistory, poolHistories, selectedPools]);
   const todayIndex = Math.max(0, history.findIndex((point) => point.date === today));
   const selectedIndex = history.findIndex((point) => point.date === selectedDate);
   const lastIndex = Math.max(0, history.length - 1);
@@ -295,7 +302,8 @@ export function BalanceChart({
                 <div className="history-pool-options" role="group" aria-label="Pools shown in graph">
                   {pools.map((pool) => (
                     <label key={pool.id}>
-                      <input type="checkbox" checked={poolSelections[pool.id] ?? !pool.hidden_from_graph}
+                      <input type="checkbox" checked={selectedPools.some((selected) => selected.id === pool.id)}
+                        disabled={eventPoolIds !== null}
                         onChange={(event) => setPoolSelections((current) => ({ ...current, [pool.id]: event.target.checked }))} />
                       {pool.name}
                     </label>

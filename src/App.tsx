@@ -68,6 +68,10 @@ function App() {
   const [eventSelection, setEventSelection] = useState<{ id: number; request: number; zoom: boolean; wide: boolean } | null>(null);
   const [highlightedEventId, setHighlightedEventId] = useState<number | null>(null);
   const selectedEvent = store.events.find((event) => event.id === highlightedEventId);
+  const visiblePools = selectedEvent
+    ? store.pools.filter((pool) => selectedEvent.days.some((day) => day.allocations
+      .some((allocation) => allocation.pool_id === pool.id && allocation.hours > 0)))
+    : store.pools;
   const zoomEvent = store.events.find((event) => event.id === eventSelection?.id);
   const eventClickTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [selectedUsesPoolId, setSelectedUsesPoolId] = useState<number | null>(null);
@@ -163,6 +167,7 @@ function App() {
   function poolCardProps(pool: Pool): PoolCardProps {
     return {
       pool, balanceDate, store,
+      selectedEvent,
       isSelected: usesFilterPool?.id === pool.id,
       onSelect: () => setSelectedUsesPoolId((current) => current === pool.id ? null : pool.id),
       onViewUsage: () => setModal({ type: "pool-usage", poolId: pool.id }),
@@ -571,7 +576,7 @@ function App() {
                 setDraggedPoolId(null);
               }}
             >
-            <SortableContext items={store.pools.map((pool) => pool.id)} strategy={verticalListSortingStrategy}>
+            <SortableContext items={visiblePools.map((pool) => pool.id)} strategy={verticalListSortingStrategy}>
             {store.pools.length === 0 ? (
               <div className="empty-card pool-empty">
                 <div className="empty-illustration">✳</div>
@@ -582,7 +587,7 @@ function App() {
                   Create your first pool
                 </button>
               </div>
-            ) : store.pools.map((pool) => (
+            ) : visiblePools.map((pool) => (
               <PoolCard
                 key={pool.id}
                 {...poolCardProps(pool)}
@@ -834,6 +839,7 @@ function App() {
 
 interface PoolCardProps {
   pool: Pool;
+  selectedEvent?: LeaveEvent;
   balanceDate: string;
   store: Store;
   isSelected: boolean;
@@ -861,6 +867,7 @@ function PoolCardContent({
   balanceDate,
   store,
   isSelected,
+  selectedEvent,
   onSelect,
   onViewUsage,
   onViewInformation,
@@ -870,6 +877,10 @@ function PoolCardContent({
   overlay = false,
 }: PoolCardProps & { sortable?: ReturnType<typeof useSortable>; overlay?: boolean }) {
   const currentBalance = poolBalanceOn(store, pool.id, balanceDate);
+  const eventHours = selectedEvent?.days.reduce((total, day) => total + day.allocations
+    .filter((allocation) => allocation.pool_id === pool.id)
+    .reduce((sum, allocation) => sum + allocation.hours, 0), 0) ?? 0;
+  const eventTotal = selectedEvent ? eventTotalHours(selectedEvent) : 0;
   return (
     <article
       ref={sortable?.setNodeRef}
@@ -928,6 +939,20 @@ function PoolCardContent({
         {formatHours(currentBalance)}<span>h</span>
       </div>
       <div className="pool-balance-caption">available on {prettyDate(balanceDate)}</div>
+      {selectedEvent && eventHours > 0 && (
+        <div className="pool-event-subtraction">
+          <div className="pool-event-subtraction-heading">
+            <span className="pool-event-subtraction-icon" aria-hidden="true">−</span>
+            <span className="pool-event-subtraction-label">{selectedEvent.name}</span>
+            <strong>−{formatHours(eventHours)} h</strong>
+          </div>
+          <div className="pool-event-subtraction-track" role="img"
+            aria-label={`${selectedEvent.name} draws ${formatHours(eventHours)} hours from ${pool.name}, ${(eventHours / eventTotal * 100).toFixed(1)}% of the event total`}>
+            <span style={{ width: `${eventHours / eventTotal * 100}%`, backgroundColor: poolColor(pool.id, pool.color) }} />
+          </div>
+          <span className="pool-event-subtraction-caption">{(eventHours / eventTotal * 100).toFixed(1)}% of event hours</span>
+        </div>
+      )}
     </article>
   );
 }
