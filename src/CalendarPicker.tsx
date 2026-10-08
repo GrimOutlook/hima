@@ -7,6 +7,7 @@ interface CalendarPickerProps {
   value: string;
   onChange: (date: string) => void;
   label?: string;
+  display?: "large-date";
   optional?: boolean;
   min?: string;
   selectedDates?: string[];
@@ -30,7 +31,7 @@ function startOfMonth(value: string): string {
   return `${value.slice(0, 7)}-01`;
 }
 
-export function CalendarPicker({ value, onChange, label = "BALANCE ON", optional = false, min, selectedDates, onDatesChange }: CalendarPickerProps) {
+export function CalendarPicker({ value, onChange, label = "BALANCE ON", display, optional = false, min, selectedDates, onDatesChange }: CalendarPickerProps) {
   const firstDayOfWeek = useContext(FirstDayOfWeekContext);
   const ignoreWeekends = useContext(IgnoreWeekendsContext);
   const weekStart = WEEKDAYS.indexOf(firstDayOfWeek);
@@ -187,15 +188,15 @@ export function CalendarPicker({ value, onChange, label = "BALANCE ON", optional
   }
 
   return (
-    <div className={label === "BALANCE ON" ? "date-picker" : "date-picker date-picker-field"} ref={rootRef}>
-      <span id={`${id}-label`}>{label}</span>
+    <div className={display === "large-date" ? "date-picker date-picker-large" : label === "BALANCE ON" ? "date-picker" : "date-picker date-picker-field"} ref={rootRef}>
+      {display !== "large-date" && <span id={`${id}-label`}>{label}</span>}
       <button
         ref={triggerRef}
         className="date-picker-trigger"
         type="button"
         aria-haspopup="dialog"
         aria-controls={calendarId}
-        aria-labelledby={`${id}-label ${id}-value`}
+        aria-labelledby={display === "large-date" ? `${id}-value` : `${id}-label ${id}-value`}
         aria-expanded={isOpen}
         onClick={() => isOpen ? setIsOpen(false) : openCalendar()}
       >

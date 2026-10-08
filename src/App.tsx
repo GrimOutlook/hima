@@ -549,7 +549,7 @@ function App() {
                 <span className="balance-unit">hours</span>
               </div>
             </div>
-            <CalendarPicker value={balanceDate} onChange={setBalanceDate} />
+            <CalendarPicker value={balanceDate} onChange={setBalanceDate} display="large-date" />
           </div>
           <div className="balance-divider" />
           <div className="balance-breakdown">
