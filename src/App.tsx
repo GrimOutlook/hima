@@ -483,6 +483,7 @@ function App() {
           history={history}
           today={chartHistoryEnd}
           selectedDate={balanceDate}
+          onDateChange={setBalanceDate}
           pools={store.pools}
           selectedPoolId={chartPoolId}
           onPoolChange={setSelectedChartPoolId}

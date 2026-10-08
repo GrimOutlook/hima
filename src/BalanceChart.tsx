@@ -17,6 +17,7 @@ interface BalanceChartProps {
   history: BalancePoint[];
   today: string;
   selectedDate: string;
+  onDateChange: (date: string) => void;
   pools: Pool[];
   selectedPoolId: number | null;
   onPoolChange: (poolId: number | null) => void;
@@ -100,6 +101,7 @@ export function BalanceChart({
   history,
   today,
   selectedDate,
+  onDateChange,
   pools,
   selectedPoolId,
   onPoolChange,
@@ -250,6 +252,11 @@ export function BalanceChart({
               data={chartData}
               margin={{ top: 38, right: PLOT_RIGHT, bottom: 0, left: 0 }}
               accessibilityLayer
+              onClick={({ activeLabel, isTooltipActive }) => {
+                if (!isTooltipActive || activeLabel === undefined) return;
+                const point = chartData[Number(activeLabel)];
+                if (point) onDateChange(point.date);
+              }}
               aria-label={`Daily ${selectedPool ? `${selectedPool.name} ` : "combined PPL "}balance history and forecast through next year`}
             >
               <CartesianGrid stroke="#eeefe9" vertical={false} />
@@ -385,7 +392,7 @@ export function BalanceChart({
         <span className="history-projection-dot" />
         Projected
         <span className="history-range">
-          {prettyDate(visibleStartDate)} – {prettyDate(visibleEndDate)} · hover for daily balances; drag the range handles to zoom and the selection to pan
+          {prettyDate(visibleStartDate)} – {prettyDate(visibleEndDate)} · hover for daily balances; click to select a date; drag the range handles to zoom and the selection to pan
         </span>
       </div>
     </section>

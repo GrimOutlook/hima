@@ -131,6 +131,10 @@ button:focus-visible, input:focus-visible, select:focus-visible, a:focus-visible
 .balance-unit { color: rgba(239, 246, 240, .76); font: 500 15px 'DM Sans', sans-serif; letter-spacing: 0; }
 .date-picker { display: grid; gap: 7px; min-width: 169px; padding: 11px 13px; border: 1px solid rgba(255,255,255,.17); border-radius: 10px; background: rgba(255,255,255,.075); }
 .date-picker > span { color: rgba(242, 247, 242, .66); font-size: 9px; letter-spacing: 1px; font-weight: 700; }
+.date-picker-today { grid-column: 2; grid-row: 1; justify-self: end; padding: 0; border: 0; color: #fff; background: transparent; font-size: 10px; cursor: pointer; }
+.date-picker-today:hover { text-decoration: underline; }
+.date-picker-today:focus-visible { outline: 2px solid rgba(255,255,255,.72); outline-offset: 3px; }
+.date-picker:has(.date-picker-today) .date-picker-trigger { grid-column: 1 / -1; }
 .date-picker-trigger { display: flex; align-items: center; justify-content: space-between; gap: 8px; width: 100%; min-width: 0; padding: 0; border: 0; color: #fff; background: transparent; cursor: pointer; text-align: left; font-size: 12px; }
 .date-picker-trigger:hover .date-picker-icon { color: #fff; }
 .date-picker-trigger:focus-visible { outline: 2px solid rgba(255,255,255,.72); outline-offset: 3px; }
