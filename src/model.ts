@@ -610,8 +610,8 @@ export function eventBalanceWarnings(store: Store, days: LeaveDay[]): Array<{ po
   });
 }
 
-export function freshEventDays(poolId: number): EventDayInput[] {
-  return [{ date: todayDate(), allocations: [{ pool_id: poolId, hours: "" }] }];
+export function freshEventDays(_poolId: number): EventDayInput[] {
+  return [];
 }
 
 export function eventDateRangeLabel(event: LeaveEvent): string {

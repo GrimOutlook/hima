@@ -433,7 +433,7 @@ export function AdditionModal({
   poolName,
   mode,
   initialAmount = "",
-  initialDate = todayDate(),
+  initialDate = "",
   initialEndDate = "",
   initialCadence = "Fortnightly",
   initialMonth = Number(todayDate().slice(5, 7)),
@@ -454,7 +454,7 @@ export function AdditionModal({
   const [nthWeekday, setNthWeekday] = useState<NthWeekday>(initialNthWeekday);
   const [weekday, setWeekday] = useState<Weekday>(initialWeekday);
   const [error, setError] = useState("");
-  const [selectedDates, setSelectedDates] = useState<string[]>([initialDate]);
+  const [selectedDates, setSelectedDates] = useState<string[]>(initialDate ? [initialDate] : []);
   const batchAdding = adding && !cap && !reset && !recurring;
 
   function submit(event: FormEvent<HTMLFormElement>) {
@@ -484,7 +484,7 @@ export function AdditionModal({
         : "Enter an amount greater than zero with up to two decimal places.");
       return;
     }
-    if (!isValidDate(date)) {
+    if (!batchAdding && !isValidDate(date)) {
       setError("Choose a valid date.");
       return;
     }
@@ -806,7 +806,7 @@ export function EventModal({
 
   function addDay() {
     const lastDay = days.at(-1);
-    const date = lastDay ? addDays(lastDay.date, 1) : todayDate();
+    const date = lastDay && isValidDate(lastDay.date) ? addDays(lastDay.date, 1) : "";
     const poolId = lastDay?.allocations[0]?.pool_id ?? defaultPoolId;
     setDays((current) => [
       ...current,
