@@ -1013,22 +1013,23 @@ function PoolCardContent({
 function PoolInformationModal({
   pool,
   store,
+  balanceDate,
   onEdit,
   onEditAddition,
   onEditRecurring,
   onClose,
   onEditCap,
 }: PoolCardProps & { onClose: () => void; onEditCap: (id: number) => void }) {
-  const lifetimeTotals = poolTotalsOn(store, pool.id, todayDate());
+  const lifetimeTotals = poolTotalsOn(store, pool.id, balanceDate);
   return (
     <ModalFrame
       icon="ⓘ"
       title={`${pool.name} information`}
-      description="Lifetime totals through today, balance caps and time schedules."
+      description={`Lifetime totals through ${prettyDate(balanceDate)}, balance caps and time schedules.`}
       labelledBy="pool-information-title"
       onClose={onClose}
     >
-      <div className="pool-lifetime-metrics" aria-label={`Lifetime totals for ${pool.name} through today`}>
+      <div className="pool-lifetime-metrics" aria-label={`Lifetime totals for ${pool.name} through ${prettyDate(balanceDate)}`}>
         <div className="pool-lifetime-metric">
           <span>Lifetime accrued</span>
           <strong>{formatHours(lifetimeTotals.accrued)}<small> h</small></strong>
