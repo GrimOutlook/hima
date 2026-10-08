@@ -6,6 +6,7 @@ import {
   CartesianGrid,
   Line,
   LineChart,
+  ReferenceArea,
   ReferenceLine,
   ResponsiveContainer,
   Tooltip,
@@ -13,7 +14,7 @@ import {
   YAxis,
   type TooltipContentProps,
 } from "recharts";
-import { addMonths, formatHours, formatSignedHours, prettyDate, type BalancePoint, type Pool } from "./model";
+import { addMonths, formatHours, formatSignedHours, prettyDate, type BalancePoint, type LeaveEvent, type Pool } from "./model";
 
 interface BalanceChartProps {
   history: BalancePoint[];
@@ -22,6 +23,8 @@ interface BalanceChartProps {
   onDateChange: (date: string) => void;
   pools: Pool[];
   poolHistories: Record<number, BalancePoint[]>;
+  selectedEvent?: LeaveEvent;
+  eventSelectionRequest?: number;
 }
 
 interface ChartPoint extends BalancePoint {
@@ -111,6 +114,8 @@ export function BalanceChart({
   onDateChange,
   pools,
   poolHistories,
+  selectedEvent,
+  eventSelectionRequest,
 }: BalanceChartProps) {
   const [poolSelections, setPoolSelections] = useState<Record<number, boolean>>({});
   const [combinedTotals, setCombinedTotals] = useState(false);
@@ -170,6 +175,24 @@ export function BalanceChart({
     selectedPresetRef.current = null;
     setSelectedPreset(null);
   }, [selectedIndex, lastIndex]);
+  const eventIndices = [...new Set(selectedEvent?.days.map((day) =>
+    history.findIndex((point) => point.date === day.date)) ?? [])].filter((index) => index >= 0).sort((a, b) => a - b);
+  const eventStart = eventIndices[0];
+  const eventEnd = eventIndices.at(-1);
+  useEffect(() => {
+    if (eventStart === undefined || eventEnd === undefined) return;
+    const bufferedStart = Math.max(0, eventStart - 7);
+    const bufferedEnd = Math.min(lastIndex, eventEnd + 7);
+    if (brushRange.startIndex <= bufferedStart && brushRange.endIndex >= bufferedEnd) return;
+    setBrushRange((current) => {
+      if (current.startIndex <= bufferedStart && current.endIndex >= bufferedEnd) return current;
+      const size = Math.max(current.endIndex - current.startIndex, bufferedEnd - bufferedStart);
+      const startIndex = Math.max(0, Math.min(bufferedStart, Math.max(current.startIndex, bufferedEnd - size), lastIndex - size));
+      return { startIndex, endIndex: Math.min(lastIndex, startIndex + size) };
+    });
+    selectedPresetRef.current = null;
+    setSelectedPreset(null);
+  }, [eventSelectionRequest, eventStart, eventEnd, lastIndex]);
   const chartData = useMemo<ChartPoint[]>(
     () => {
       const balances = Object.fromEntries(selectedPools.map((pool) => [pool.id,
@@ -293,6 +316,7 @@ export function BalanceChart({
           </Fragment>
         ))}
       </div>
+      {selectedEvent && <p style={{ color: PROJECTED_COLOR }}>Highlighted: {selectedEvent.name} · {selectedEvent.days.length} leave dates</p>}
       <div className="balance-chart-wrap">
         <div
           className="balance-chart-viewport"
@@ -313,6 +337,10 @@ export function BalanceChart({
               aria-label={`Daily ${selectedPool?.name ?? (combinedTotals ? "combined pools" : "selected pools")} balance history and forecast through next year`}
             >
               <CartesianGrid stroke="#eeefe9" vertical={false} />
+              {eventIndices.map((index) => (
+                <ReferenceArea key={`event-day-${index}`} x1={index - 0.5} x2={index + 0.5}
+                  fill={PROJECTED_COLOR} fillOpacity={0.22} strokeOpacity={0} ifOverflow="hidden" />
+              ))}
               <XAxis
                 dataKey="index"
                 type="number"
@@ -352,6 +380,10 @@ export function BalanceChart({
                   className: "chart-today-label",
                 }}
               />
+              {eventIndices.map((index) => (
+                <ReferenceLine key={`event-marker-${index}`} x={index} stroke={PROJECTED_COLOR}
+                  strokeOpacity={0.7} strokeDasharray="2 3" />
+              ))}
               {selectedIndex >= 0 && selectedIndex !== todayIndex && (
                 <ReferenceLine
                   x={selectedIndex}

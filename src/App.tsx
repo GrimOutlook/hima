@@ -65,6 +65,8 @@ function App() {
     useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
   );
   const [balanceDate, setBalanceDate] = useState(todayDate);
+  const [eventSelection, setEventSelection] = useState<{ id: number; request: number } | null>(null);
+  const selectedEvent = store.events.find((event) => event.id === eventSelection?.id);
   const [selectedUsesPoolId, setSelectedUsesPoolId] = useState<number | null>(null);
   const [modal, setModal] = useState<ModalState | null>(null);
   const importInputRef = useRef<HTMLInputElement>(null);
@@ -482,6 +484,8 @@ function App() {
           onDateChange={setBalanceDate}
           pools={store.pools}
           poolHistories={poolHistories}
+          selectedEvent={selectedEvent}
+          eventSelectionRequest={eventSelection?.request}
         />
 
         <div className="section-heading-row">
@@ -600,13 +604,21 @@ function App() {
                         .reduce((sum, allocation) => sum + allocation.hours, 0), 0),
                     })).filter((share) => share.hours > 0);
                     return (
-                      <article className="event-row" key={event.id}>
+                      <article className={`event-row${selectedEvent?.id === event.id ? " event-row-selected" : ""}`} key={event.id}
+                        onClick={(click) => {
+                          if (click.target instanceof Element && click.target.closest("button")) return;
+                          setEventSelection((current) => ({ id: event.id, request: (current?.request ?? 0) + 1 }));
+                        }}>
                         <div className="event-date-block">
                           <span className="event-month">{monthLabel(firstDate)}</span>
                           <strong>{dayLabel(firstDate)}</strong>
                         </div>
                         <div className="event-info">
-                          <strong>{event.name}</strong>
+                          <strong><button className="pool-select-button" type="button"
+                            aria-label={`Highlight ${event.name} in graph`}
+                            aria-pressed={selectedEvent?.id === event.id}
+                            onClick={() => setEventSelection((current) => ({ id: event.id, request: (current?.request ?? 0) + 1 }))}
+                          >{event.name}</button></strong>
                           <span>{eventDateRangeLabel(event)}</span>
                           <span className={statusClass}>{status}</span>
                         </div>

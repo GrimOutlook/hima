@@ -480,6 +480,21 @@ describe("JSON data backups", () => {
 });
 
 describe("balance chart", () => {
+  it("includes a week on both sides of events outside the default graph history", () => {
+    const store = normalizeStore({
+      pools: [{ id: 1, name: "Leave" }],
+      events: [
+        { id: 2, name: "Past leave", days: [{ date: "2024-01-01", allocations: [{ pool_id: 1, hours: 8 }] }] },
+        { id: 3, name: "Future leave", days: [{ date: "2029-12-31", allocations: [{ pool_id: 1, hours: 8 }] }] },
+      ],
+    });
+    const history = balanceHistory(store, "2026-10-06");
+    expect(history[0]?.date).toBe("2023-12-25");
+    expect(history.at(-1)?.date).toBe("2030-01-07");
+    expect(history.at(-1)?.balance).toBe(-16);
+    expect(balanceHistory(store, "2026-10-06", 1)).toEqual(history);
+  });
+
   it("contains a year of actual history and projections through the entire next calendar year", () => {
     const history = balanceHistory(emptyStore(), "2026-10-06");
     expect(history).toHaveLength(817);

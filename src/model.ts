@@ -649,6 +649,9 @@ export function balanceHistory(store: Store, today: string, poolId?: number): Ba
     ? store.pools.filter((pool) => !pool.hidden_from_graph)
     : store.pools.filter((pool) => pool.id === poolId);
   const poolIds = new Set(pools.map((pool) => pool.id));
+  const eventDates = store.events.flatMap((event) => event.days
+    .filter((day) => day.allocations.some((allocation) => poolIds.has(allocation.pool_id)))
+    .map((day) => day.date)).filter(isValidDate);
   const relevantDates = [
     ...pools.flatMap((pool) => [
       ...pool.additions.map((addition) => addition.date),
@@ -666,8 +669,14 @@ export function balanceHistory(store: Store, today: string, poolId?: number): Ba
     (earliest, date) => date < earliest ? date : earliest,
     defaultStart,
   );
-  const start = earliestDate;
-  const end = `${Number(today.slice(0, 4)) + 1}-12-31`;
+  const start = eventDates.reduce((first, date) => {
+    const buffered = addDays(date, -7);
+    return buffered < first ? buffered : first;
+  }, earliestDate);
+  const end = eventDates.reduce((last, date) => {
+    const buffered = addDays(date, 7);
+    return buffered > last ? buffered : last;
+  }, `${Number(today.slice(0, 4)) + 1}-12-31`);
   const dates: string[] = [];
   for (let date = start; date <= end; date = addDays(date, 1)) {
     dates.push(date);
