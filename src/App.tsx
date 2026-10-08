@@ -5,7 +5,7 @@ import { CSS } from "@dnd-kit/utilities";
 import { BalanceChart } from "./BalanceChart";
 import { CalendarPicker } from "./CalendarPicker";
 import { poolColor } from "./poolColors";
-import { FirstDayOfWeekContext, loadFirstDayOfWeek, saveFirstDayOfWeek } from "./settings";
+import { FirstDayOfWeekContext, IgnoreWeekendsContext, loadFirstDayOfWeek, loadIgnoreWeekends, nextWeekday, saveSettings } from "./settings";
 import {
   AdditionModal,
   ModalFrame,
@@ -62,6 +62,7 @@ type ModalState =
 
 function App() {
   const [firstDayOfWeek, setFirstDayOfWeek] = useState(loadFirstDayOfWeek);
+  const [ignoreWeekends, setIgnoreWeekends] = useState(loadIgnoreWeekends);
   const [store, setStore] = useState<Store>(loadStore);
   const [draggedPoolId, setDraggedPoolId] = useState<number | null>(null);
   const draggedPool = store.pools.find((pool) => pool.id === draggedPoolId);
@@ -128,8 +129,8 @@ function App() {
   }, [store]);
 
   useEffect(() => {
-    saveFirstDayOfWeek(firstDayOfWeek);
-  }, [firstDayOfWeek]);
+    saveSettings(firstDayOfWeek, ignoreWeekends);
+  }, [firstDayOfWeek, ignoreWeekends]);
 
   useEffect(() => () => {
     if (eventClickTimer.current !== null) clearTimeout(eventClickTimer.current);
@@ -492,6 +493,7 @@ function App() {
 
   return (
     <FirstDayOfWeekContext.Provider value={firstDayOfWeek}>
+    <IgnoreWeekendsContext.Provider value={ignoreWeekends}>
     <div className="app-shell">
       <header className="topbar">
         <a className="brand" href="#top" aria-label="hima home">
@@ -574,7 +576,7 @@ function App() {
             eventClickTimer.current = null;
             setHighlightedEventId(null);
             setEventSelection(null);
-            setBalanceDate(chartHistoryEnd);
+            setBalanceDate(ignoreWeekends ? nextWeekday(chartHistoryEnd) : chartHistoryEnd);
           }}
           pools={store.pools}
           poolHistories={poolHistories}
@@ -784,7 +786,7 @@ function App() {
         </footer>
       </main>
 
-      {selectedModal?.type === "settings" && <SettingsModal firstDayOfWeek={firstDayOfWeek} onChange={setFirstDayOfWeek} onClose={closeSettings} />}
+      {selectedModal?.type === "settings" && <SettingsModal firstDayOfWeek={firstDayOfWeek} onChange={setFirstDayOfWeek} ignoreWeekends={ignoreWeekends} onIgnoreWeekendsChange={setIgnoreWeekends} onClose={closeSettings} />}
       {informationPool && (
         <PoolInformationModal {...poolCardProps(informationPool)} onEditCap={(capId) => setModal({ type: "edit-cap", poolId: informationPool.id, capId })} onClose={() => setModal(null)} />
       )}
@@ -871,6 +873,7 @@ function App() {
         />
       )}
     </div>
+    </IgnoreWeekendsContext.Provider>
     </FirstDayOfWeekContext.Provider>
   );
 }

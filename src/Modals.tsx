@@ -66,9 +66,11 @@ export function ModalFrame({
   );
 }
 
-export function SettingsModal({ firstDayOfWeek, onChange, onClose }: {
+export function SettingsModal({ firstDayOfWeek, onChange, ignoreWeekends, onIgnoreWeekendsChange, onClose }: {
   firstDayOfWeek: Weekday;
   onChange: (day: Weekday) => void;
+  ignoreWeekends: boolean;
+  onIgnoreWeekendsChange: (ignore: boolean) => void;
   onClose: () => void;
 }) {
   const contentRef = useRef<HTMLDivElement>(null);
@@ -80,7 +82,7 @@ export function SettingsModal({ firstDayOfWeek, onChange, onClose }: {
         onClose();
       }
       if (event.key !== "Tab" || !card) return;
-      const controls = card.querySelectorAll<HTMLElement>("button, select");
+      const controls = card.querySelectorAll<HTMLElement>("button, select, input");
       const first = controls[0];
       const last = controls[controls.length - 1];
       if (event.shiftKey && document.activeElement === first) {
@@ -106,6 +108,10 @@ export function SettingsModal({ firstDayOfWeek, onChange, onClose }: {
         </select>
       </label>
       <p className="wizard-hint" id="week-start-description">Calendar pickers display weeks starting on this day.</p>
+      <fieldset className="pool-visibility-settings">
+        <label><input type="checkbox" checked={ignoreWeekends} onChange={(event) => onIgnoreWeekendsChange(event.currentTarget.checked)} aria-describedby="ignore-weekends-description" />Ignore weekends</label>
+      </fieldset>
+      <p className="wizard-hint" id="ignore-weekends-description">Skip Saturdays and Sundays in the graph and calendar selections. Existing entries and balance calculations are preserved.</p>
       <div className="modal-actions">
         <button className="button button-primary" type="button" onClick={onClose}>Done</button>
       </div>

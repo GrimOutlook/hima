@@ -1,4 +1,5 @@
-import { Fragment, useEffect, useMemo, useRef, useState } from "react";
+import { Fragment, useContext, useEffect, useMemo, useRef, useState } from "react";
+import { IgnoreWeekendsContext, isWeekend } from "./settings";
 import {
   Area,
   AreaChart,
@@ -155,6 +156,7 @@ export function BalanceChart({
   zoomToSelectedEvent,
   widenSelectedEvent,
 }: BalanceChartProps) {
+  const ignoreWeekends = useContext(IgnoreWeekendsContext);
   const [poolSelections, setPoolSelections] = useState<Record<number, boolean>>({});
   const [combinedTotals, setCombinedTotals] = useState(false);
   const [timelineMenuOpen, setTimelineMenuOpen] = useState(false);
@@ -174,7 +176,7 @@ export function BalanceChart({
       key: `pool_${pool.id}`, name: pool.name,
       color: pool.color || [ACTUAL_COLOR, PROJECTED_COLOR, "#547eaa", "#9b6dad", "#ad913e"][index % 5],
     }));
-  const history = useMemo(() => {
+  const fullHistory = useMemo(() => {
     const balances = new Map<string, number>();
     for (const pool of selectedPools) {
       for (const point of poolHistories[pool.id] ?? []) {
@@ -183,7 +185,12 @@ export function BalanceChart({
     }
     return timelineHistory.map((point) => ({ ...point, balance: balances.get(point.date) ?? 0 }));
   }, [timelineHistory, poolHistories, selectedPools]);
-  const todayIndex = Math.max(0, history.findIndex((point) => point.date === today));
+  const history = useMemo(() => ignoreWeekends
+    ? fullHistory.filter((point) => !isWeekend(point.date))
+    : fullHistory, [fullHistory, ignoreWeekends]);
+  const nextTodayIndex = history.findIndex((point) => point.date >= today);
+  const todayIndex = nextTodayIndex < 0 ? Math.max(0, history.length - 1) : nextTodayIndex;
+  const todayIsVisible = history[todayIndex]?.date === today;
   const selectedIndex = history.findIndex((point) => point.date === selectedDate);
   const lastIndex = Math.max(0, history.length - 1);
   const [selectedPreset, setSelectedPreset] = useState<TimelinePreset | null>("1 year");
@@ -262,22 +269,22 @@ export function BalanceChart({
       ...point,
       index,
       actualBalance: point.projected ? null : point.balance,
-      projectedBalance: point.projected || index === todayIndex ? point.balance : null,
+      projectedBalance: point.projected || index === todayIndex || (!todayIsVisible && index === todayIndex - 1) ? point.balance : null,
       ...Object.fromEntries(series.flatMap((item) => {
         const pool = selectedPools.find((pool) => item.key === `pool_${pool.id}`);
         const balance = pool ? balances[pool.id].get(point.date) ?? 0 : point.balance;
         return [[`${item.key}_actual`, point.projected ? null : balance],
-          [`${item.key}_projected`, point.projected || index === todayIndex ? balance : null]];
+          [`${item.key}_projected`, point.projected || index === todayIndex || (!todayIsVisible && index === todayIndex - 1) ? balance : null]];
       })),
     }));
     },
-    [history, todayIndex, poolHistories, combinedTotals],
+    [history, todayIndex, todayIsVisible, poolHistories, combinedTotals],
   );
-  const todayPoint = history[todayIndex];
+  const todayPoint = fullHistory.find((point) => point.date === today);
   const currentBalance = todayPoint?.balance ?? 0;
-  const projectionBalance = history.find((point) => point.date === addMonths(today, 12))?.balance ?? 0;
+  const projectionBalance = fullHistory.find((point) => point.date === addMonths(today, 12))?.balance ?? 0;
   const yearAgoDate = addMonths(today, -12);
-  const yearAgoBalance = history.find((point) => point.date === yearAgoDate)?.balance ?? currentBalance;
+  const yearAgoBalance = fullHistory.find((point) => point.date === yearAgoDate)?.balance ?? currentBalance;
   const change = currentBalance - yearAgoBalance;
   const visibleStart = Math.max(0, Math.min(brushRange.startIndex, lastIndex));
   const visibleEnd = Math.max(visibleStart, Math.min(brushRange.endIndex, lastIndex));
@@ -303,7 +310,7 @@ export function BalanceChart({
 
   return (
     <section className="history-panel">
-      <button className="history-today-button button button-primary button-small" type="button" title="Select today and clear the selected event" onClick={onToday}>
+      <button className="history-today-button button button-primary button-small" type="button" title="Select today (or the next weekday when weekends are ignored) and clear the selected event" onClick={onToday}>
         Today
       </button>
       <div className="history-panel-header">
@@ -438,7 +445,7 @@ export function BalanceChart({
                 type="number"
                 domain={[visibleStart, visibleEnd]}
                 ticks={xTicks}
-                tickFormatter={(value: number) => value === todayIndex
+                tickFormatter={(value: number) => todayIsVisible && value === todayIndex
                   ? "Today"
                   : monthYearLabel(history[Math.round(value)]?.date)}
                 axisLine={false}
@@ -460,7 +467,7 @@ export function BalanceChart({
                 tick={{ fill: "#969d95", fontSize: 10, fontFamily: "DM Sans, sans-serif" }}
                 allowDecimals
               />
-              <ReferenceLine
+              {todayIsVisible && <ReferenceLine
                 x={todayIndex}
                 stroke="#a6afa5"
                 strokeDasharray="3 4"
@@ -471,8 +478,8 @@ export function BalanceChart({
                   fontSize: 9,
                   className: "chart-today-label",
                 }}
-              />
-              {selectedIndex >= 0 && selectedIndex !== todayIndex && (
+              />}
+              {selectedIndex >= 0 && (!todayIsVisible || selectedIndex !== todayIndex) && (
                 <ReferenceLine
                   x={selectedIndex}
                   stroke={PROJECTED_COLOR}

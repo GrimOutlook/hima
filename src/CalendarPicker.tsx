@@ -1,7 +1,7 @@
 import { createPortal } from "react-dom";
 import { useCallback, useContext, useEffect, useId, useLayoutEffect, useRef, useState } from "react";
 import { addDays, addMonths, isValidDate, prettyDate, todayDate, validDateOrFallback, WEEKDAYS } from "./model";
-import { FirstDayOfWeekContext } from "./settings";
+import { FirstDayOfWeekContext, IgnoreWeekendsContext, isWeekend, nextWeekday } from "./settings";
 
 interface CalendarPickerProps {
   value: string;
@@ -32,6 +32,7 @@ function startOfMonth(value: string): string {
 
 export function CalendarPicker({ value, onChange, label = "BALANCE ON", optional = false, min, selectedDates, onDatesChange }: CalendarPickerProps) {
   const firstDayOfWeek = useContext(FirstDayOfWeekContext);
+  const ignoreWeekends = useContext(IgnoreWeekendsContext);
   const weekStart = WEEKDAYS.indexOf(firstDayOfWeek);
   const weekdays = [...WEEKDAYS.slice(weekStart), ...WEEKDAYS.slice(0, weekStart)];
   const id = useId();
@@ -51,12 +52,12 @@ export function CalendarPicker({ value, onChange, label = "BALANCE ON", optional
 
   function updateDragDate(date: string) {
     const drag = dragRef.current;
-    if (!drag || (min && date < min)) return;
+    if (!drag || (min && date < min) || (ignoreWeekends && isWeekend(date))) return;
     const first = date < drag.start ? date : drag.start;
     const last = date > drag.start ? date : drag.start;
     const range = new Set<string>();
     for (let current = first; current <= last; current = addDays(current, 1)) {
-      range.add(current);
+      if (!ignoreWeekends || !isWeekend(current)) range.add(current);
       if (current === last) break;
     }
     drag.dates = drag.removing
@@ -139,6 +140,7 @@ export function CalendarPicker({ value, onChange, label = "BALANCE ON", optional
   const daysInMonth = new Date(Date.UTC(year, month, 0)).getUTCDate();
   const firstWeekday = (new Date(Date.UTC(year, month - 1, 1)).getUTCDay() - weekStart + 7) % 7;
   const today = todayDate();
+  const todaySelection = ignoreWeekends ? nextWeekday(today) : today;
   const calendarDays = Array.from({ length: 42 }, (_, index) => {
     const day = index - firstWeekday + 1;
     if (day < 1 || day > daysInMonth) return null;
@@ -155,6 +157,10 @@ export function CalendarPicker({ value, onChange, label = "BALANCE ON", optional
   }
 
   function selectDate(candidate: string): boolean {
+    if (ignoreWeekends && isWeekend(candidate)) {
+      setError("Choose a weekday. Weekends are ignored in Settings.");
+      return false;
+    }
     if (min && candidate < min) {
       setError(`Choose a date on or after ${prettyDate(min)}.`);
       return false;
@@ -208,7 +214,7 @@ export function CalendarPicker({ value, onChange, label = "BALANCE ON", optional
           aria-label={`Choose ${label.toLowerCase()}`}
           style={{ top: position.top, left: position.left, width: position.width }}
         >
-          <button className="calendar-footer-button calendar-clear-button calendar-top-today" type="button" disabled={Boolean(min && today < min)} onClick={() => selectDate(today)}>
+          <button className="calendar-footer-button calendar-clear-button calendar-top-today" type="button" disabled={Boolean(min && todaySelection < min)} onClick={() => selectDate(todaySelection)}>
             Today
           </button>
           <div className="calendar-header">
@@ -272,7 +278,7 @@ export function CalendarPicker({ value, onChange, label = "BALANCE ON", optional
                 type="button"
                 aria-label={prettyDate(date)}
                 aria-pressed={visibleSelectedDates ? visibleSelectedDates.includes(date) : date === value}
-                disabled={Boolean(min && date < min)}
+                disabled={Boolean(min && date < min) || (ignoreWeekends && isWeekend(date))}
                 data-date={date}
                 onPointerDown={(event) => {
                   if (!selectedDates || !onDatesChange || event.button !== 0 || !event.isPrimary) return;
