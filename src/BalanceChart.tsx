@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { Fragment, useEffect, useMemo, useRef, useState } from "react";
 import {
   Area,
   AreaChart,
@@ -33,7 +33,7 @@ const PLOT_LEFT = 68;
 const PLOT_RIGHT = 18;
 const ACTUAL_COLOR = "#4b7955";
 const PROJECTED_COLOR = "#bd856a";
-const TIMELINE_PRESETS = ["YTD", "6 month", "3 month", "1 year", "5 year", "all time"] as const;
+const TIMELINE_PRESETS = ["all time", "YTD", "6 month", "3 month", "1 year", "5 year", "YFD", "Next Year"] as const;
 
 type TimelinePreset = typeof TIMELINE_PRESETS[number];
 
@@ -45,6 +45,17 @@ function timelineRange(
   lastIndex: number,
 ) {
   if (preset === "all time") return { startIndex: 0, endIndex: lastIndex };
+  if (preset === "YFD") {
+    const endDate = addMonths(today, 12);
+    const endIndex = history.findIndex((point) => point.date >= endDate);
+    return { startIndex: todayIndex, endIndex: endIndex < 0 ? lastIndex : endIndex };
+  }
+  if (preset === "Next Year") {
+    const nextYear = Number(today.slice(0, 4)) + 1;
+    const startIndex = history.findIndex((point) => point.date >= `${nextYear}-01-01`);
+    const endIndex = history.findIndex((point) => point.date >= `${nextYear}-12-31`);
+    return { startIndex: startIndex < 0 ? lastIndex : startIndex, endIndex: endIndex < 0 ? lastIndex : endIndex };
+  }
 
   const startDate = preset === "YTD"
     ? `${today.slice(0, 4)}-01-01`
@@ -134,7 +145,7 @@ export function BalanceChart({
   );
   const todayPoint = history[todayIndex];
   const currentBalance = todayPoint?.balance ?? 0;
-  const projectionBalance = history.at(-1)?.balance ?? 0;
+  const projectionBalance = history.find((point) => point.date === addMonths(today, 12))?.balance ?? 0;
   const yearAgoDate = addMonths(today, -12);
   const yearAgoBalance = history.find((point) => point.date === yearAgoDate)?.balance ?? currentBalance;
   const change = currentBalance - yearAgoBalance;
@@ -166,10 +177,10 @@ export function BalanceChart({
           <h2>{selectedPool ? `${selectedPool.name} balance history & outlook` : "PPL balance history & outlook"}</h2>
           <p>
             {selectedPool
-              ? `Balance history and a twelve-month projection for ${selectedPool.name}.`
+              ? `Balance history and a projection through next year for ${selectedPool.name}.`
                : hiddenPoolCount > 0
-                 ? `Balance history and a twelve-month projection across visible pools (${hiddenPoolCount} hidden).`
-                 : "Balance history and a twelve-month projection across all pools."}
+                 ? `Balance history and a projection through next year across visible pools (${hiddenPoolCount} hidden).`
+                 : "Balance history and a projection through next year across all pools."}
           </p>
           {pools.length > 0 && (
             <label className="history-pool-filter">
@@ -208,19 +219,23 @@ export function BalanceChart({
       <div className="history-timeline-controls" role="group" aria-label="Graph timeline presets">
         <span>Timeline</span>
         {TIMELINE_PRESETS.map((preset) => (
-          <button
-            key={preset}
-            className={`history-timeline-preset${selectedPreset === preset ? " is-active" : ""}`}
-            type="button"
-            aria-pressed={selectedPreset === preset}
-            onClick={() => {
-              selectedPresetRef.current = preset;
-              setSelectedPreset(preset);
-              setBrushRange(timelineRange(preset, history, today, todayIndex, lastIndex));
-            }}
-          >
-            {preset}
-          </button>
+          <Fragment key={preset}>
+            {(preset === "YTD" || preset === "YFD") && (
+              <span className="history-timeline-separator" aria-hidden="true" />
+            )}
+            <button
+              className={`history-timeline-preset${selectedPreset === preset ? " is-active" : ""}`}
+              type="button"
+              aria-pressed={selectedPreset === preset}
+              onClick={() => {
+                selectedPresetRef.current = preset;
+                setSelectedPreset(preset);
+                setBrushRange(timelineRange(preset, history, today, todayIndex, lastIndex));
+              }}
+            >
+              {preset}
+            </button>
+          </Fragment>
         ))}
       </div>
       <div className="balance-chart-wrap">
@@ -235,7 +250,7 @@ export function BalanceChart({
               data={chartData}
               margin={{ top: 38, right: PLOT_RIGHT, bottom: 0, left: 0 }}
               accessibilityLayer
-              aria-label={`Daily ${selectedPool ? `${selectedPool.name} ` : "combined PPL "}balance history and twelve-month forecast`}
+              aria-label={`Daily ${selectedPool ? `${selectedPool.name} ` : "combined PPL "}balance history and forecast through next year`}
             >
               <CartesianGrid stroke="#eeefe9" vertical={false} />
               <XAxis

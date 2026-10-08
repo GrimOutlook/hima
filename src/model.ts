@@ -652,7 +652,7 @@ export function balanceHistory(store: Store, today: string, poolId?: number): Ba
     defaultStart,
   );
   const start = earliestDate;
-  const end = addMonths(today, 12);
+  const end = `${Number(today.slice(0, 4)) + 1}-12-31`;
   const dates: string[] = [];
   for (let date = start; date <= end; date = addDays(date, 1)) {
     dates.push(date);

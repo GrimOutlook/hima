@@ -448,12 +448,12 @@ describe("JSON data backups", () => {
 });
 
 describe("balance chart", () => {
-  it("contains a year of actual history and a year of projected balances", () => {
+  it("contains a year of actual history and projections through the entire next calendar year", () => {
     const history = balanceHistory(emptyStore(), "2026-10-06");
-    expect(history).toHaveLength(731);
+    expect(history).toHaveLength(817);
     expect(history[0]?.date).toBe("2025-10-06");
     expect([...history].reverse().find((point) => !point.projected)?.date).toBe("2026-10-06");
-    expect(history.at(-1)?.date).toBe("2027-10-06");
+    expect(history.at(-1)?.date).toBe("2027-12-31");
     expect(history[0]?.projected).toBe(false);
     expect(history.find((point) => point.date === "2026-10-06")?.projected).toBe(false);
     expect(history.at(-1)?.projected).toBe(true);
