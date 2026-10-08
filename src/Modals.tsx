@@ -323,6 +323,7 @@ export function PoolUsageModal({ pool, events, onClose }: PoolUsageModalProps) {
 }
 
 export interface AdditionFormData {
+  additionalEntries?: { amount: number; date: string }[];
   reset: boolean;
   expiresSameDay?: boolean;
   amount: number;
@@ -382,6 +383,8 @@ export function AdditionModal({
   const [nthWeekday, setNthWeekday] = useState<NthWeekday>(initialNthWeekday);
   const [weekday, setWeekday] = useState<Weekday>(initialWeekday);
   const [error, setError] = useState("");
+  const [selectedDates, setSelectedDates] = useState<string[]>([initialDate]);
+  const batchAdding = adding && !cap && !reset && !recurring;
 
   function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -430,11 +433,20 @@ export function AdditionModal({
       setError("The end date must be on or after the schedule's start date.");
       return;
     }
+    const parsedEntries: { amount: number; date: string }[] = [];
+    if (batchAdding) {
+      if (!selectedDates.length || selectedDates.some((selected) => !isValidDate(selected))) {
+        setError("Choose at least one valid date.");
+        return;
+      }
+      parsedEntries.push(...selectedDates.slice(1).map((selected) => ({ amount: parsedAmount, date: selected })));
+    }
     const saveError = onSave({
+      ...(parsedEntries.length ? { additionalEntries: parsedEntries } : {}),
       reset,
       expiresSameDay: !reset && initialExpiresSameDay,
       amount: parsedAmount,
-      date,
+      date: batchAdding ? selectedDates[0] : date,
       recurring,
       cadence,
       ...(recurring && endDate ? { endDate } : {}),
@@ -458,7 +470,7 @@ export function AdditionModal({
           : reset
           ? "Set the balance to your chosen amount at the end of each reset date, after additions and leave usage."
           : adding
-          ? "Choose a one-time addition or set a repeating schedule."
+          ? "Choose dates to add the entered amount on each date, or set a repeating schedule."
           : "Update this addition's amount, date, or schedule."
       }
       labelledBy="addition-modal-title"
@@ -559,7 +571,9 @@ export function AdditionModal({
         )}
         <CalendarPicker label={cap ? "Starts on" : recurring
              ? cadence === "YearlyNthWeekday" ? "Start schedule on" : reset ? "First reset on" : "First addition on"
-              : reset ? "Reset on" : "Add on"} value={date} onChange={setDate} />
+               : reset ? "Reset on" : "Add on"} value={batchAdding ? "" : date} onChange={setDate}
+          selectedDates={batchAdding ? selectedDates : undefined}
+          onDatesChange={batchAdding ? setSelectedDates : undefined} />
         {(cap || recurring) && (
             <CalendarPicker label="End date (inclusive, optional)" optional
               min={date}
@@ -572,7 +586,7 @@ export function AdditionModal({
           {!adding && onDelete && <DeleteButton label={cap ? "Delete balance cap" : reset ? "Delete balance reset" : recurring ? "Delete recurring addition" : "Delete one-time addition"} onDelete={onDelete} />}
           <button className="button button-quiet" type="button" onClick={onClose}>Cancel</button>
           <button className="button button-primary" type="submit">
-            {cap ? "Save balance cap" : reset ? "Save balance reset" : "Save addition"}
+            {cap ? "Save balance cap" : reset ? "Save balance reset" : batchAdding && selectedDates.length > 1 ? "Save additions" : "Save addition"}
           </button>
         </div>
       </form>

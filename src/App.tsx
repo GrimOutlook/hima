@@ -365,7 +365,8 @@ function App() {
 
     setStore((current) => {
       if (selectedModal.type === "add-time") {
-        const ids = allocateIds(current);
+        const entries = [{ amount: form.amount, date: form.date }, ...(!form.recurring && !form.reset ? form.additionalEntries ?? [] : [])];
+        const ids = allocateIds(current, entries.length);
         return {
           ...current,
           next_id: ids.nextId,
@@ -396,7 +397,7 @@ function App() {
                 }
               : {
                   ...pool,
-                  additions: [...pool.additions, { id: ids.firstId, amount: form.amount, date: form.date, reset: form.reset || undefined, expires_same_day: !form.reset && pool.new_additions_expire_same_day || undefined }],
+                  additions: [...pool.additions, ...entries.map((entry, index) => ({ id: ids.firstId + index, amount: entry.amount, date: entry.date, reset: form.reset || undefined, expires_same_day: !form.reset && pool.new_additions_expire_same_day || undefined }))],
                 };
           }),
         };
