@@ -480,7 +480,7 @@ export function BalanceChart({
         <span aria-hidden="true" style={{ width: 16, borderTop: "2px dashed #747e74" }} />
         Projected
         <span className="history-range">
-          {prettyDate(visibleStartDate)} – {prettyDate(visibleEndDate)} · hover for daily balances; click to select a date; drag the range handles to zoom and the selection to pan
+          {prettyDate(visibleStartDate)} – {prettyDate(visibleEndDate)} · hover for daily balances; click to select a date and scroll to the nearest event; drag the range handles to zoom and the selection to pan
         </span>
       </div>
     </section>

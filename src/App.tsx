@@ -73,6 +73,7 @@ function App() {
   const [selectedUsesPoolId, setSelectedUsesPoolId] = useState<number | null>(null);
   const [modal, setModal] = useState<ModalState | null>(null);
   const importInputRef = useRef<HTMLInputElement>(null);
+  const timelineListRef = useRef<HTMLDivElement>(null);
   const chartHistoryEnd = todayDate();
   const balance = totalsOn(store, balanceDate);
   const history = useMemo(
@@ -115,6 +116,33 @@ function App() {
   useEffect(() => () => {
     if (eventClickTimer.current !== null) clearTimeout(eventClickTimer.current);
   }, []);
+
+  useEffect(() => {
+    scrollToClosestEvent(balanceDate);
+  }, [balanceDate, selectedUsesPoolId, store.events]);
+
+  function scrollToClosestEvent(date: string) {
+    const list = timelineListRef.current;
+    if (!list) return;
+    const clickedTime = Date.parse(date);
+    let closestEventId: number | undefined;
+    let closestDistance = Infinity;
+    for (const event of visibleTimeline) {
+      for (const day of event.days) {
+        const distance = Math.abs(Date.parse(day.date) - clickedTime);
+        if (distance < closestDistance) {
+          closestDistance = distance;
+          closestEventId = event.id;
+        }
+      }
+    }
+    const row = list.querySelector<HTMLElement>(`[data-event-id="${closestEventId}"]`);
+    if (!row) return;
+    list.scrollTo({
+      top: list.scrollTop + row.getBoundingClientRect().top - list.getBoundingClientRect().top - list.clientTop,
+      behavior: window.matchMedia("(prefers-reduced-motion: reduce)").matches ? "instant" : "smooth",
+    });
+  }
 
   function createPool() {
     setModal({ type: "new-pool" });
@@ -622,7 +650,7 @@ function App() {
                   )}
                 </div>
               ) : (
-                <div className="timeline-list">
+                <div className="timeline-list" ref={timelineListRef}>
                   {visibleTimeline.map((event) => {
                     const includedDays = event.days.filter((day) => day.date <= balanceDate).length;
                     const statusClass = includedDays === event.days.length
@@ -646,6 +674,7 @@ function App() {
                     })).filter((share) => share.hours > 0);
                     return (
                       <article className={`event-row${selectedEvent?.id === event.id ? " event-row-selected" : ""}`} key={event.id}
+                        data-event-id={event.id}
                         onClick={(click) => {
                           if (click.target instanceof Element && click.target.closest("button")) return;
                           selectEvent(event.id);
