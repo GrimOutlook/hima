@@ -772,6 +772,7 @@ function PoolCardContent({
           </div>
         </div>
         <div className="pool-actions">
+          <button className="icon-button" type="button" title="Add time / use-by" aria-label={`Add time or use-by date to ${pool.name}`} onClick={onAddTime}>+</button>
           <button className="icon-button" type="button" title="View pool usage" aria-label={`View usage ledger for ${pool.name}`} onClick={onViewUsage}>
             <svg className="ledger-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
               <path d="M7 4.5h11a1.5 1.5 0 0 1 1.5 1.5v12A1.5 1.5 0 0 1 18 19.5H7a2.5 2.5 0 0 1-2.5-2.5V7A2.5 2.5 0 0 1 7 4.5Z" />
@@ -841,10 +842,6 @@ function PoolCardContent({
       </details>
       <div className="pool-card-footer">
         <span className="pool-unit-note">Tracked in hours</span>
-        <button className="button button-soft button-small" type="button" onClick={onAddTime}>
-          <span className="button-plus">+</span>
-          Add time / use-by
-        </button>
       </div>
     </article>
   );
