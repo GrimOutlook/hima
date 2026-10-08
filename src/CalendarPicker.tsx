@@ -1,6 +1,7 @@
 import { createPortal } from "react-dom";
-import { useCallback, useEffect, useId, useLayoutEffect, useRef, useState } from "react";
-import { addDays, addMonths, isValidDate, prettyDate, todayDate, validDateOrFallback } from "./model";
+import { useCallback, useContext, useEffect, useId, useLayoutEffect, useRef, useState } from "react";
+import { addDays, addMonths, isValidDate, prettyDate, todayDate, validDateOrFallback, WEEKDAYS } from "./model";
+import { FirstDayOfWeekContext } from "./settings";
 
 interface CalendarPickerProps {
   value: string;
@@ -20,7 +21,6 @@ interface CalendarPosition {
 
 const CALENDAR_WIDTH = 312;
 const CALENDAR_HEIGHT = 430;
-const WEEKDAYS = ["M", "T", "W", "T", "F", "S", "S"];
 const MONTHS = [
   "January", "February", "March", "April", "May", "June",
   "July", "August", "September", "October", "November", "December",
@@ -31,6 +31,9 @@ function startOfMonth(value: string): string {
 }
 
 export function CalendarPicker({ value, onChange, label = "BALANCE ON", optional = false, min, selectedDates, onDatesChange }: CalendarPickerProps) {
+  const firstDayOfWeek = useContext(FirstDayOfWeekContext);
+  const weekStart = WEEKDAYS.indexOf(firstDayOfWeek);
+  const weekdays = [...WEEKDAYS.slice(weekStart), ...WEEKDAYS.slice(0, weekStart)];
   const id = useId();
   const calendarId = `${id}-calendar`;
   const rootRef = useRef<HTMLDivElement>(null);
@@ -134,7 +137,7 @@ export function CalendarPicker({ value, onChange, label = "BALANCE ON", optional
   const firstYearOption = Math.min(Math.max(1, year - 40), 9999 - 80);
   const yearOptions = Array.from({ length: 81 }, (_, index) => firstYearOption + index);
   const daysInMonth = new Date(Date.UTC(year, month, 0)).getUTCDate();
-  const firstWeekday = (new Date(Date.UTC(year, month - 1, 1)).getUTCDay() + 6) % 7;
+  const firstWeekday = (new Date(Date.UTC(year, month - 1, 1)).getUTCDay() - weekStart + 7) % 7;
   const today = todayDate();
   const calendarDays = Array.from({ length: 42 }, (_, index) => {
     const day = index - firstWeekday + 1;
@@ -255,7 +258,7 @@ export function CalendarPicker({ value, onChange, label = "BALANCE ON", optional
             </button>
           </div>
           <div className="calendar-weekdays" aria-hidden="true">
-            {WEEKDAYS.map((weekday, index) => <span key={`${weekday}-${index}`}>{weekday}</span>)}
+            {weekdays.map((weekday) => <span key={weekday} title={weekday}>{weekday[0]}</span>)}
           </div>
           <div className={selectedDates ? "calendar-days calendar-days-multiple" : "calendar-days"}>
             {calendarDays.map((date, index) => date ? (

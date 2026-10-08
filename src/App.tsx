@@ -1,16 +1,18 @@
-import { useEffect, useMemo, useRef, useState, type ChangeEvent } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type ChangeEvent } from "react";
 import { closestCenter, defaultDropAnimationSideEffects, DndContext, DragOverlay, KeyboardSensor, PointerSensor, useSensor, useSensors } from "@dnd-kit/core";
 import { defaultAnimateLayoutChanges, SortableContext, sortableKeyboardCoordinates, useSortable, verticalListSortingStrategy } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import { BalanceChart } from "./BalanceChart";
 import { CalendarPicker } from "./CalendarPicker";
 import { poolColor } from "./poolColors";
+import { FirstDayOfWeekContext, loadFirstDayOfWeek, saveFirstDayOfWeek } from "./settings";
 import {
   AdditionModal,
   ModalFrame,
   EventModal,
   PoolModal,
   PoolUsageModal,
+  SettingsModal,
   eventInputDays,
   type AdditionFormData,
   type PoolCapFormData,
@@ -46,6 +48,7 @@ import {
 } from "./model";
 
 type ModalState =
+  | { type: "settings" }
   | { type: "new-pool" }
   | { type: "edit-pool"; poolId: number }
   | { type: "edit-cap"; poolId: number; capId: number }
@@ -58,6 +61,7 @@ type ModalState =
   | { type: "edit-event"; eventId: number; name: string; days: EventDayInput[] };
 
 function App() {
+  const [firstDayOfWeek, setFirstDayOfWeek] = useState(loadFirstDayOfWeek);
   const [store, setStore] = useState<Store>(loadStore);
   const [draggedPoolId, setDraggedPoolId] = useState<number | null>(null);
   const draggedPool = store.pools.find((pool) => pool.id === draggedPoolId);
@@ -77,6 +81,11 @@ function App() {
   const eventClickTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [selectedUsesPoolId, setSelectedUsesPoolId] = useState<number | null>(null);
   const [modal, setModal] = useState<ModalState | null>(null);
+  const settingsButtonRef = useRef<HTMLButtonElement>(null);
+  const closeSettings = useCallback(() => {
+    setModal(null);
+    settingsButtonRef.current?.focus();
+  }, []);
   const importInputRef = useRef<HTMLInputElement>(null);
   const timelineListRef = useRef<HTMLDivElement>(null);
   const chartHistoryEnd = todayDate();
@@ -117,6 +126,10 @@ function App() {
   useEffect(() => {
     saveStore(store);
   }, [store]);
+
+  useEffect(() => {
+    saveFirstDayOfWeek(firstDayOfWeek);
+  }, [firstDayOfWeek]);
 
   useEffect(() => () => {
     if (eventClickTimer.current !== null) clearTimeout(eventClickTimer.current);
@@ -478,6 +491,7 @@ function App() {
   }
 
   return (
+    <FirstDayOfWeekContext.Provider value={firstDayOfWeek}>
     <div className="app-shell">
       <header className="topbar">
         <a className="brand" href="#top" aria-label="hima home">
@@ -498,6 +512,12 @@ function App() {
             onClick={() => importInputRef.current?.click()}
           >
             Import JSON
+          </button>
+          <button ref={settingsButtonRef} className="icon-button" type="button" title="Settings" aria-label="Open settings" aria-haspopup="dialog" onClick={() => setModal({ type: "settings" })}>
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+              <path d="m9 3-.5 2-2 1.2-2-.6-2 3.5L4 10.5v3l-1.5 1.4 2 3.5 2-.6 2 1.2.5 2h6l.5-2 2-1.2 2 .6 2-3.5-1.5-1.4v-3l1.5-1.4-2-3.5-2 .6-2-1.2L15 3Z" />
+              <circle cx="12" cy="12" r="3" />
+            </svg>
           </button>
           <input
             ref={importInputRef}
@@ -764,6 +784,7 @@ function App() {
         </footer>
       </main>
 
+      {selectedModal?.type === "settings" && <SettingsModal firstDayOfWeek={firstDayOfWeek} onChange={setFirstDayOfWeek} onClose={closeSettings} />}
       {informationPool && (
         <PoolInformationModal {...poolCardProps(informationPool)} onEditCap={(capId) => setModal({ type: "edit-cap", poolId: informationPool.id, capId })} onClose={() => setModal(null)} />
       )}
@@ -850,6 +871,7 @@ function App() {
         />
       )}
     </div>
+    </FirstDayOfWeekContext.Provider>
   );
 }
 

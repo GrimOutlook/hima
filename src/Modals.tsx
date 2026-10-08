@@ -1,4 +1,4 @@
-import { useState, type FormEvent, type ReactNode } from "react";
+import { useEffect, useRef, useState, type FormEvent, type ReactNode } from "react";
 import { HexColorInput, HexColorPicker } from "react-colorful";
 import { CalendarPicker } from "./CalendarPicker";
 import { SettingTooltip } from "./SettingTooltip";
@@ -64,6 +64,53 @@ export function ModalFrame({
       </section>
     </div>
   );
+}
+
+export function SettingsModal({ firstDayOfWeek, onChange, onClose }: {
+  firstDayOfWeek: Weekday;
+  onChange: (day: Weekday) => void;
+  onClose: () => void;
+}) {
+  const contentRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const card = contentRef.current?.closest(".modal-card");
+    function handleKeyDown(event: KeyboardEvent) {
+      if (event.key === "Escape") {
+        event.preventDefault();
+        onClose();
+      }
+      if (event.key !== "Tab" || !card) return;
+      const controls = card.querySelectorAll<HTMLElement>("button, select");
+      const first = controls[0];
+      const last = controls[controls.length - 1];
+      if (event.shiftKey && document.activeElement === first) {
+        event.preventDefault();
+        last?.focus();
+      } else if (!event.shiftKey && document.activeElement === last) {
+        event.preventDefault();
+        first?.focus();
+      }
+    }
+    document.addEventListener("keydown", handleKeyDown);
+    return () => {
+      document.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [onClose]);
+
+  return <ModalFrame icon="⚙" title="Settings" description="Make hima feel at home. Changes are saved on this device." labelledBy="settings-modal-title" onClose={onClose}>
+    <div className="modal-form" ref={contentRef}>
+      <label className="field-label">
+        First day of the week
+        <select autoFocus value={firstDayOfWeek} onChange={(event) => onChange(event.currentTarget.value as Weekday)} aria-describedby="week-start-description">
+          {WEEKDAYS.map((day) => <option key={day} value={day}>{day}</option>)}
+        </select>
+      </label>
+      <p className="wizard-hint" id="week-start-description">Calendar pickers display weeks starting on this day.</p>
+      <div className="modal-actions">
+        <button className="button button-primary" type="button" onClick={onClose}>Done</button>
+      </div>
+    </div>
+  </ModalFrame>;
 }
 
 function DeleteButton({ label, onDelete }: { label: string; onDelete: () => void }) {
