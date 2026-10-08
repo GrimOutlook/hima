@@ -725,7 +725,7 @@ function PoolCard({
               <div className="rule-row" key={`cap-${cap.id}`}>
                 <span className="rule-symbol cap-symbol">≤</span>
                 <span className="rule-copy">Maximum balance {formatHours(cap.max_balance)} h</span>
-                <span className="rule-date">{prettyDate(cap.start_date)} – {prettyDate(cap.end_date)}</span>
+                <span className="rule-date">{prettyDate(cap.start_date)} – {cap.end_date ? prettyDate(cap.end_date) : "ongoing"}</span>
               </div>
             ))}
             {[...pool.recurring].sort((left, right) => right.start_date.localeCompare(left.start_date)).map((rule) => (

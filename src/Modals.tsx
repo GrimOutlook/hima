@@ -75,7 +75,7 @@ export interface PoolCapFormData {
   id?: number;
   max_balance: number;
   start_date: string;
-  end_date: string;
+  end_date?: string;
 }
 
 interface PoolCapDraft {
@@ -100,7 +100,7 @@ export function PoolModal({
     id: cap.id,
     maxBalance: String(cap.max_balance),
     startDate: cap.start_date,
-    endDate: cap.end_date,
+    endDate: cap.end_date ?? "",
   })));
   const [error, setError] = useState("");
 
@@ -130,11 +130,11 @@ export function PoolModal({
         setError("Enter cap balances with up to two decimal places.");
         return;
       }
-      if (!isValidDate(cap.startDate) || !isValidDate(cap.endDate)) {
-        setError("Choose a valid start and end date for each cap.");
+      if (!isValidDate(cap.startDate) || (cap.endDate !== "" && !isValidDate(cap.endDate))) {
+        setError("Choose a valid start date and, if provided, end date for each cap.");
         return;
       }
-      if (cap.endDate < cap.startDate) {
+      if (cap.endDate && cap.endDate < cap.startDate) {
         setError("A cap's end date must be on or after its start date.");
         return;
       }
@@ -142,7 +142,7 @@ export function PoolModal({
         ...(cap.id !== undefined ? { id: cap.id } : {}),
         max_balance: maxBalance,
         start_date: cap.startDate,
-        end_date: cap.endDate,
+        ...(cap.endDate ? { end_date: cap.endDate } : {}),
       });
     }
     if (capRangesOverlap(savedCaps)) {
@@ -207,7 +207,7 @@ export function PoolModal({
           <div className="pool-caps-heading">
             <div>
               <strong>Balance caps</strong>
-              <p>Limit balances for specific date ranges. Extra accrual is discarded; leave usage can make room again.</p>
+              <p>Leave the end date blank for an ongoing cap. Extra accrual is discarded; leave usage can make room again.</p>
             </div>
             <button
               className="button button-soft button-small"
@@ -258,7 +258,7 @@ export function PoolModal({
                 />
               </label>
               <label className="field-label pool-cap-end">
-                Ends on
+                Ends on (optional)
                 <input
                   type="date"
                   min={cap.startDate || undefined}

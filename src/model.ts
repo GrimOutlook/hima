@@ -30,7 +30,7 @@ export interface PoolCap {
   id: number;
   max_balance: number;
   start_date: string;
-  end_date: string;
+  end_date?: string;
 }
 
 export interface Pool {
@@ -109,7 +109,10 @@ export function capRangesOverlap(
   ranges: Array<Pick<PoolCap, "start_date" | "end_date">>,
 ): boolean {
   const sorted = [...ranges].sort((left, right) => left.start_date.localeCompare(right.start_date));
-  return sorted.some((range, index) => index > 0 && sorted[index - 1]!.end_date >= range.start_date);
+  return sorted.some((range, index) => {
+    const previous = sorted[index - 1];
+    return previous !== undefined && (!previous.end_date || previous.end_date >= range.start_date);
+  });
 }
 
 function cadenceValue(value: unknown): Cadence {
@@ -249,15 +252,15 @@ export function normalizeStore(value: unknown): Store {
                 Number.isFinite(Number(rawMaxBalance));
               const startDate = stringValue(cap.start_date);
               const endDate = stringValue(cap.end_date);
-              return capId && hasValidMaxBalance && maxBalance >= 0 && isValidDate(startDate) && isValidDate(endDate) && startDate <= endDate
-                ? [{ id: capId, max_balance: maxBalance, start_date: startDate, end_date: endDate }]
+              return capId && hasValidMaxBalance && maxBalance >= 0 && isValidDate(startDate) && (!endDate || (isValidDate(endDate) && startDate <= endDate))
+                ? [{ id: capId, max_balance: maxBalance, start_date: startDate, ...(endDate ? { end_date: endDate } : {}) }]
                 : [];
             })
           : [];
         const caps: PoolCap[] = [];
         for (const cap of capCandidates.sort((left, right) => left.start_date.localeCompare(right.start_date))) {
           const previous = caps.at(-1);
-          if (!previous || previous.end_date < cap.start_date) caps.push(cap);
+          if (!previous || (previous.end_date && previous.end_date < cap.start_date)) caps.push(cap);
         }
         return [{ id, name, additions, recurring, caps }];
       })
@@ -758,7 +761,7 @@ function poolLedgerForDates(pool: Pool, events: LeaveEvent[], dates: string[]): 
     while (actionIndex < orderedActions.length && orderedActions[actionIndex]![0] <= date) {
       const [actionDate, daily] = orderedActions[actionIndex]!;
       const activeCap = pool.caps.find(
-        (cap) => cap.start_date <= actionDate && actionDate <= cap.end_date,
+        (cap) => cap.start_date <= actionDate && (!cap.end_date || actionDate <= cap.end_date),
       );
       // Cap each credit when posted; same-day leave use is applied after accrual.
       const acceptedAccrual = activeCap

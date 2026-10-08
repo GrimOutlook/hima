@@ -172,6 +172,48 @@ describe("recurring accruals", () => {
     expect(poolBalanceOn(normalizeStore({ pools: [pool], events }), 1, "2026-01-16")).toBe(5);
   });
 
+  it("keeps open-ended caps active and resumes accrual after usage", () => {
+    const store = normalizeStore({
+      pools: [{
+        id: 1,
+        name: "Leave",
+        additions: [{ id: 2, amount: 8, date: "2026-01-01" }],
+        recurring: [{ ...recurring("Weekly", "2026-01-02", 5), id: 3 }],
+        caps: [{ id: 4, max_balance: 10, start_date: "2026-01-02" }],
+      }],
+      events: [{
+        id: 5,
+        name: "Time off",
+        days: [{ date: "2027-01-01", allocations: [{ pool_id: 1, hours: 4 }] }],
+      }],
+    });
+    expect(store.pools[0]?.caps[0]?.end_date).toBeUndefined();
+    expect(poolBalanceOn(store, 1, "2026-12-31")).toBe(10);
+    expect(poolBalanceOn(store, 1, "2027-01-01")).toBe(6);
+    expect(poolTotalsOn(store, 1, "2027-01-08")).toEqual({ accrued: 14, used: 4, balance: 10 });
+  });
+
+  it("rejects caps overlapping an ongoing cap and normalizes blank end dates", () => {
+    expect(capRangesOverlap([
+      { start_date: "2027-01-01", end_date: "2027-12-31" },
+      { start_date: "2026-02-01" },
+    ])).toBe(true);
+    expect(capRangesOverlap([
+      { start_date: "2026-01-01", end_date: "2026-01-31" },
+      { start_date: "2026-02-01" },
+    ])).toBe(false);
+    const store = normalizeStore({ pools: [{
+      id: 1, name: "Leave", additions: [], recurring: [],
+      caps: [
+        { id: 3, max_balance: 20, start_date: "2027-01-01" },
+        { id: 2, max_balance: 10, start_date: "2026-02-01", end_date: "" },
+      ],
+    }] });
+    expect(store.pools[0]?.caps).toEqual([
+      { id: 2, max_balance: 10, start_date: "2026-02-01" },
+    ]);
+  });
+
   it("treats cap date ranges as inclusive when checking overlap", () => {
     expect(capRangesOverlap([
       { start_date: "2026-01-01", end_date: "2026-01-31" },
