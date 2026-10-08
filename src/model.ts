@@ -38,6 +38,8 @@ export interface PoolCap {
 export interface Pool {
   id: number;
   name: string;
+  hidden_from_graph?: boolean;
+  hidden_from_total?: boolean;
   additions: OneTimeAddition[];
   recurring: RecurringAddition[];
   caps: PoolCap[];
@@ -267,7 +269,10 @@ export function normalizeStore(value: unknown): Store {
           const previous = caps.at(-1);
           if (!previous || (previous.end_date && previous.end_date < cap.start_date)) caps.push(cap);
         }
-        return [{ id, name, additions, recurring, caps }];
+        return [{ id, name, additions, recurring, caps,
+          ...(pool.hidden_from_graph === true ? { hidden_from_graph: true } : {}),
+          ...(pool.hidden_from_total === true ? { hidden_from_total: true } : {}),
+        }];
       })
     : [];
   const events = Array.isArray(source.events)
@@ -562,7 +567,7 @@ export function totalsOn(store: Store, date: string): { accrued: number; used: n
   const ledgers = store.pools.map((pool) => poolLedgerForDates(pool, store.events, [date])[0]);
   const accrued = ledgers.reduce((total, ledger) => total + (ledger?.accrued ?? 0), 0);
   const used = ledgers.reduce((total, ledger) => total + (ledger?.used ?? 0), 0);
-  const balance = ledgers.reduce((total, ledger) => total + (ledger?.balance ?? 0), 0);
+  const balance = ledgers.reduce((total, ledger, index) => total + (store.pools[index].hidden_from_total ? 0 : ledger?.balance ?? 0), 0);
   return { accrued, used, balance };
 }
 
@@ -626,7 +631,7 @@ export function eventPoolSummary(event: LeaveEvent, pools: Pool[]): string {
 export function balanceHistory(store: Store, today: string, poolId?: number): BalancePoint[] {
   if (!isValidDate(today)) return [];
   const pools = poolId === undefined
-    ? store.pools
+    ? store.pools.filter((pool) => !pool.hidden_from_graph)
     : store.pools.filter((pool) => pool.id === poolId);
   const poolIds = new Set(pools.map((pool) => pool.id));
   const relevantDates = [

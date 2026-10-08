@@ -67,8 +67,10 @@ interface PoolModalProps {
   initialName?: string;
   initialDate?: string;
   initialCaps?: PoolCap[];
+  initialHiddenFromGraph?: boolean;
+  initialHiddenFromTotal?: boolean;
   onClose: () => void;
-  onSave: (name: string, openingAmount: string, openingDate: string, caps: PoolCapFormData[]) => string | null;
+  onSave: (name: string, openingAmount: string, openingDate: string, caps: PoolCapFormData[], hiddenFromGraph: boolean, hiddenFromTotal: boolean) => string | null;
 }
 
 export interface PoolCapFormData {
@@ -90,10 +92,14 @@ export function PoolModal({
   initialName = "",
   initialDate = todayDate(),
   initialCaps = [],
+  initialHiddenFromGraph = false,
+  initialHiddenFromTotal = false,
   onClose,
   onSave,
 }: PoolModalProps) {
   const [name, setName] = useState(initialName);
+  const [hiddenFromGraph, setHiddenFromGraph] = useState(initialHiddenFromGraph);
+  const [hiddenFromTotal, setHiddenFromTotal] = useState(initialHiddenFromTotal);
   const [openingAmount, setOpeningAmount] = useState("");
   const [openingDate, setOpeningDate] = useState(initialDate);
   const [caps, setCaps] = useState<PoolCapDraft[]>(() => initialCaps.map((cap) => ({
@@ -149,7 +155,7 @@ export function PoolModal({
       setError("Cap date ranges must not overlap.");
       return;
     }
-    const saveError = onSave(trimmedName, openingAmount, openingDate, savedCaps);
+    const saveError = onSave(trimmedName, openingAmount, openingDate, savedCaps, hiddenFromGraph, hiddenFromTotal);
     if (saveError) setError(saveError);
   }
 
@@ -159,13 +165,18 @@ export function PoolModal({
       title={editing ? "Edit pool" : "Create a pool"}
       description={
         editing
-          ? "Manage this pool's name and balance caps. Its balance is calculated from additions and events."
+          ? "Manage this pool's name, visibility, and balance caps. Its balance is calculated from additions and events."
           : "Give a kind of leave its own little home."
       }
       labelledBy="pool-modal-title"
       onClose={onClose}
     >
       <form className="modal-form" onSubmit={submit}>
+        <fieldset className="pool-visibility-settings">
+          <legend>Pool visibility</legend>
+          <label><input type="checkbox" checked={hiddenFromGraph} onChange={(event) => setHiddenFromGraph(event.currentTarget.checked)} />Hide from combined graph</label>
+          <label><input type="checkbox" checked={hiddenFromTotal} onChange={(event) => setHiddenFromTotal(event.currentTarget.checked)} />Hide from overall balance total</label>
+        </fieldset>
         <label className="field-label">
           Pool name
           <input

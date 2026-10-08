@@ -175,6 +175,8 @@ function App() {
     openingAmount: string,
     openingDate: string,
     capFormData: PoolCapFormData[],
+    hiddenFromGraph: boolean,
+    hiddenFromTotal: boolean,
   ): string | null {
     if (selectedModal?.type === "edit-pool") {
       if (!store.pools.some((pool) => pool.id === selectedModal.poolId)) return "This pool no longer exists.";
@@ -190,7 +192,7 @@ function App() {
           ...current,
           next_id: newCapCount > 0 ? ids.nextId : current.next_id,
           pools: current.pools.map((pool) =>
-            pool.id === selectedModal.poolId ? { ...pool, name, caps } : pool,
+            pool.id === selectedModal.poolId ? { ...pool, name, caps, hidden_from_graph: hiddenFromGraph, hidden_from_total: hiddenFromTotal } : pool,
           ),
         };
       });
@@ -208,7 +210,7 @@ function App() {
         return {
           ...current,
           next_id: currentIds.nextId,
-          pools: [...current.pools, { id: currentIds.firstId, name, additions, recurring: [], caps }],
+          pools: [...current.pools, { id: currentIds.firstId, name, additions, recurring: [], caps, hidden_from_graph: hiddenFromGraph, hidden_from_total: hiddenFromTotal }],
         };
       });
     }
@@ -596,6 +598,8 @@ function App() {
           editing
           initialName={store.pools.find((pool) => pool.id === selectedModal.poolId)?.name ?? ""}
           initialCaps={store.pools.find((pool) => pool.id === selectedModal.poolId)?.caps ?? []}
+          initialHiddenFromGraph={store.pools.find((pool) => pool.id === selectedModal.poolId)?.hidden_from_graph}
+          initialHiddenFromTotal={store.pools.find((pool) => pool.id === selectedModal.poolId)?.hidden_from_total}
           onClose={() => setModal(null)}
           onSave={savePool}
         />

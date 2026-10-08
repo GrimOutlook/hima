@@ -482,6 +482,33 @@ describe("balance chart", () => {
     expect(selected.at(-1)?.balance).toBe(8);
   });
 
+  it("persists hidden pools and excludes them only from the combined graph", () => {
+    const store = normalizeStore({
+      pools: [
+        { id: 1, name: "Annual leave", additions: [{ id: 3, amount: 10, date: "2025-01-02" }] },
+        { id: 2, name: "Personal leave", hidden_from_graph: true, additions: [{ id: 4, amount: 20, date: "2025-01-02" }] },
+      ],
+      events: [{ id: 5, name: "Day off", days: [{ date: "2026-01-02", allocations: [{ pool_id: 1, hours: 2 }, { pool_id: 2, hours: 3 }] }] }],
+    });
+    const restored = normalizeStore(JSON.parse(JSON.stringify(store)));
+    expect(restored.pools[1]?.hidden_from_graph).toBe(true);
+    expect(balanceHistory(restored, "2026-01-02").at(-1)?.balance).toBe(8);
+    expect(balanceHistory(restored, "2026-01-02", 2).at(-1)?.balance).toBe(17);
+    expect(totalsOn(restored, "2026-01-02").balance).toBe(25);
+    restored.pools[1].hidden_from_total = true;
+    const hiddenTotalStore = normalizeStore(JSON.parse(JSON.stringify(restored)));
+    expect(hiddenTotalStore.pools[1].hidden_from_total).toBe(true);
+    expect(totalsOn(hiddenTotalStore, "2026-01-02")).toEqual({ accrued: 30, used: 5, balance: 8 });
+    expect(balanceHistory(hiddenTotalStore, "2026-01-02", 2).at(-1)?.balance).toBe(17);
+    hiddenTotalStore.pools[0].hidden_from_total = true;
+    expect(totalsOn(hiddenTotalStore, "2026-01-02").balance).toBe(0);
+
+    restored.pools[0].hidden_from_graph = true;
+    const emptyHistory = balanceHistory(restored, "2026-01-02");
+    expect(emptyHistory.length).toBeGreaterThan(0);
+    expect(emptyHistory.every((point) => point.balance === 0)).toBe(true);
+  });
+
   it("keeps all available history for the timeline's all-time preset", () => {
     const store = normalizeStore({
       pools: [

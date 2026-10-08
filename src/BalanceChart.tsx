@@ -94,6 +94,7 @@ export function BalanceChart({
   onPoolChange,
 }: BalanceChartProps) {
   const selectedPool = pools.find((pool) => pool.id === selectedPoolId);
+  const hiddenPoolCount = pools.filter((pool) => pool.hidden_from_graph).length;
   const todayIndex = Math.max(0, history.findIndex((point) => point.date === today));
   const selectedIndex = history.findIndex((point) => point.date === selectedDate);
   const lastIndex = Math.max(0, history.length - 1);
@@ -166,7 +167,9 @@ export function BalanceChart({
           <p>
             {selectedPool
               ? `Balance history and a twelve-month projection for ${selectedPool.name}.`
-              : "Balance history and a twelve-month projection across all pools."}
+               : hiddenPoolCount > 0
+                 ? `Balance history and a twelve-month projection across visible pools (${hiddenPoolCount} hidden).`
+                 : "Balance history and a twelve-month projection across all pools."}
           </p>
           {pools.length > 0 && (
             <label className="history-pool-filter">
@@ -179,7 +182,7 @@ export function BalanceChart({
                   onPoolChange(value === "" ? null : Number(value));
                 }}
               >
-                <option value="">All pools</option>
+                <option value="">{hiddenPoolCount > 0 ? "All visible pools" : "All pools"}</option>
                 {pools.map((pool) => <option key={pool.id} value={pool.id}>{pool.name}</option>)}
               </select>
               <span>in graph</span>
@@ -199,6 +202,9 @@ export function BalanceChart({
           </div>
         </div>
       </div>
+      {!selectedPool && pools.length > 0 && (
+        hiddenPoolCount === pools.length && <p className="history-pool-visibility">All pools are hidden from the combined graph. Edit a pool's visibility settings to include it.</p>
+      )}
       <div className="history-timeline-controls" role="group" aria-label="Graph timeline presets">
         <span>Timeline</span>
         {TIMELINE_PRESETS.map((preset) => (
