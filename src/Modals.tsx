@@ -107,7 +107,6 @@ export function PoolModal({
   const [color, setColor] = useState(initialColor);
   const [customColor, setCustomColor] = useState(!POOL_COLORS.includes(initialColor.toLowerCase()));
   const [colorPickerOpen, setColorPickerOpen] = useState(false);
-  const [hiddenFromGraph, setHiddenFromGraph] = useState(initialHiddenFromGraph);
   const [hiddenFromTotal, setHiddenFromTotal] = useState(initialHiddenFromTotal);
   const [openingAmount, setOpeningAmount] = useState("");
   const [openingDate, setOpeningDate] = useState(initialDate);
@@ -128,7 +127,7 @@ export function PoolModal({
       setError("Choose a valid starting date.");
       return;
     }
-    const saveError = onSave(trimmedName, openingAmount, openingDate, hiddenFromGraph, hiddenFromTotal, editing ? color : undefined);
+    const saveError = onSave(trimmedName, openingAmount, openingDate, initialHiddenFromGraph, hiddenFromTotal, editing ? color : undefined);
     if (saveError) setError(saveError);
   }
 
@@ -227,7 +226,6 @@ export function PoolModal({
         )}
         <fieldset className="pool-visibility-settings">
           <legend>Pool visibility</legend>
-          <label><input type="checkbox" checked={hiddenFromGraph} onChange={(event) => setHiddenFromGraph(event.currentTarget.checked)} />Hide from combined graph</label>
           <label><input type="checkbox" checked={hiddenFromTotal} onChange={(event) => setHiddenFromTotal(event.currentTarget.checked)} />Hide from overall balance total</label>
         </fieldset>
         {error && <p className="form-error" role="alert">{error}</p>}
