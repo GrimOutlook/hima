@@ -32,6 +32,74 @@ function recurring(
   return { id: 1, amount, cadence, start_date, ...(end_date ? { end_date } : {}) };
 }
 
+describe("holiday hours", () => {
+  const pool: Pool = {
+    id: 1, name: "Holidays", caps: [], recurring: [],
+    additions: [{ id: 2, amount: 8, date: "2026-01-01", expires_same_day: true }],
+  };
+  const leave = (date: string, hours: number): LeaveEvent => ({
+    id: 10, name: "Leave", days: [{ date, allocations: [{ pool_id: 1, hours }] }],
+  });
+
+  it.each([0, 3, 8, 10])("expires only unused hours after %s hours of same-day leave", (hours) => {
+    const store = { ...emptyStore(), pools: [pool], events: hours ? [leave("2026-01-01", hours)] : [] };
+    expect(poolBalanceOn(store, 1, "2025-12-31")).toBe(0);
+    expect(poolBalanceOn(store, 1, "2026-01-01")).toBe(8 - hours);
+    expect(poolTotalsOn(store, 1, "2026-01-02")).toEqual({ accrued: 8, used: hours, balance: Math.min(0, 8 - hours) });
+    expect(poolBalanceOn(store, 1, "2027-01-01")).toBe(Math.min(0, 8 - hours));
+  });
+
+  it("uses holiday hours first and preserves permanent hours and consecutive holidays", () => {
+    const store = { ...emptyStore(), pools: [{ ...pool, additions: [
+      ...pool.additions,
+      { id: 3, amount: 20, date: "2025-12-01" },
+      { id: 4, amount: 8, date: "2026-01-02", expires_same_day: true },
+    ] }], events: [leave("2026-01-01", 3), leave("2026-01-02", 10)] };
+    expect(poolBalanceOn(store, 1, "2026-01-01")).toBe(25);
+    expect(poolBalanceOn(store, 1, "2026-01-02")).toBe(18);
+    expect(poolBalanceOn(store, 1, "2026-01-03")).toBe(18);
+  });
+
+  it("expires recurring nth-weekday credits even after the schedule ends", () => {
+    const store = { ...emptyStore(), pools: [{ ...pool, additions: [], recurring: [{
+      id: 3, amount: 8, expires_same_day: true, cadence: "YearlyNthWeekday" as const,
+      start_date: "2026-01-01", end_date: "2027-01-01", month: 1,
+      nth_weekday: "First" as const, weekday: "Friday" as const,
+    }] }] };
+    expect(poolBalanceOn(store, 1, "2026-01-02")).toBe(8);
+    expect(poolBalanceOn(store, 1, "2026-01-03")).toBe(0);
+    expect(poolBalanceOn(store, 1, "2027-01-01")).toBe(8);
+    expect(poolTotalsOn(store, 1, "2027-01-02")).toEqual({ accrued: 16, used: 0, balance: 0 });
+    const history = balanceHistory(store, "2026-01-01", 1);
+    expect(history.find((point) => point.date === "2026-01-02")?.balance).toBe(8);
+    expect(history.find((point) => point.date === "2026-01-03")?.balance).toBe(0);
+  });
+
+  it("expires only accepted capped credits and respects explicit resets", () => {
+    const store = { ...emptyStore(), pools: [{ ...pool,
+      caps: [{ id: 3, max_balance: 10, start_date: "2025-01-01" }],
+      additions: [...pool.additions, { id: 4, amount: 6, date: "2025-12-01" }],
+    }] };
+    expect(poolTotalsOn(store, 1, "2026-01-02")).toEqual({ accrued: 10, used: 0, balance: 6 });
+    store.pools[0].additions.push({ id: 5, amount: 7, reset: true, date: "2026-01-01" });
+    expect(poolBalanceOn(store, 1, "2026-01-02")).toBe(7);
+  });
+
+  it("retains expiration in exports and ignores it on reset rules", () => {
+    const store = { ...emptyStore(), next_id: 4, pools: [{ ...pool, recurring: [{
+      ...recurring("Yearly", "2026-01-01", 8), id: 3, expires_same_day: true,
+    }] }] };
+    expect(parseStoreJson(serializeStoreJson(store))).toEqual(store);
+    const resetStore = { ...store, pools: [{ ...store.pools[0], additions: [{ ...pool.additions[0], reset: true }] }] };
+    expect(normalizeStore(resetStore).pools[0].additions[0].expires_same_day).toBeUndefined();
+  });
+
+  it("warns when holiday hours are allocated on a later day", () => {
+    expect(eventBalanceWarnings({ ...emptyStore(), pools: [pool] }, leave("2026-01-02", 8).days))
+      .toEqual([{ poolId: 1, date: "2026-01-02", balance: -8 }]);
+  });
+});
+
 describe("hour amounts", () => {
   it("accepts up to two decimal places and optionally zero", () => {
     expect(parseHours("7.65")).toBe(7.65);

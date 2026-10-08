@@ -285,6 +285,7 @@ function App() {
     hiddenFromGraph: boolean,
     hiddenFromTotal: boolean,
     color?: string,
+    newAdditionsExpireSameDay = false,
   ): string | null {
     if (selectedModal?.type === "edit-pool") {
       if (!store.pools.some((pool) => pool.id === selectedModal.poolId)) return "This pool no longer exists.";
@@ -292,7 +293,7 @@ function App() {
         return {
           ...current,
           pools: current.pools.map((pool) =>
-            pool.id === selectedModal.poolId ? { ...pool, name, color, hidden_from_graph: hiddenFromGraph, hidden_from_total: hiddenFromTotal } : pool,
+            pool.id === selectedModal.poolId ? { ...pool, name, color, hidden_from_graph: hiddenFromGraph, hidden_from_total: hiddenFromTotal, new_additions_expire_same_day: newAdditionsExpireSameDay || undefined } : pool,
           ),
         };
       });
@@ -303,12 +304,12 @@ function App() {
         const openingAdditionCount = initialAmount > 0 ? 1 : 0;
         const currentIds = allocateIds(current, 1 + openingAdditionCount);
         const additions: OneTimeAddition[] = initialAmount > 0
-          ? [{ id: currentIds.firstId + 1, amount: initialAmount, date: openingDate }]
+          ? [{ id: currentIds.firstId + 1, amount: initialAmount, date: openingDate, expires_same_day: newAdditionsExpireSameDay || undefined }]
           : [];
         return {
           ...current,
           next_id: currentIds.nextId,
-          pools: [...current.pools, { id: currentIds.firstId, name, additions, recurring: [], caps: [], hidden_from_graph: hiddenFromGraph, hidden_from_total: hiddenFromTotal }],
+          pools: [...current.pools, { id: currentIds.firstId, name, additions, recurring: [], caps: [], hidden_from_graph: hiddenFromGraph, hidden_from_total: hiddenFromTotal, new_additions_expire_same_day: newAdditionsExpireSameDay || undefined }],
         };
       });
     }
@@ -379,6 +380,7 @@ function App() {
                       id: ids.firstId,
                       amount: form.amount,
                       reset: form.reset || undefined,
+                      expires_same_day: !form.reset && pool.new_additions_expire_same_day || undefined,
                       cadence: form.cadence,
                       start_date: form.date,
                       ...(form.endDate ? { end_date: form.endDate } : {}),
@@ -394,7 +396,7 @@ function App() {
                 }
               : {
                   ...pool,
-                  additions: [...pool.additions, { id: ids.firstId, amount: form.amount, date: form.date, reset: form.reset || undefined }],
+                  additions: [...pool.additions, { id: ids.firstId, amount: form.amount, date: form.date, reset: form.reset || undefined, expires_same_day: !form.reset && pool.new_additions_expire_same_day || undefined }],
                 };
           }),
         };
@@ -409,7 +411,7 @@ function App() {
             ...pool,
             additions: pool.additions.map((addition) =>
               addition.id === selectedModal.additionId
-                ? { ...addition, amount: form.amount, date: form.date, reset: form.reset || undefined }
+                ? { ...addition, amount: form.amount, date: form.date, reset: form.reset || undefined, expires_same_day: !form.reset && form.expiresSameDay || undefined }
                 : addition,
             ),
           }),
@@ -428,6 +430,7 @@ function App() {
                     ...rule,
                     amount: form.amount,
                     reset: form.reset || undefined,
+                    expires_same_day: !form.reset && form.expiresSameDay || undefined,
                     cadence: form.cadence,
                     start_date: form.date,
                     end_date: form.endDate,
@@ -779,6 +782,7 @@ function App() {
           initialColor={poolColor(selectedModal.poolId, store.pools.find((pool) => pool.id === selectedModal.poolId)?.color)}
           initialHiddenFromGraph={store.pools.find((pool) => pool.id === selectedModal.poolId)?.hidden_from_graph}
           initialHiddenFromTotal={store.pools.find((pool) => pool.id === selectedModal.poolId)?.hidden_from_total}
+          initialNewAdditionsExpireSameDay={store.pools.find((pool) => pool.id === selectedModal.poolId)?.new_additions_expire_same_day}
           onDelete={() => removePool(selectedModal.poolId, store.pools.find((pool) => pool.id === selectedModal.poolId)?.name ?? "")}
           onClose={() => setModal(null)}
           onSave={savePool}
@@ -1015,7 +1019,7 @@ function PoolInformationModal({
             {[...pool.recurring].sort((left, right) => right.start_date.localeCompare(left.start_date)).map((rule) => (
               <div className="rule-row" key={`recurring-${rule.id}`}>
                 <span className="rule-symbol recurring-symbol">↻</span>
-                <span className="rule-copy">{rule.reset ? `Reset to ${formatHours(rule.amount)} h` : `+${formatHours(rule.amount)} h`} {recurringScheduleDescription(rule)}</span>
+                <span className="rule-copy">{rule.reset ? `Reset to ${formatHours(rule.amount)} h` : `+${formatHours(rule.amount)} h`} {recurringScheduleDescription(rule)}{rule.expires_same_day ? " · valid that day only" : ""}</span>
                 <span className="rule-date">
                   {rule.cadence === "YearlyNthWeekday" ? "starting " : "from "}{prettyDate(rule.start_date)}
                   {rule.end_date ? ` · until ${prettyDate(rule.end_date)}` : ""}
@@ -1028,7 +1032,7 @@ function PoolInformationModal({
             {[...pool.additions].sort((left, right) => right.date.localeCompare(left.date)).map((addition) => (
               <div className="rule-row" key={`addition-${addition.id}`}>
                 <span className="rule-symbol one-time-symbol">+</span>
-                <span className="rule-copy">{addition.reset ? `Reset to ${formatHours(addition.amount)} h` : `+${formatHours(addition.amount)} h one-time`}</span>
+                <span className="rule-copy">{addition.reset ? `Reset to ${formatHours(addition.amount)} h` : `+${formatHours(addition.amount)} h one-time`}{addition.expires_same_day ? " · valid that day only" : ""}</span>
                 <span className="rule-date">on {prettyDate(addition.date)}</span>
                 <div className="rule-actions">
                   <button className="icon-button" type="button" title={addition.reset ? "Edit balance reset" : "Edit one-time addition"} aria-label={addition.reset ? "Edit balance reset" : "Edit one-time addition"} onClick={() => onEditAddition(addition.id)}>✎</button>
@@ -1065,6 +1069,7 @@ function AdditionModalForState({ modal, pools, onClose, onSave, onSaveCap, onDel
         mode="edit-one-time"
         onDelete={() => onDelete(addition.id, false)}
         initialReset={addition.reset}
+        initialExpiresSameDay={addition.expires_same_day}
         initialAmount={formatHours(addition.amount)}
         initialDate={addition.date}
         onClose={onClose}
@@ -1081,6 +1086,7 @@ function AdditionModalForState({ modal, pools, onClose, onSave, onSaveCap, onDel
         mode="edit-recurring"
         onDelete={() => onDelete(rule.id, true)}
         initialReset={rule.reset}
+        initialExpiresSameDay={rule.expires_same_day}
         initialAmount={formatHours(rule.amount)}
         initialDate={rule.start_date}
         initialEndDate={rule.end_date}

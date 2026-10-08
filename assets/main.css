@@ -312,6 +312,10 @@ button:focus-visible, input:focus-visible, select:focus-visible, a:focus-visible
 .pool-visibility-settings { display: grid; gap: 10px; padding: 12px; border: 1px solid #e6e8e1; border-radius: 7px; color: #59645a; font-size: 12px; }
 .pool-visibility-settings label { display: flex; align-items: center; gap: 8px; cursor: pointer; }
 .pool-visibility-settings input { accent-color: #4b7955; }
+.holiday-mode-setting { display: flex; align-items: center; gap: 8px; }
+.setting-tooltip { position: relative; }
+.setting-tooltip-content { display: none; position: absolute; right: 0; bottom: calc(100% + 6px); z-index: 5; width: min(280px, 65vw); padding: 10px 12px; border: 1px solid #e6e8e1; border-radius: 7px; background: #fff; color: #414a42; box-shadow: 0 6px 20px rgba(35, 45, 39, .13); font-size: 12px; line-height: 1.5; }
+.setting-tooltip:hover .setting-tooltip-content, .setting-tooltip:focus-within .setting-tooltip-content { display: block; }
 .history-metrics { display: flex; align-items: flex-start; gap: 24px; }
 .history-change, .history-projection { display: grid; justify-items: end; gap: 3px; }
 .history-change strong { color: #426a4e; font: 700 18px 'Manrope', sans-serif; }

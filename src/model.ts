@@ -12,6 +12,7 @@ export type Cadence = "Weekly" | "Fortnightly" | "Monthly" | "Yearly" | "YearlyN
 export interface OneTimeAddition {
   id: number;
   reset?: boolean;
+  expires_same_day?: boolean;
   amount: number;
   date: string;
 }
@@ -19,6 +20,7 @@ export interface OneTimeAddition {
 export interface RecurringAddition {
   id: number;
   reset?: boolean;
+  expires_same_day?: boolean;
   amount: number;
   cadence: Cadence;
   start_date: string;
@@ -36,6 +38,7 @@ export interface PoolCap {
 }
 
 export interface Pool {
+  new_additions_expire_same_day?: boolean;
   color?: string;
   id: number;
   name: string;
@@ -214,7 +217,7 @@ export function normalizeStore(value: unknown): Store {
               const amount = amountValue(addition.amount);
               const reset = addition.reset === true;
               return additionId && isValidDate(date) && (reset || amount > 0)
-                ? [{ id: additionId, date, amount: reset ? Math.max(0, amount) : amount, ...(reset ? { reset: true } : {}) }]
+                ? [{ id: additionId, date, amount: reset ? Math.max(0, amount) : amount, ...(reset ? { reset: true } : {}), ...(!reset && addition.expires_same_day === true ? { expires_same_day: true } : {}) }]
                 : [];
             })
           : [];
@@ -238,6 +241,7 @@ export function normalizeStore(value: unknown): Store {
                     id: ruleId,
                     amount: reset ? Math.max(0, amount) : amount,
                     ...(reset ? { reset: true } : {}),
+                    ...(!reset && rule.expires_same_day === true ? { expires_same_day: true } : {}),
                     start_date: startDate,
                     cadence,
                     ...(isValidDate(endDate) ? { end_date: endDate } : {}),
@@ -271,6 +275,7 @@ export function normalizeStore(value: unknown): Store {
           if (!previous || (previous.end_date && previous.end_date < cap.start_date)) caps.push(cap);
         }
         return [{ id, name, additions, recurring, caps,
+          ...(pool.new_additions_expire_same_day === true ? { new_additions_expire_same_day: true } : {}),
           ...(typeof pool.color === "string" && /^#[0-9a-f]{6}$/i.test(pool.color) ? { color: pool.color } : {}),
           ...(pool.hidden_from_graph === true ? { hidden_from_graph: true } : {}),
           ...(pool.hidden_from_total === true ? { hidden_from_total: true } : {}),
@@ -697,12 +702,13 @@ interface PoolLedgerSnapshot {
 
 interface PoolDailyActions {
   accrued: number;
+  expiring?: number;
   used: number;
   reset?: number;
 }
 
 function poolLedgerForDates(pool: Pool, events: LeaveEvent[], dates: string[]): PoolLedgerSnapshot[] {
-  if (pool.caps.length === 0 && !pool.additions.some((addition) => addition.reset) && !pool.recurring.some((rule) => rule.reset)) {
+  if (pool.caps.length === 0 && !pool.additions.some((addition) => addition.reset || addition.expires_same_day) && !pool.recurring.some((rule) => rule.reset || rule.expires_same_day)) {
     return dates.map((date) => {
       if (!isValidDate(date)) return { accrued: 0, used: 0, balance: 0 };
       const oneTime = pool.additions
@@ -732,11 +738,21 @@ function poolLedgerForDates(pool: Pool, events: LeaveEvent[], dates: string[]): 
     actions.set(date, created);
     return created;
   };
+  const postCredit = (date: string, amount: number, expires: boolean | undefined) => {
+    const daily = actionForDate(date);
+    daily.accrued += amount;
+    if (expires) {
+      daily.expiring = (daily.expiring ?? 0) + amount;
+      // Include the next day even when no other ledger actions happen then.
+      const expiryDate = addDays(date, 1);
+      if (expiryDate <= throughDate) actionForDate(expiryDate);
+    }
+  };
 
   for (const addition of pool.additions) {
     if (isValidDate(addition.date) && addition.date <= throughDate) {
       if (addition.reset) actionForDate(addition.date).reset = addition.amount;
-      else actionForDate(addition.date).accrued += addition.amount;
+      else postCredit(addition.date, addition.amount, addition.expires_same_day);
     }
   }
 
@@ -773,7 +789,7 @@ function poolLedgerForDates(pool: Pool, events: LeaveEvent[], dates: string[]): 
         occurrenceDate <= previousOccurrence
       ) break;
       if (rule.reset) actionForDate(occurrenceDate).reset = rule.amount;
-      else actionForDate(occurrenceDate).accrued += rule.amount;
+      else postCredit(occurrenceDate, rule.amount, rule.expires_same_day);
       previousOccurrence = occurrenceDate;
       if (rule.cadence !== "YearlyNthWeekday") occurrenceIndex += 1;
     }
@@ -794,9 +810,13 @@ function poolLedgerForDates(pool: Pool, events: LeaveEvent[], dates: string[]): 
   let balance = 0;
   let accrued = 0;
   let used = 0;
+  let expiringBalance = 0;
   return dates.map((date) => {
     while (actionIndex < orderedActions.length && orderedActions[actionIndex]![0] <= date) {
       const [actionDate, daily] = orderedActions[actionIndex]!;
+      // Only the unused portion of the previous day's temporary credit expires.
+      balance -= expiringBalance;
+      expiringBalance = 0;
       const activeCap = pool.caps.find(
         (cap) => cap.start_date <= actionDate && (!cap.end_date || actionDate <= cap.end_date),
       );
@@ -805,10 +825,16 @@ function poolLedgerForDates(pool: Pool, events: LeaveEvent[], dates: string[]): 
         ? Math.min(daily.accrued, Math.max(0, activeCap.max_balance - balance))
         : daily.accrued;
       balance += acceptedAccrual - daily.used;
+      // Permanent credits are posted first when a cap limits same-day accrual.
+      const acceptedExpiring = Math.max(0, acceptedAccrual - (daily.accrued - (daily.expiring ?? 0)));
+      expiringBalance = Math.max(0, acceptedExpiring - daily.used);
       accrued += acceptedAccrual;
       used += daily.used;
       // Reset dates replace the remaining balance at the end of the day.
-      if (daily.reset !== undefined) balance = daily.reset;
+      if (daily.reset !== undefined) {
+        balance = daily.reset;
+        expiringBalance = 0;
+      }
       actionIndex += 1;
     }
     return { accrued, used, balance };

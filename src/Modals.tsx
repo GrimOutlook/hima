@@ -81,8 +81,9 @@ interface PoolModalProps {
   initialDate?: string;
   initialHiddenFromGraph?: boolean;
   initialHiddenFromTotal?: boolean;
+  initialNewAdditionsExpireSameDay?: boolean;
   onClose: () => void;
-  onSave: (name: string, openingAmount: string, openingDate: string, hiddenFromGraph: boolean, hiddenFromTotal: boolean, color?: string) => string | null;
+  onSave: (name: string, openingAmount: string, openingDate: string, hiddenFromGraph: boolean, hiddenFromTotal: boolean, color?: string, newAdditionsExpireSameDay?: boolean) => string | null;
 }
 
 export interface PoolCapFormData {
@@ -100,6 +101,7 @@ export function PoolModal({
   initialDate = todayDate(),
   initialHiddenFromGraph = false,
   initialHiddenFromTotal = false,
+  initialNewAdditionsExpireSameDay = false,
   onClose,
   onSave,
 }: PoolModalProps) {
@@ -108,6 +110,7 @@ export function PoolModal({
   const [customColor, setCustomColor] = useState(!POOL_COLORS.includes(initialColor.toLowerCase()));
   const [colorPickerOpen, setColorPickerOpen] = useState(false);
   const [hiddenFromTotal, setHiddenFromTotal] = useState(initialHiddenFromTotal);
+  const [newAdditionsExpireSameDay, setNewAdditionsExpireSameDay] = useState(initialNewAdditionsExpireSameDay);
   const [openingAmount, setOpeningAmount] = useState("");
   const [openingDate, setOpeningDate] = useState(initialDate);
   const [error, setError] = useState("");
@@ -127,7 +130,7 @@ export function PoolModal({
       setError("Choose a valid starting date.");
       return;
     }
-    const saveError = onSave(trimmedName, openingAmount, openingDate, initialHiddenFromGraph, hiddenFromTotal, editing ? color : undefined);
+    const saveError = onSave(trimmedName, openingAmount, openingDate, initialHiddenFromGraph, hiddenFromTotal, editing ? color : undefined, newAdditionsExpireSameDay);
     if (saveError) setError(saveError);
   }
 
@@ -225,6 +228,16 @@ export function PoolModal({
           </div>
         )}
         <fieldset className="pool-visibility-settings">
+          <legend>Pool behavior</legend>
+          <div className="holiday-mode-setting">
+            <label><input type="checkbox" checked={newAdditionsExpireSameDay} onChange={(event) => setNewAdditionsExpireSameDay(event.currentTarget.checked)} />Holiday Mode</label>
+            <span className="setting-tooltip">
+              <button type="button" className="icon-button" aria-label="About Holiday Mode" aria-describedby="holiday-mode-tooltip">ⓘ</button>
+              <span className="setting-tooltip-content" id="holiday-mode-tooltip" role="tooltip">New additions are available only on their scheduled date; unused hours expire the next day. Applies to the starting balance and each occurrence of new repeating schedules. Existing additions are unchanged.</span>
+            </span>
+          </div>
+        </fieldset>
+        <fieldset className="pool-visibility-settings">
           <legend>Pool visibility</legend>
           <label><input type="checkbox" checked={hiddenFromTotal} onChange={(event) => setHiddenFromTotal(event.currentTarget.checked)} />Hide from overall balance total</label>
         </fieldset>
@@ -311,6 +324,7 @@ export function PoolUsageModal({ pool, events, onClose }: PoolUsageModalProps) {
 
 export interface AdditionFormData {
   reset: boolean;
+  expiresSameDay?: boolean;
   amount: number;
   date: string;
   recurring: boolean;
@@ -325,6 +339,7 @@ interface AdditionModalProps {
   onDelete?: () => void;
   onSaveCap?: (cap: PoolCapFormData) => string | null;
   initialReset?: boolean;
+  initialExpiresSameDay?: boolean;
   poolName: string;
   mode: "add" | "edit-one-time" | "edit-recurring" | "edit-cap";
   initialAmount?: string;
@@ -342,6 +357,7 @@ export function AdditionModal({
   onDelete,
   onSaveCap,
   initialReset = false,
+  initialExpiresSameDay = false,
   poolName,
   mode,
   initialAmount = "",
@@ -416,6 +432,7 @@ export function AdditionModal({
     }
     const saveError = onSave({
       reset,
+      expiresSameDay: !reset && initialExpiresSameDay,
       amount: parsedAmount,
       date,
       recurring,
