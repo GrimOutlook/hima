@@ -931,13 +931,24 @@ function PoolCardContent({
   return (
     <article
       ref={sortable?.setNodeRef}
+      {...sortable?.attributes}
+      {...sortable?.listeners}
+      aria-label={sortable ? `Reorder ${pool.name}` : undefined}
+      onPointerDown={(event) => {
+        if (event.target instanceof Element && event.target.closest("button")) return;
+        sortable?.listeners?.onPointerDown?.(event);
+      }}
+      onKeyDown={(event) => {
+        if (event.target !== event.currentTarget) return;
+        sortable?.listeners?.onKeyDown?.(event);
+      }}
       style={{
         transform: CSS.Translate.toString(sortable?.transform ?? null),
         transition: sortable?.transition,
         opacity: sortable?.isDragging ? 0 : undefined,
         height: overlay ? "100%" : undefined,
       }}
-      className={`pool-card${isSelected ? " pool-card-selected" : ""}${overlay ? " pool-card-dragging" : ""}`}
+      className={`pool-card${sortable && store.pools.length > 1 ? " pool-card-draggable" : ""}${isSelected ? " pool-card-selected" : ""}${overlay ? " pool-card-dragging" : ""}`}
       onClick={(event) => {
         if (event.target instanceof Element && event.target.closest("button, summary")) return;
         onSelect();
@@ -945,15 +956,6 @@ function PoolCardContent({
     >
       <div className="pool-card-header">
         <div className="pool-title-group">
-          {store.pools.length > 1 && <button
-            ref={sortable?.setActivatorNodeRef}
-            {...sortable?.attributes}
-            {...sortable?.listeners}
-            className="icon-button pool-drag-handle"
-            type="button"
-            aria-label={`Reorder ${pool.name}`}
-            title="Drag to reorder, or press Space then use the arrow keys"
-          ><span aria-hidden="true">⠿</span></button>}
           <div className="pool-icon" style={{ color: poolColor(pool.id, pool.color), backgroundColor: `${poolColor(pool.id, pool.color)}20` }}>◌</div>
           <div>
             <h3>
