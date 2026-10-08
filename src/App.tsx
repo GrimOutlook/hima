@@ -21,8 +21,6 @@ import {
   capRangesOverlap,
   dayLabel,
   eventDateRangeLabel,
-  eventDaySummary,
-  eventPoolSummary,
   eventTotalHours,
   formatHours,
   freshEventDays,
@@ -614,10 +612,7 @@ function App() {
                         </div>
                         <div className="event-info">
                           <strong>{event.name}</strong>
-                          <span>
-                            {eventPoolSummary(event, store.pools)} · {event.days.length} {event.days.length === 1 ? "day" : "days"} · {eventDateRangeLabel(event)}
-                          </span>
-                          <span className="event-day-details">{eventDaySummary(event, store.pools)}</span>
+                          <span>{eventDateRangeLabel(event)}</span>
                           <span className={statusClass}>{status}</span>
                         </div>
                         <div className="event-amount">−{formatHours(eventTotalHours(event))} h</div>
