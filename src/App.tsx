@@ -215,6 +215,7 @@ function App() {
   function zoomToEvent(id: number) {
     if (eventClickTimer.current !== null) clearTimeout(eventClickTimer.current);
     eventClickTimer.current = null;
+    setHighlightedEventId(id);
     setEventSelection((current) => ({
       id,
       request: (current?.request ?? 0) + 1,
