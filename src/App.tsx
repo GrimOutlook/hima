@@ -47,6 +47,7 @@ import {
 type ModalState =
   | { type: "new-pool" }
   | { type: "edit-pool"; poolId: number }
+  | { type: "edit-cap"; poolId: number; capId: number }
   | { type: "pool-usage"; poolId: number }
   | { type: "pool-info"; poolId: number }
   | { type: "add-time"; poolId: number }
@@ -130,12 +131,9 @@ function App() {
       onViewUsage: () => setModal({ type: "pool-usage", poolId: pool.id }),
       onViewInformation: () => setModal({ type: "pool-info", poolId: pool.id }),
       onEdit: () => setModal({ type: "edit-pool", poolId: pool.id }),
-      onDelete: () => removePool(pool.id, pool.name),
       onAddTime: () => setModal({ type: "add-time", poolId: pool.id }),
       onEditAddition: (additionId) => setModal({ type: "edit-addition", poolId: pool.id, additionId }),
       onEditRecurring: (ruleId) => setModal({ type: "edit-recurring", poolId: pool.id, ruleId }),
-      onDeleteAddition: (additionId) => removeAddition(pool.id, additionId, false),
-      onDeleteRecurring: (ruleId) => removeAddition(pool.id, ruleId, true),
     };
   }
 
@@ -198,6 +196,7 @@ function App() {
         events,
       };
     });
+    setModal(null);
   }
 
   function removeAddition(poolId: number, additionId: number, recurring: boolean) {
@@ -211,13 +210,13 @@ function App() {
           : { ...pool, additions: pool.additions.filter((addition) => addition.id !== additionId) };
       }),
     }));
+    setModal({ type: "pool-info", poolId });
   }
 
   function savePool(
     name: string,
     openingAmount: string,
     openingDate: string,
-    capFormData: PoolCapFormData[],
     hiddenFromGraph: boolean,
     hiddenFromTotal: boolean,
     color?: string,
@@ -225,18 +224,10 @@ function App() {
     if (selectedModal?.type === "edit-pool") {
       if (!store.pools.some((pool) => pool.id === selectedModal.poolId)) return "This pool no longer exists.";
       setStore((current) => {
-        const newCapCount = capFormData.filter((cap) => cap.id === undefined).length;
-        const ids = allocateIds(current, newCapCount);
-        let nextCapId = ids.firstId;
-        const caps = capFormData.map((cap) => ({
-          ...cap,
-          id: cap.id ?? nextCapId++,
-        }));
         return {
           ...current,
-          next_id: newCapCount > 0 ? ids.nextId : current.next_id,
           pools: current.pools.map((pool) =>
-            pool.id === selectedModal.poolId ? { ...pool, name, caps, color, hidden_from_graph: hiddenFromGraph, hidden_from_total: hiddenFromTotal } : pool,
+            pool.id === selectedModal.poolId ? { ...pool, name, color, hidden_from_graph: hiddenFromGraph, hidden_from_total: hiddenFromTotal } : pool,
           ),
         };
       });
@@ -245,16 +236,14 @@ function App() {
       if (initialAmount === null) return "Enter a starting balance with up to two decimal places.";
       setStore((current) => {
         const openingAdditionCount = initialAmount > 0 ? 1 : 0;
-        const currentIds = allocateIds(current, 1 + openingAdditionCount + capFormData.length);
+        const currentIds = allocateIds(current, 1 + openingAdditionCount);
         const additions: OneTimeAddition[] = initialAmount > 0
           ? [{ id: currentIds.firstId + 1, amount: initialAmount, date: openingDate }]
           : [];
-        const firstCapId = currentIds.firstId + 1 + openingAdditionCount;
-        const caps = capFormData.map((cap, index) => ({ ...cap, id: firstCapId + index }));
         return {
           ...current,
           next_id: currentIds.nextId,
-          pools: [...current.pools, { id: currentIds.firstId, name, additions, recurring: [], caps, hidden_from_graph: hiddenFromGraph, hidden_from_total: hiddenFromTotal }],
+          pools: [...current.pools, { id: currentIds.firstId, name, additions, recurring: [], caps: [], hidden_from_graph: hiddenFromGraph, hidden_from_total: hiddenFromTotal }],
         };
       });
     }
@@ -263,21 +252,25 @@ function App() {
   }
 
   function saveCap(cap: PoolCapFormData): string | null {
-    if (selectedModal?.type !== "add-time") return "This pool is no longer available.";
+    if (selectedModal?.type !== "add-time" && selectedModal?.type !== "edit-cap") return "This pool is no longer available.";
     const pool = store.pools.find((pool) => pool.id === selectedModal.poolId);
     if (!pool) return "This pool no longer exists.";
-    if (capRangesOverlap([...pool.caps, cap])) return "Cap date ranges must not overlap.";
+    const capId = selectedModal.type === "edit-cap" ? selectedModal.capId : undefined;
+    if (capId !== undefined && !pool.caps.some((existing) => existing.id === capId)) return "This cap no longer exists.";
+    if (capRangesOverlap([...pool.caps.filter((existing) => existing.id !== capId), cap])) return "Cap date ranges must not overlap.";
     setStore((current) => {
-      const ids = allocateIds(current);
+      const ids = capId === undefined ? allocateIds(current) : { firstId: capId, nextId: current.next_id };
       return {
         ...current,
         next_id: ids.nextId,
         pools: current.pools.map((candidate) => candidate.id === pool.id
-          ? { ...candidate, caps: [...candidate.caps, { ...cap, id: ids.firstId }] }
+          ? { ...candidate, caps: capId === undefined
+            ? [...candidate.caps, { ...cap, id: ids.firstId }]
+            : candidate.caps.map((existing) => existing.id === capId ? { ...cap, id: capId } : existing) }
           : candidate),
       };
     });
-    setModal(null);
+    setModal(capId === undefined ? null : { type: "pool-info", poolId: pool.id });
     return null;
   }
 
@@ -626,18 +619,6 @@ function App() {
                           >
                             ✎
                           </button>
-                          <button
-                            className="icon-button event-delete"
-                            type="button"
-                            title="Delete event"
-                            aria-label={`Delete ${event.name}`}
-                            onClick={() => setStore((current) => ({
-                              ...current,
-                              events: current.events.filter((item) => item.id !== event.id),
-                            }))}
-                          >
-                            ×
-                          </button>
                         </div>
                         {totalHours > 0 && (
                           <div className="event-pool-bar" role="img" aria-label={poolShares.map(({ pool, hours }) =>
@@ -674,7 +655,7 @@ function App() {
       </main>
 
       {informationPool && (
-        <PoolInformationModal {...poolCardProps(informationPool)} onClose={() => setModal(null)} />
+        <PoolInformationModal {...poolCardProps(informationPool)} onEditCap={(capId) => setModal({ type: "edit-cap", poolId: informationPool.id, capId })} onClose={() => setModal(null)} />
       )}
       {selectedModal?.type === "new-pool" && (
         <PoolModal
@@ -690,9 +671,9 @@ function App() {
           editing
           initialName={store.pools.find((pool) => pool.id === selectedModal.poolId)?.name ?? ""}
           initialColor={poolColor(selectedModal.poolId, store.pools.find((pool) => pool.id === selectedModal.poolId)?.color)}
-          initialCaps={store.pools.find((pool) => pool.id === selectedModal.poolId)?.caps ?? []}
           initialHiddenFromGraph={store.pools.find((pool) => pool.id === selectedModal.poolId)?.hidden_from_graph}
           initialHiddenFromTotal={store.pools.find((pool) => pool.id === selectedModal.poolId)?.hidden_from_total}
+          onDelete={() => removePool(selectedModal.poolId, store.pools.find((pool) => pool.id === selectedModal.poolId)?.name ?? "")}
           onClose={() => setModal(null)}
           onSave={savePool}
         />
@@ -705,12 +686,34 @@ function App() {
           onClose={() => setModal(null)}
         />
       )}
+      {selectedModal?.type === "edit-cap" && (() => {
+        const pool = store.pools.find((candidate) => candidate.id === selectedModal.poolId);
+        const cap = pool?.caps.find((candidate) => candidate.id === selectedModal.capId);
+        return pool && cap ? <AdditionModal
+          key={`edit-cap-${cap.id}`}
+          poolName={pool.name}
+          mode="edit-cap"
+          onDelete={() => {
+            if (!window.confirm("Remove this balance cap?")) return;
+            setStore((current) => ({ ...current, pools: current.pools.map((candidate) => candidate.id === pool.id
+              ? { ...candidate, caps: candidate.caps.filter((item) => item.id !== cap.id) } : candidate) }));
+            setModal({ type: "pool-info", poolId: pool.id });
+          }}
+          initialAmount={String(cap.max_balance)}
+          initialDate={cap.start_date}
+          initialEndDate={cap.end_date}
+          onClose={() => setModal({ type: "pool-info", poolId: pool.id })}
+          onSave={saveAddition}
+          onSaveCap={saveCap}
+        /> : null;
+      })()}
       {(selectedModal?.type === "add-time" ||
         selectedModal?.type === "edit-addition" ||
         selectedModal?.type === "edit-recurring") && (
         <AdditionModalForState
           key={`${selectedModal.type}-${selectedModal.poolId}-${"additionId" in selectedModal ? selectedModal.additionId : "ruleId" in selectedModal ? selectedModal.ruleId : "new"}`}
           modal={selectedModal}
+          onDelete={(id, recurring) => removeAddition(selectedModal.poolId, id, recurring)}
           pools={store.pools}
           onClose={() => setModal(null)}
           onSave={saveAddition}
@@ -723,6 +726,10 @@ function App() {
           key={selectedModal.type === "new-event" ? "new-event" : `edit-event-${selectedModal.eventId}`}
           pools={store.pools}
           editing={selectedModal.type === "edit-event"}
+          onDelete={selectedModal.type === "edit-event" ? () => {
+            setStore((current) => ({ ...current, events: current.events.filter((event) => event.id !== selectedModal.eventId) }));
+            setModal(null);
+          } : undefined}
           initialName={selectedModal.type === "edit-event" ? selectedModal.name : ""}
           initialDays={selectedModal.type === "new-event" ? selectedModal.initialDays : selectedModal.days}
           onClose={() => setModal(null)}
@@ -742,12 +749,9 @@ interface PoolCardProps {
   onViewUsage: () => void;
   onViewInformation: () => void;
   onEdit: () => void;
-  onDelete: () => void;
   onAddTime: () => void;
   onEditAddition: (id: number) => void;
   onEditRecurring: (id: number) => void;
-  onDeleteAddition: (id: number) => void;
-  onDeleteRecurring: (id: number) => void;
 }
 
 function PoolCard(props: PoolCardProps) {
@@ -769,7 +773,6 @@ function PoolCardContent({
   onViewUsage,
   onViewInformation,
   onEdit,
-  onDelete,
   onAddTime,
   sortable,
   overlay = false,
@@ -827,7 +830,6 @@ function PoolCardContent({
           </button>
           <button className="icon-button" type="button" title="Edit pool" aria-label={`Edit ${pool.name}`} onClick={onEdit}>✎</button>
           <button className="icon-button" type="button" title="Pool information" aria-label={`View information for ${pool.name}`} onClick={onViewInformation}>ⓘ</button>
-          <button className="icon-button delete-button" type="button" title="Delete pool" aria-label={`Delete ${pool.name}`} onClick={onDelete}>×</button>
         </div>
       </div>
       <div className={currentBalance < 0 ? "pool-balance pool-balance-negative" : "pool-balance"}>
@@ -843,10 +845,9 @@ function PoolInformationModal({
   store,
   onEditAddition,
   onEditRecurring,
-  onDeleteAddition,
-  onDeleteRecurring,
   onClose,
-}: PoolCardProps & { onClose: () => void }) {
+  onEditCap,
+}: PoolCardProps & { onClose: () => void; onEditCap: (id: number) => void }) {
   const lifetimeTotals = poolTotalsOn(store, pool.id, todayDate());
   return (
     <ModalFrame
@@ -878,6 +879,9 @@ function PoolInformationModal({
                 <span className="rule-symbol cap-symbol">≤</span>
                 <span className="rule-copy">Maximum balance {formatHours(cap.max_balance)} h</span>
                 <span className="rule-date">{prettyDate(cap.start_date)} – {cap.end_date ? prettyDate(cap.end_date) : "ongoing"}</span>
+                <div className="rule-actions">
+                  <button className="icon-button" type="button" title="Edit balance cap" aria-label="Edit balance cap" onClick={() => onEditCap(cap.id)}>✎</button>
+                </div>
               </div>
             ))}
             {[...pool.recurring].sort((left, right) => right.start_date.localeCompare(left.start_date)).map((rule) => (
@@ -890,7 +894,6 @@ function PoolInformationModal({
                 </span>
                 <div className="rule-actions">
                   <button className="icon-button" type="button" title="Edit recurring addition" aria-label="Edit recurring addition" onClick={() => onEditRecurring(rule.id)}>✎</button>
-                  <button className="icon-button rule-delete" type="button" title="Delete recurring addition" aria-label="Delete recurring addition" onClick={() => onDeleteRecurring(rule.id)}>×</button>
                 </div>
               </div>
             ))}
@@ -901,7 +904,6 @@ function PoolInformationModal({
                 <span className="rule-date">on {prettyDate(addition.date)}</span>
                 <div className="rule-actions">
                   <button className="icon-button" type="button" title="Edit one-time addition" aria-label="Edit one-time addition" onClick={() => onEditAddition(addition.id)}>✎</button>
-                  <button className="icon-button rule-delete" type="button" title="Delete one-time addition" aria-label="Delete one-time addition" onClick={() => onDeleteAddition(addition.id)}>×</button>
                 </div>
               </div>
             ))}
@@ -914,6 +916,7 @@ function PoolInformationModal({
 }
 
 interface AdditionModalForStateProps {
+  onDelete: (id: number, recurring: boolean) => void;
   onSaveCap: (cap: PoolCapFormData) => string | null;
   modal: Extract<ModalState, { type: "add-time" | "edit-addition" | "edit-recurring" }>;
   pools: Pool[];
@@ -921,7 +924,7 @@ interface AdditionModalForStateProps {
   onSave: (addition: AdditionFormData) => string | null;
 }
 
-function AdditionModalForState({ modal, pools, onClose, onSave, onSaveCap }: AdditionModalForStateProps) {
+function AdditionModalForState({ modal, pools, onClose, onSave, onSaveCap, onDelete }: AdditionModalForStateProps) {
   const pool = pools.find((candidate) => candidate.id === modal.poolId);
   if (!pool) return null;
 
@@ -932,6 +935,7 @@ function AdditionModalForState({ modal, pools, onClose, onSave, onSaveCap }: Add
       <AdditionModal
         poolName={pool.name}
         mode="edit-one-time"
+        onDelete={() => onDelete(addition.id, false)}
         initialReset={addition.reset}
         initialAmount={formatHours(addition.amount)}
         initialDate={addition.date}
@@ -947,6 +951,7 @@ function AdditionModalForState({ modal, pools, onClose, onSave, onSaveCap }: Add
       <AdditionModal
         poolName={pool.name}
         mode="edit-recurring"
+        onDelete={() => onDelete(rule.id, true)}
         initialReset={rule.reset}
         initialAmount={formatHours(rule.amount)}
         initialDate={rule.start_date}

@@ -417,6 +417,8 @@ button:focus-visible, input:focus-visible, select:focus-visible, a:focus-visible
 .segment.is-active { color: #3e5d45; background: white; box-shadow: 0 1px 4px rgba(39,52,42,.1); }
 .form-error { margin: -4px 0 0; color: #a94f42; font-size: 10px; }
 .modal-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 3px; padding-top: 15px; border-top: 1px solid #f0f0eb; }
+.modal-actions .modal-delete { color: #bd453b; margin-right: auto; }
+.modal-actions .modal-delete:hover { color: #a12e25; background: #fbefeb; }
 
 @keyframes fade-in { from { opacity: 0; } to { opacity: 1; } }
 @keyframes rise-in { from { opacity: 0; transform: translateY(6px) scale(.99); } to { opacity: 1; transform: translateY(0) scale(1); } }

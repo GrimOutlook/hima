@@ -4,7 +4,6 @@ import { CalendarPicker } from "./CalendarPicker";
 import { POOL_COLORS } from "./poolColors";
 import {
   addDays,
-  capRangesOverlap,
   freshEventDays,
   formatHours,
   isValidDate,
@@ -22,7 +21,6 @@ import {
   type LeaveEvent,
   type NthWeekday,
   type Pool,
-  type PoolCap,
   type Store,
   type Weekday,
 } from "./model";
@@ -67,16 +65,24 @@ export function ModalFrame({
   );
 }
 
+function DeleteButton({ label, onDelete }: { label: string; onDelete: () => void }) {
+  return <button className="icon-button modal-delete" type="button" title={label} aria-label={label} onClick={onDelete}>
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <path d="M3 6h18M9 6V4h6v2M5 6l1 14h12l1-14M10 10v6M14 10v6" />
+    </svg>
+  </button>;
+}
+
 interface PoolModalProps {
+  onDelete?: () => void;
   initialColor?: string;
   editing: boolean;
   initialName?: string;
   initialDate?: string;
-  initialCaps?: PoolCap[];
   initialHiddenFromGraph?: boolean;
   initialHiddenFromTotal?: boolean;
   onClose: () => void;
-  onSave: (name: string, openingAmount: string, openingDate: string, caps: PoolCapFormData[], hiddenFromGraph: boolean, hiddenFromTotal: boolean, color?: string) => string | null;
+  onSave: (name: string, openingAmount: string, openingDate: string, hiddenFromGraph: boolean, hiddenFromTotal: boolean, color?: string) => string | null;
 }
 
 export interface PoolCapFormData {
@@ -86,19 +92,12 @@ export interface PoolCapFormData {
   end_date?: string;
 }
 
-interface PoolCapDraft {
-  id?: number;
-  maxBalance: string;
-  startDate: string;
-  endDate: string;
-}
-
 export function PoolModal({
+  onDelete,
   initialColor = "#60866b",
   editing,
   initialName = "",
   initialDate = todayDate(),
-  initialCaps = [],
   initialHiddenFromGraph = false,
   initialHiddenFromTotal = false,
   onClose,
@@ -112,12 +111,6 @@ export function PoolModal({
   const [hiddenFromTotal, setHiddenFromTotal] = useState(initialHiddenFromTotal);
   const [openingAmount, setOpeningAmount] = useState("");
   const [openingDate, setOpeningDate] = useState(initialDate);
-  const [caps, setCaps] = useState<PoolCapDraft[]>(() => initialCaps.map((cap) => ({
-    id: cap.id,
-    maxBalance: String(cap.max_balance),
-    startDate: cap.start_date,
-    endDate: cap.end_date ?? "",
-  })));
   const [error, setError] = useState("");
 
   function submit(event: FormEvent<HTMLFormElement>) {
@@ -135,37 +128,7 @@ export function PoolModal({
       setError("Choose a valid starting date.");
       return;
     }
-    const savedCaps: PoolCapFormData[] = [];
-    for (const cap of caps) {
-      if (cap.maxBalance.trim() === "") {
-        setError("Enter a maximum balance for each cap.");
-        return;
-      }
-      const maxBalance = parseHours(cap.maxBalance, true);
-      if (maxBalance === null) {
-        setError("Enter cap balances with up to two decimal places.");
-        return;
-      }
-      if (!isValidDate(cap.startDate) || (cap.endDate !== "" && !isValidDate(cap.endDate))) {
-        setError("Choose a valid start date and, if provided, end date for each cap.");
-        return;
-      }
-      if (cap.endDate && cap.endDate < cap.startDate) {
-        setError("A cap's end date must be on or after its start date.");
-        return;
-      }
-      savedCaps.push({
-        ...(cap.id !== undefined ? { id: cap.id } : {}),
-        max_balance: maxBalance,
-        start_date: cap.startDate,
-        ...(cap.endDate ? { end_date: cap.endDate } : {}),
-      });
-    }
-    if (capRangesOverlap(savedCaps)) {
-      setError("Cap date ranges must not overlap.");
-      return;
-    }
-    const saveError = onSave(trimmedName, openingAmount, openingDate, savedCaps, hiddenFromGraph, hiddenFromTotal, editing ? color : undefined);
+    const saveError = onSave(trimmedName, openingAmount, openingDate, hiddenFromGraph, hiddenFromTotal, editing ? color : undefined);
     if (saveError) setError(saveError);
   }
 
@@ -175,7 +138,7 @@ export function PoolModal({
       title={editing ? "Edit pool" : "Create a pool"}
       description={
         editing
-          ? "Manage this pool's name, visibility, and balance caps. Its balance is calculated from additions and events."
+          ? "Manage this pool's name, color, and visibility. Its balance is calculated from additions and events."
           : "Give a kind of leave its own little home."
       }
       labelledBy="pool-modal-title"
@@ -262,69 +225,6 @@ export function PoolModal({
             <CalendarPicker label="Balance as of" value={openingDate} onChange={setOpeningDate} />
           </div>
         )}
-        {editing && <div className="pool-caps-editor">
-          <div className="pool-caps-heading">
-            <div>
-              <strong>Balance caps</strong>
-              <p>Leave the end date blank for an ongoing cap. Extra accrual is discarded; leave usage can make room again.</p>
-            </div>
-          </div>
-          {caps.length === 0 ? (
-            <p className="no-rules">No caps configured.</p>
-          ) : caps.map((cap, index) => (
-            <div className="pool-cap-row" key={cap.id ?? `new-cap-${index}`}>
-              <label className="field-label pool-cap-amount">
-                Maximum balance
-                <div className="input-with-suffix">
-                  <input
-                    type="number"
-                    min="0"
-                    step="0.01"
-                    placeholder="e.g. 80"
-                    value={cap.maxBalance}
-                    onChange={(event) => {
-                      const maxBalance = event.currentTarget.value;
-                      setCaps((current) => current.map((item, itemIndex) =>
-                        itemIndex === index ? { ...item, maxBalance } : item,
-                      ));
-                    }}
-                  />
-                  <span>hours</span>
-                </div>
-              </label>
-              <div className="pool-cap-start">
-                <CalendarPicker label="Starts on"
-                  value={cap.startDate}
-                  onChange={(startDate) => {
-                    setCaps((current) => current.map((item, itemIndex) =>
-                      itemIndex === index ? { ...item, startDate } : item,
-                    ));
-                  }}
-                />
-              </div>
-              <div className="pool-cap-end">
-                <CalendarPicker label="Ends on (optional)" optional
-                  min={cap.startDate || undefined}
-                  value={cap.endDate}
-                  onChange={(endDate) => {
-                    setCaps((current) => current.map((item, itemIndex) =>
-                      itemIndex === index ? { ...item, endDate } : item,
-                    ));
-                  }}
-                />
-              </div>
-              <button
-                className="icon-button pool-cap-remove"
-                type="button"
-                aria-label={`Remove balance cap ${index + 1}`}
-                title="Remove cap"
-                onClick={() => setCaps((current) => current.filter((_, itemIndex) => itemIndex !== index))}
-              >
-                ×
-              </button>
-            </div>
-          ))}
-        </div>}
         <fieldset className="pool-visibility-settings">
           <legend>Pool visibility</legend>
           <label><input type="checkbox" checked={hiddenFromGraph} onChange={(event) => setHiddenFromGraph(event.currentTarget.checked)} />Hide from combined graph</label>
@@ -332,6 +232,7 @@ export function PoolModal({
         </fieldset>
         {error && <p className="form-error" role="alert">{error}</p>}
         <div className="modal-actions">
+          {editing && onDelete && <DeleteButton label="Delete pool" onDelete={onDelete} />}
           <button className="button button-quiet" type="button" onClick={onClose}>Cancel</button>
           <button className="button button-primary" type="submit">
             {editing ? "Save changes" : "Create pool"}
@@ -423,10 +324,11 @@ export interface AdditionFormData {
 }
 
 interface AdditionModalProps {
+  onDelete?: () => void;
   onSaveCap?: (cap: PoolCapFormData) => string | null;
   initialReset?: boolean;
   poolName: string;
-  mode: "add" | "edit-one-time" | "edit-recurring";
+  mode: "add" | "edit-one-time" | "edit-recurring" | "edit-cap";
   initialAmount?: string;
   initialDate?: string;
   initialEndDate?: string;
@@ -439,6 +341,7 @@ interface AdditionModalProps {
 }
 
 export function AdditionModal({
+  onDelete,
   onSaveCap,
   initialReset = false,
   poolName,
@@ -455,7 +358,7 @@ export function AdditionModal({
 }: AdditionModalProps) {
   const adding = mode === "add";
   const [reset, setReset] = useState(initialReset);
-  const [cap, setCap] = useState(false);
+  const [cap, setCap] = useState(mode === "edit-cap");
   const [amount, setAmount] = useState(initialAmount);
   const [date, setDate] = useState(initialDate);
   const [endDate, setEndDate] = useState(initialEndDate);
@@ -525,7 +428,7 @@ export function AdditionModal({
     if (saveError) setError(saveError);
   }
 
-  const title = cap ? `Add balance cap to ${poolName}` : adding
+  const title = cap ? `${adding ? "Add balance cap to" : "Edit balance cap in"} ${poolName}` : adding
     ? `Add ${reset ? "use-by date" : "time"} to ${poolName}`
     : `Edit ${reset ? "use-by date" : "addition"} in ${poolName}`;
 
@@ -547,7 +450,7 @@ export function AdditionModal({
       onClose={onClose}
     >
       <form className="modal-form" onSubmit={submit}>
-        <div className="segmented-control" role="group" aria-label="Action">
+        {mode !== "edit-cap" && <div className="segmented-control" role="group" aria-label="Action">
           {[
             { value: "add", label: "Add time" },
             { value: "reset", label: "Reset balance" },
@@ -570,7 +473,7 @@ export function AdditionModal({
               </button>
             );
           })}
-        </div>
+        </div>}
         {adding && !cap && (
           <div className="segmented-control">
             <button
@@ -651,6 +554,7 @@ export function AdditionModal({
         )}
         {error && <p className="form-error" role="alert">{error}</p>}
         <div className="modal-actions">
+          {!adding && onDelete && <DeleteButton label={cap ? "Delete balance cap" : recurring ? "Delete recurring addition" : "Delete one-time addition"} onDelete={onDelete} />}
           <button className="button button-quiet" type="button" onClick={onClose}>Cancel</button>
           <button className="button button-primary" type="submit">
             {cap ? "Save balance cap" : adding ? reset ? "Save use-by date" : "Save addition" : "Save changes"}
@@ -662,6 +566,7 @@ export function AdditionModal({
 }
 
 interface EventModalProps {
+  onDelete?: () => void;
   pools: Pool[];
   store: Store;
   editing: boolean;
@@ -672,6 +577,7 @@ interface EventModalProps {
 }
 
 export function EventModal({
+  onDelete,
   pools,
   store,
   editing,
@@ -983,6 +889,7 @@ export function EventModal({
         </section>}
         {error && <p className="form-error" role="alert">{error}</p>}
         <div className="modal-actions">
+          {editing && onDelete && <DeleteButton label="Delete event" onDelete={onDelete} />}
           <button className="button button-quiet" type="button" onClick={onClose}>Cancel</button>
           {!editing && step > 1 && <button className="button button-quiet" type="button" onClick={() => { setStep(step - 1); setError(""); }}>Back</button>}
           <button className="button button-primary" type="submit">
