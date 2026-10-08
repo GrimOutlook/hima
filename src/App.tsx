@@ -17,6 +17,7 @@ import {
 import {
   allocateIds,
   balanceHistory,
+  capRangesOverlap,
   dayLabel,
   eventDateRangeLabel,
   eventDaySummary,
@@ -257,6 +258,25 @@ function App() {
         };
       });
     }
+    setModal(null);
+    return null;
+  }
+
+  function saveCap(cap: PoolCapFormData): string | null {
+    if (selectedModal?.type !== "add-time") return "This pool is no longer available.";
+    const pool = store.pools.find((pool) => pool.id === selectedModal.poolId);
+    if (!pool) return "This pool no longer exists.";
+    if (capRangesOverlap([...pool.caps, cap])) return "Cap date ranges must not overlap.";
+    setStore((current) => {
+      const ids = allocateIds(current);
+      return {
+        ...current,
+        next_id: ids.nextId,
+        pools: current.pools.map((candidate) => candidate.id === pool.id
+          ? { ...candidate, caps: [...candidate.caps, { ...cap, id: ids.firstId }] }
+          : candidate),
+      };
+    });
     setModal(null);
     return null;
   }
@@ -675,6 +695,7 @@ function App() {
           pools={store.pools}
           onClose={() => setModal(null)}
           onSave={saveAddition}
+          onSaveCap={saveCap}
         />
       )}
       {(selectedModal?.type === "new-event" || selectedModal?.type === "edit-event") && (
@@ -874,13 +895,14 @@ function PoolInformationModal({
 }
 
 interface AdditionModalForStateProps {
+  onSaveCap: (cap: PoolCapFormData) => string | null;
   modal: Extract<ModalState, { type: "add-time" | "edit-addition" | "edit-recurring" }>;
   pools: Pool[];
   onClose: () => void;
   onSave: (addition: AdditionFormData) => string | null;
 }
 
-function AdditionModalForState({ modal, pools, onClose, onSave }: AdditionModalForStateProps) {
+function AdditionModalForState({ modal, pools, onClose, onSave, onSaveCap }: AdditionModalForStateProps) {
   const pool = pools.find((candidate) => candidate.id === modal.poolId);
   if (!pool) return null;
 
@@ -920,7 +942,7 @@ function AdditionModalForState({ modal, pools, onClose, onSave }: AdditionModalF
     );
   }
   return (
-    <AdditionModal poolName={pool.name} mode="add" onClose={onClose} onSave={onSave} />
+    <AdditionModal poolName={pool.name} mode="add" onClose={onClose} onSave={onSave} onSaveCap={onSaveCap} />
   );
 }
 

@@ -205,23 +205,12 @@ export function PoolModal({
             <CalendarPicker label="Balance as of" value={openingDate} onChange={setOpeningDate} />
           </div>
         )}
-        <div className="pool-caps-editor">
+        {editing && <div className="pool-caps-editor">
           <div className="pool-caps-heading">
             <div>
               <strong>Balance caps</strong>
               <p>Leave the end date blank for an ongoing cap. Extra accrual is discarded; leave usage can make room again.</p>
             </div>
-            <button
-              className="button button-soft button-small"
-              type="button"
-              onClick={() => setCaps((current) => [
-                ...current,
-                { maxBalance: "", startDate: "", endDate: "" },
-              ])}
-            >
-              <span className="button-plus">+</span>
-              Add cap
-            </button>
           </div>
           {caps.length === 0 ? (
             <p className="no-rules">No caps configured.</p>
@@ -278,7 +267,7 @@ export function PoolModal({
               </button>
             </div>
           ))}
-        </div>
+        </div>}
         <fieldset className="pool-visibility-settings">
           <legend>Pool visibility</legend>
           <label><input type="checkbox" checked={hiddenFromGraph} onChange={(event) => setHiddenFromGraph(event.currentTarget.checked)} />Hide from combined graph</label>
@@ -377,6 +366,7 @@ export interface AdditionFormData {
 }
 
 interface AdditionModalProps {
+  onSaveCap?: (cap: PoolCapFormData) => string | null;
   initialReset?: boolean;
   poolName: string;
   mode: "add" | "edit-one-time" | "edit-recurring";
@@ -392,6 +382,7 @@ interface AdditionModalProps {
 }
 
 export function AdditionModal({
+  onSaveCap,
   initialReset = false,
   poolName,
   mode,
@@ -407,6 +398,7 @@ export function AdditionModal({
 }: AdditionModalProps) {
   const adding = mode === "add";
   const [reset, setReset] = useState(initialReset);
+  const [cap, setCap] = useState(false);
   const [amount, setAmount] = useState(initialAmount);
   const [date, setDate] = useState(initialDate);
   const [endDate, setEndDate] = useState(initialEndDate);
@@ -419,6 +411,24 @@ export function AdditionModal({
 
   function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    if (cap && onSaveCap) {
+      const maxBalance = parseHours(amount, true);
+      if (amount.trim() === "" || maxBalance === null) {
+        setError("Enter a maximum balance of zero or more with up to two decimal places.");
+        return;
+      }
+      if (!isValidDate(date) || (endDate && !isValidDate(endDate))) {
+        setError("Choose a valid start date and, if provided, end date.");
+        return;
+      }
+      if (endDate && endDate < date) {
+        setError("A cap's end date must be on or after its start date.");
+        return;
+      }
+      const saveError = onSaveCap({ max_balance: maxBalance, start_date: date, ...(endDate ? { end_date: endDate } : {}) });
+      if (saveError) setError(saveError);
+      return;
+    }
     const parsedAmount = reset && amount.trim() === "" ? 0 : parseHours(amount, reset);
     if (parsedAmount === null) {
       setError(reset
@@ -458,7 +468,7 @@ export function AdditionModal({
     if (saveError) setError(saveError);
   }
 
-  const title = adding
+  const title = cap ? `Add balance cap to ${poolName}` : adding
     ? `Add ${reset ? "use-by date" : "time"} to ${poolName}`
     : `Edit ${reset ? "use-by date" : "addition"} in ${poolName}`;
 
@@ -468,7 +478,9 @@ export function AdditionModal({
       iconClass="modal-icon-add"
       title={title}
       description={
-        reset
+        cap
+          ? "Limit the balance from accrual. Leave the end date blank for an ongoing cap; leave usage can make room again."
+          : reset
           ? "Set the balance to your chosen amount at the end of each reset date, after additions and leave usage."
           : adding
           ? "Choose a one-time addition or set a repeating schedule."
@@ -480,12 +492,17 @@ export function AdditionModal({
       <form className="modal-form" onSubmit={submit}>
         <label className="field-label">
           Action
-          <select value={reset ? "reset" : "add"} onChange={(event) => setReset(event.currentTarget.value === "reset")}>
+          <select value={cap ? "cap" : reset ? "reset" : "add"} onChange={(event) => {
+            setCap(event.currentTarget.value === "cap");
+            setReset(event.currentTarget.value === "reset");
+            setError("");
+          }}>
             <option value="add">Add time</option>
             <option value="reset">Reset balance / use-by date</option>
+            {adding && onSaveCap && <option value="cap">Balance cap</option>}
           </select>
         </label>
-        {adding && (
+        {adding && !cap && (
           <div className="segmented-control">
             <button
               className={!recurring ? "segment is-active" : "segment"}
@@ -504,11 +521,11 @@ export function AdditionModal({
           </div>
         )}
         <label className="field-label">
-          {reset ? "Reset balance to" : "Time to add"}
+          {cap ? "Maximum balance" : reset ? "Reset balance to" : "Time to add"}
           <div className="input-with-suffix">
             <input
               type="number"
-              min={reset ? "0" : "0.01"}
+              min={reset || cap ? "0" : "0.01"}
               step="0.01"
               placeholder={reset ? "0" : "e.g. 7.6"}
               value={amount}
@@ -517,7 +534,7 @@ export function AdditionModal({
             <span>hours</span>
           </div>
         </label>
-        {recurring && (
+        {!cap && recurring && (
           <label className="field-label">
             Repeat every
             <select value={cadence} onChange={(event) => setCadence(event.currentTarget.value as Cadence)}>
@@ -529,7 +546,7 @@ export function AdditionModal({
             </select>
           </label>
         )}
-        {recurring && cadence === "YearlyNthWeekday" && (
+        {!cap && recurring && cadence === "YearlyNthWeekday" && (
           <div className="nth-weekday-fields">
             <label className="field-label">
               Occurrence
@@ -553,10 +570,10 @@ export function AdditionModal({
             </label>
           </div>
         )}
-        <CalendarPicker label={recurring
+        <CalendarPicker label={cap ? "Starts on" : recurring
              ? cadence === "YearlyNthWeekday" ? "Start schedule on" : reset ? "First use-by date" : "First addition on"
               : reset ? "Use-by date" : "Add on"} value={date} onChange={setDate} />
-        {recurring && (
+        {(cap || recurring) && (
             <CalendarPicker label="End date (inclusive, optional)" optional
               min={date}
               value={endDate}
@@ -567,7 +584,7 @@ export function AdditionModal({
         <div className="modal-actions">
           <button className="button button-quiet" type="button" onClick={onClose}>Cancel</button>
           <button className="button button-primary" type="submit">
-            {adding ? reset ? "Save use-by date" : "Save addition" : "Save changes"}
+            {cap ? "Save balance cap" : adding ? reset ? "Save use-by date" : "Save addition" : "Save changes"}
           </button>
         </div>
       </form>
