@@ -1,6 +1,7 @@
 import { useState, type FormEvent, type ReactNode } from "react";
 import { HexColorInput, HexColorPicker } from "react-colorful";
 import { CalendarPicker } from "./CalendarPicker";
+import { SettingTooltip } from "./SettingTooltip";
 import { POOL_COLORS } from "./poolColors";
 import {
   addDays,
@@ -231,10 +232,9 @@ export function PoolModal({
           <legend>Pool behavior</legend>
           <div className="holiday-mode-setting">
             <label><input type="checkbox" checked={newAdditionsExpireSameDay} onChange={(event) => setNewAdditionsExpireSameDay(event.currentTarget.checked)} />Holiday Mode</label>
-            <span className="setting-tooltip">
-              <button type="button" className="icon-button" aria-label="About Holiday Mode" aria-describedby="holiday-mode-tooltip">ⓘ</button>
-              <span className="setting-tooltip-content" id="holiday-mode-tooltip" role="tooltip">New additions are available only on their scheduled date; unused hours expire the next day. Applies to the starting balance and each occurrence of new repeating schedules. Existing additions are unchanged.</span>
-            </span>
+            <SettingTooltip id="holiday-mode-tooltip" label="About Holiday Mode">
+              New additions are available only on their scheduled date; unused hours expire the next day. Applies to the starting balance and each occurrence of new repeating schedules. Existing additions are unchanged.
+            </SettingTooltip>
           </div>
         </fieldset>
         <fieldset className="pool-visibility-settings">
