@@ -1,4 +1,5 @@
 import { useState, type FormEvent, type ReactNode } from "react";
+import { CalendarPicker } from "./CalendarPicker";
 import {
   addDays,
   capRangesOverlap,
@@ -204,14 +205,7 @@ export function PoolModal({
                 <span>hours</span>
               </div>
             </label>
-            <label className="field-label">
-              Balance as of
-              <input
-                type="date"
-                value={openingDate}
-                onChange={(event) => setOpeningDate(event.currentTarget.value)}
-              />
-            </label>
+            <CalendarPicker label="Balance as of" value={openingDate} onChange={setOpeningDate} />
           </div>
         )}
         <div className="pool-caps-editor">
@@ -255,33 +249,27 @@ export function PoolModal({
                   <span>hours</span>
                 </div>
               </label>
-              <label className="field-label pool-cap-start">
-                Starts on
-                <input
-                  type="date"
+              <div className="pool-cap-start">
+                <CalendarPicker label="Starts on"
                   value={cap.startDate}
-                  onChange={(event) => {
-                    const startDate = event.currentTarget.value;
+                  onChange={(startDate) => {
                     setCaps((current) => current.map((item, itemIndex) =>
                       itemIndex === index ? { ...item, startDate } : item,
                     ));
                   }}
                 />
-              </label>
-              <label className="field-label pool-cap-end">
-                Ends on (optional)
-                <input
-                  type="date"
+              </div>
+              <div className="pool-cap-end">
+                <CalendarPicker label="Ends on (optional)" optional
                   min={cap.startDate || undefined}
                   value={cap.endDate}
-                  onChange={(event) => {
-                    const endDate = event.currentTarget.value;
+                  onChange={(endDate) => {
                     setCaps((current) => current.map((item, itemIndex) =>
                       itemIndex === index ? { ...item, endDate } : item,
                     ));
                   }}
                 />
-              </label>
+              </div>
               <button
                 className="icon-button pool-cap-remove"
                 type="button"
@@ -563,22 +551,15 @@ export function AdditionModal({
             </label>
           </div>
         )}
-        <label className="field-label">
-          {recurring
+        <CalendarPicker label={recurring
              ? cadence === "YearlyNthWeekday" ? "Start schedule on" : reset ? "First use-by date" : "First addition on"
-             : reset ? "Use-by date" : "Add on"}
-          <input type="date" value={date} onChange={(event) => setDate(event.currentTarget.value)} />
-        </label>
+              : reset ? "Use-by date" : "Add on"} value={date} onChange={setDate} />
         {recurring && (
-          <label className="field-label">
-            End date (inclusive, optional)
-            <input
-              type="date"
+            <CalendarPicker label="End date (inclusive, optional)" optional
               min={date}
               value={endDate}
-              onChange={(event) => setEndDate(event.currentTarget.value)}
+              onChange={setEndDate}
             />
-          </label>
         )}
         {error && <p className="form-error" role="alert">{error}</p>}
         <div className="modal-actions">
@@ -733,17 +714,12 @@ export function EventModal({
             return (
               <div className="event-day-card" key={dayIndex}>
                 <div className="event-day-header">
-                  <label className="field-label">
-                    Date
-                    <input
-                      type="date"
+                    <CalendarPicker label="Date"
                       value={day.date}
-                      onChange={(event) => {
-                        const date = event.currentTarget.value;
+                      onChange={(date) => {
                         updateDay(dayIndex, (current) => ({ ...current, date }));
                       }}
                     />
-                  </label>
                   {days.length > 1 && (
                     <button
                       className="icon-button event-day-remove"

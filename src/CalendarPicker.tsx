@@ -1,10 +1,13 @@
 import { createPortal } from "react-dom";
-import { useCallback, useEffect, useLayoutEffect, useRef, useState, type FormEvent } from "react";
+import { useCallback, useEffect, useId, useLayoutEffect, useRef, useState, type FormEvent } from "react";
 import { addMonths, isValidDate, prettyDate, todayDate, validDateOrFallback } from "./model";
 
 interface CalendarPickerProps {
   value: string;
   onChange: (date: string) => void;
+  label?: string;
+  optional?: boolean;
+  min?: string;
 }
 
 interface CalendarPosition {
@@ -25,7 +28,11 @@ function startOfMonth(value: string): string {
   return `${value.slice(0, 7)}-01`;
 }
 
-export function CalendarPicker({ value, onChange }: CalendarPickerProps) {
+export function CalendarPicker({ value, onChange, label = "BALANCE ON", optional = false, min }: CalendarPickerProps) {
+  const id = useId();
+  const calendarId = `${id}-calendar`;
+  const entryId = `${id}-entry`;
+  const errorId = `${id}-error`;
   const rootRef = useRef<HTMLDivElement>(null);
   const triggerRef = useRef<HTMLButtonElement>(null);
   const calendarRef = useRef<HTMLDivElement>(null);
@@ -57,12 +64,12 @@ export function CalendarPicker({ value, onChange }: CalendarPickerProps) {
       lastValidDate.current = value;
       setDraftDate(value);
       setViewMonth(startOfMonth(value));
-    } else {
+    } else if (value !== "" || label === "BALANCE ON") {
       const fallback = lastValidDate.current;
       setDraftDate(fallback);
       onChange(fallback);
     }
-  }, [onChange, value]);
+  }, [label, onChange, value]);
 
   useLayoutEffect(() => {
     if (!isOpen) return;
@@ -121,6 +128,10 @@ export function CalendarPicker({ value, onChange }: CalendarPickerProps) {
   }
 
   function selectDate(candidate: string): boolean {
+    if (min && candidate < min) {
+      setError(`Choose a date on or after ${prettyDate(min)}.`);
+      return false;
+    }
     const resolvedDate = validDateOrFallback(candidate, lastValidDate.current);
     if (resolvedDate !== candidate) {
       const fallback = resolvedDate;
@@ -140,22 +151,24 @@ export function CalendarPicker({ value, onChange }: CalendarPickerProps) {
 
   function submitDate(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    event.stopPropagation();
     selectDate(draftDate.trim());
   }
 
   return (
-    <div className="date-picker" ref={rootRef}>
-      <span>BALANCE ON</span>
+    <div className={label === "BALANCE ON" ? "date-picker" : "date-picker date-picker-field"} ref={rootRef}>
+      <span id={`${id}-label`}>{label}</span>
       <button
         ref={triggerRef}
         className="date-picker-trigger"
         type="button"
         aria-haspopup="dialog"
-        aria-controls="balance-date-calendar"
+        aria-controls={calendarId}
+        aria-labelledby={`${id}-label ${id}-value`}
         aria-expanded={isOpen}
         onClick={() => isOpen ? setIsOpen(false) : openCalendar()}
       >
-        <span className="date-picker-value">{prettyDate(value)}</span>
+        <span className="date-picker-value" id={`${id}-value`}>{value ? prettyDate(value) : "Choose date"}</span>
         <svg className="date-picker-icon" viewBox="0 0 20 20" aria-hidden="true">
           <rect x="2.75" y="4.5" width="14.5" height="12" rx="2" />
           <path d="M6.5 2.75v3.5M13.5 2.75v3.5M3 8h14" />
@@ -164,10 +177,10 @@ export function CalendarPicker({ value, onChange }: CalendarPickerProps) {
       {isOpen && createPortal(
         <div
           className="date-picker-calendar"
-          id="balance-date-calendar"
+          id={calendarId}
           ref={calendarRef}
           role="dialog"
-          aria-label="Choose balance date"
+          aria-label={`Choose ${label.toLowerCase()}`}
           style={{ top: position.top, left: position.left, width: position.width }}
         >
           <div className="calendar-header">
@@ -230,7 +243,8 @@ export function CalendarPicker({ value, onChange }: CalendarPickerProps) {
                 key={date}
                 type="button"
                 aria-label={prettyDate(date)}
-                aria-pressed={date === value}
+                 aria-pressed={date === value}
+                 disabled={Boolean(min && date < min)}
                 onClick={() => selectDate(date)}
               >
                 {Number(date.slice(-2))}
@@ -240,21 +254,26 @@ export function CalendarPicker({ value, onChange }: CalendarPickerProps) {
             ))}
           </div>
           <div className="calendar-footer">
-            <button className="calendar-today-button" type="button" onClick={() => selectDate(todayDate())}>
+            <button className="calendar-today-button" type="button" disabled={Boolean(min && today < min)} onClick={() => selectDate(todayDate())}>
               Go to today
             </button>
+            {optional && <button className="calendar-today-button" type="button" onClick={() => {
+              onChange("");
+              setIsOpen(false);
+              triggerRef.current?.focus();
+            }}>Clear date</button>}
             <form className="calendar-date-entry" onSubmit={submitDate}>
-              <label htmlFor="calendar-date-entry">Enter date</label>
+              <label htmlFor={entryId}>Enter date</label>
               <div>
                 <input
-                  id="calendar-date-entry"
+                  id={entryId}
                   type="text"
                   inputMode="numeric"
                   placeholder="YYYY-MM-DD"
                   maxLength={10}
                   value={draftDate}
                   aria-invalid={Boolean(error)}
-                  aria-describedby={error ? "calendar-date-error" : undefined}
+                  aria-describedby={error ? errorId : undefined}
                   onChange={(event) => {
                     setDraftDate(event.currentTarget.value);
                     setError("");
@@ -262,7 +281,7 @@ export function CalendarPicker({ value, onChange }: CalendarPickerProps) {
                 />
                 <button className="calendar-apply-button" type="submit">Go</button>
               </div>
-              {error && <p id="calendar-date-error" className="calendar-date-error" role="alert">{error}</p>}
+              {error && <p id={errorId} className="calendar-date-error" role="alert">{error}</p>}
             </form>
           </div>
         </div>,
