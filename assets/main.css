@@ -142,6 +142,7 @@ button:focus-visible, input:focus-visible, select:focus-visible, a:focus-visible
 .date-picker-field .date-picker-trigger:focus-visible { outline: 2px solid #9cb5a0; }
 .date-picker-field .date-picker-icon, .date-picker-field .date-picker-trigger:hover .date-picker-icon { stroke: #748b79; }
 .calendar-day:disabled, .calendar-today-button:disabled { opacity: .35; cursor: not-allowed; }
+.calendar-days-multiple { touch-action: none; user-select: none; }
 .date-picker-calendar { position: fixed; z-index: 30; display: grid; gap: 12px; max-height: calc(100vh - 16px); overflow-y: auto; padding: 14px; border: 1px solid #e8e9e3; border-radius: 13px; color: #3b463d; background: #fff; box-shadow: 0 14px 40px rgba(24, 39, 29, .22); animation: rise-in .14s ease-out; }
 .calendar-header { display: grid; grid-template-columns: 30px minmax(0, 1fr) 30px; align-items: center; gap: 8px; }
 .calendar-selectors { display: grid; grid-template-columns: minmax(0, 1fr) 76px; gap: 5px; }
@@ -346,6 +347,20 @@ button:focus-visible, input:focus-visible, select:focus-visible, a:focus-visible
 .pool-cap-remove { width: 27px; height: 30px; margin-bottom: 3px; }
 .field-label { display: grid; gap: 7px; color: #606b61; font-size: 10px; font-weight: 600; }
 .event-days-editor { display: grid; gap: 9px; }
+.event-wizard-steps { display: flex; gap: 8px; margin: 0; padding: 0; list-style: none; }
+.event-wizard-steps li { flex: 1; padding: 9px 6px; border-radius: 7px; color: #8c938a; background: #f3f4f0; font-size: 10px; text-align: center; }
+.event-wizard-steps li.is-active { color: #3e5d45; background: #edf3ee; font-weight: 700; }
+.wizard-hint { margin: 0; color: #8c938a; font-size: 11px; line-height: 1.5; }
+.event-selected-dates { display: flex; flex-wrap: wrap; gap: 7px; margin: 0; padding: 0; list-style: none; }
+.event-selected-dates li { display: flex; align-items: center; gap: 6px; padding: 3px 5px 3px 10px; border: 1px solid #e6e8e1; border-radius: 8px; color: #506c56; font-size: 11px; }
+.event-review { display: grid; gap: 10px; color: #606b61; font-size: 11px; }
+.event-review h3, .event-review p { margin: 0; overflow-wrap: anywhere; }
+.event-review h3 { color: #354137; font-size: 16px; }
+.event-review-allocation { display: flex; justify-content: space-between; gap: 10px; }
+.event-review-warnings, .event-review-clear { padding: 12px; border-radius: 9px; line-height: 1.6; }
+.event-review-warnings { color: #a05c43; background: #faf0e9; }
+.event-review-clear { color: #506c56; background: #edf3ee; }
+.event-review-warnings ul { margin: 7px 0; padding-left: 17px; }
 .event-days-heading { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; color: #606b61; font-size: 10px; font-weight: 600; }
 .event-days-heading > span:last-child { color: #9a9f99; font-size: 9px; font-weight: 400; }
 .event-day-card { display: grid; gap: 10px; padding: 11px; border: 1px solid #eeefe9; border-radius: 10px; background: #fcfcfa; }

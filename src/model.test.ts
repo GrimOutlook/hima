@@ -4,6 +4,7 @@ import {
   balanceHistory,
   capRangesOverlap,
   emptyStore,
+  eventBalanceWarnings,
   formatHours,
   isValidDate,
   nthWeekdayInMonth,
@@ -40,6 +41,37 @@ describe("hour amounts", () => {
     expect(parseHours("-1.25", true)).toBeNull();
     expect(formatHours(3.5)).toBe("3.5");
     expect(formatHours(-0.004)).toBe("0");
+  });
+});
+
+describe("event balance preview", () => {
+  const pool: Pool = { id: 1, name: "Personal leave", additions: [{ id: 2, amount: 10, date: "2026-01-01" }], recurring: [], caps: [] };
+
+  it("includes cumulative event usage and does not change the saved store", () => {
+    const store = { ...emptyStore(), pools: [pool] };
+    expect(eventBalanceWarnings(store, [
+      { date: "2026-01-03", allocations: [{ pool_id: 1, hours: 6 }] },
+      { date: "2026-01-02", allocations: [{ pool_id: 1, hours: 6 }] },
+    ])).toEqual([{ poolId: 1, date: "2026-01-03", balance: -2 }]);
+    expect(store.events).toEqual([]);
+    expect(poolBalanceOn(store, 1, "2026-01-03")).toBe(10);
+  });
+
+  it("warns when an event leaves insufficient hours for later planned leave", () => {
+    const store = { ...emptyStore(), pools: [pool], events: [{ id: 3, name: "Later leave", days: [{ date: "2026-02-01", allocations: [{ pool_id: 1, hours: 8 }] }] }] };
+    expect(eventBalanceWarnings(store, [{ date: "2026-01-02", allocations: [{ pool_id: 1, hours: 4 }] }]))
+      .toEqual([{ poolId: 1, date: "2026-02-01", balance: -2 }]);
+  });
+
+  it("accounts for accruals, caps and resets and excludes untouched pools", () => {
+    const store = { ...emptyStore(), pools: [
+      { ...pool, additions: [...pool.additions, { id: 3, amount: 3, reset: true, date: "2026-01-03" }], recurring: [recurring("Weekly", "2026-01-02", 5)], caps: [{ id: 4, max_balance: 12, start_date: "2026-01-01" }] },
+      { id: 5, name: "Untouched", additions: [], recurring: [], caps: [] },
+    ] };
+    expect(eventBalanceWarnings(store, [{ date: "2026-01-02", allocations: [{ pool_id: 1, hours: 13 }] }]))
+      .toEqual([{ poolId: 1, date: "2026-01-02", balance: -1 }]);
+    expect(eventBalanceWarnings(store, [{ date: "2026-01-04", allocations: [{ pool_id: 1, hours: 3 }] }])).toEqual([]);
+    expect(eventBalanceWarnings(store, [])).toEqual([]);
   });
 });
 

@@ -590,6 +590,19 @@ export function sortDays(days: LeaveDay[]): LeaveDay[] {
   return [...days].sort((left, right) => left.date.localeCompare(right.date));
 }
 
+export function eventBalanceWarnings(store: Store, days: LeaveDay[]): Array<{ poolId: number; date: string; balance: number }> {
+  const firstDate = sortDays(days)[0]?.date;
+  if (!firstDate) return [];
+  const events = [...store.events, { id: store.next_id, name: "Event preview", days }];
+  const affectedPoolIds = new Set(days.flatMap((day) => day.allocations.map((allocation) => allocation.pool_id)));
+  const dates = [...new Set(events.flatMap((event) => event.days.map((day) => day.date)))].filter((date) => date >= firstDate).sort();
+  return store.pools.filter((pool) => affectedPoolIds.has(pool.id)).flatMap((pool) => {
+    const balances = poolLedgerForDates(pool, events, dates);
+    const index = balances.findIndex((ledger) => ledger.balance < 0);
+    return index < 0 ? [] : [{ poolId: pool.id, date: dates[index], balance: balances[index].balance }];
+  });
+}
+
 export function freshEventDays(poolId: number): EventDayInput[] {
   return [{ date: todayDate(), allocations: [{ pool_id: poolId, hours: "" }] }];
 }

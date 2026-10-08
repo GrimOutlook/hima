@@ -625,6 +625,7 @@ function App() {
       )}
       {(selectedModal?.type === "new-event" || selectedModal?.type === "edit-event") && (
         <EventModal
+          store={store}
           key={selectedModal.type === "new-event" ? "new-event" : `edit-event-${selectedModal.eventId}`}
           pools={store.pools}
           editing={selectedModal.type === "edit-event"}

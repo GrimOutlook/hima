@@ -9,6 +9,7 @@ import {
   MONTH_NAMES,
   NTH_WEEKDAYS,
   parseHours,
+  eventBalanceWarnings,
   prettyDate,
   sortDays,
   todayDate,
@@ -20,6 +21,7 @@ import {
   type NthWeekday,
   type Pool,
   type PoolCap,
+  type Store,
   type Weekday,
 } from "./model";
 
@@ -575,6 +577,7 @@ export function AdditionModal({
 
 interface EventModalProps {
   pools: Pool[];
+  store: Store;
   editing: boolean;
   initialName?: string;
   initialDays?: EventDayInput[];
@@ -584,16 +587,48 @@ interface EventModalProps {
 
 export function EventModal({
   pools,
+  store,
   editing,
   initialName = "",
   initialDays,
   onClose,
   onSave,
 }: EventModalProps) {
-  const defaultPoolId = pools[0]?.id ?? 0;
+  const [defaultPoolId, setDefaultPoolId] = useState(pools[0]?.id ?? 0);
+  const [defaultHours, setDefaultHours] = useState("");
   const [name, setName] = useState(initialName);
   const [days, setDays] = useState<EventDayInput[]>(initialDays ?? freshEventDays(defaultPoolId));
   const [error, setError] = useState("");
+
+  const [step, setStep] = useState(1);
+  const [reviewDays, setReviewDays] = useState<LeaveDay[]>([]);
+
+  function selectDates(dates: string[]) {
+    setDays((current) => dates.map((date) => current.find((day) => day.date === date) ?? {
+      date, allocations: [{ pool_id: defaultPoolId, hours: defaultHours }],
+    }));
+    setError("");
+  }
+
+  function changeDefaultHours(hours: string) {
+    setDays((current) => current.map((day) =>
+      day.allocations.length === 1 && day.allocations[0].hours === defaultHours
+        ? { ...day, allocations: [{ ...day.allocations[0], hours }] }
+        : day,
+    ));
+    setDefaultHours(hours);
+    setError("");
+  }
+
+  function changeDefaultPool(poolId: number) {
+    setDays((current) => current.map((day) =>
+      day.allocations.length === 1 && day.allocations[0].pool_id === defaultPoolId
+        ? { ...day, allocations: [{ ...day.allocations[0], pool_id: poolId }] }
+        : day,
+    ));
+    setDefaultPoolId(poolId);
+    setError("");
+  }
 
   function updateDay(dayIndex: number, update: (day: EventDayInput) => EventDayInput) {
     setDays((current) => current.map((day, index) => index === dayIndex ? update(day) : day));
@@ -621,6 +656,11 @@ export function EventModal({
     }
     if (days.length === 0) {
       setError("Add at least one day to this event.");
+      return;
+    }
+    if (!editing && step === 1) {
+      setError("");
+      setStep(2);
       return;
     }
 
@@ -662,6 +702,12 @@ export function EventModal({
       savedDays.push({ date: day.date, allocations });
     }
 
+    if (!editing && step === 2) {
+      setReviewDays(sortDays(savedDays));
+      setError("");
+      setStep(3);
+      return;
+    }
     const saveError = onSave(trimmedName, sortDays(savedDays));
     if (saveError) setError(saveError);
   }
@@ -676,6 +722,10 @@ export function EventModal({
     ]);
   }
 
+  const warnings = step === 3 && !editing ? eventBalanceWarnings(store, reviewDays).map((warning) =>
+    `${pools.find((pool) => pool.id === warning.poolId)?.name} is projected to have ${formatHours(warning.balance)} h on ${prettyDate(warning.date)}, including this event and other planned leave.`,
+  ) : [];
+
   return (
     <ModalFrame
       icon="↘"
@@ -684,12 +734,18 @@ export function EventModal({
       description={
         editing
           ? "Update dates, hours, or the source pool for any day."
-          : "Record the hours and source pool for each day."
+          : step === 1 ? "Name your event and choose its dates."
+          : step === 2 ? "Choose the hours and source pools for each date."
+          : "Review your event and its projected impact before adding it."
       }
       labelledBy="event-modal-title"
       onClose={onClose}
     >
       <form className="modal-form" onSubmit={submit}>
+        {!editing && <ol className="event-wizard-steps" aria-label="Event creation progress">
+          {["Name & dates", "Hours & pools", "Overview"].map((title, index) => <li key={title} aria-current={step === index + 1 ? "step" : undefined} className={step === index + 1 ? "is-active" : ""}>{index + 1}. {title}</li>)}
+        </ol>}
+        {(editing || step === 1) && <>
         <label className="field-label">
           Event name
           <input
@@ -701,6 +757,31 @@ export function EventModal({
             onChange={(event) => setName(event.currentTarget.value)}
           />
         </label>
+        {!editing && <>
+          <CalendarPicker label="Event dates" value="" onChange={() => {}} selectedDates={days.map((day) => day.date)} onDatesChange={selectDates} />
+          <p className="wizard-hint">Click dates or drag to select a range. Start on a selected date to deselect a range. You can choose dates across multiple months.</p>
+          <ul className="event-selected-dates">{days.map((day) => <li key={day.date}><time dateTime={day.date}>{prettyDate(day.date)}</time><button type="button" className="icon-button" aria-label={`Remove ${prettyDate(day.date)}`} onClick={() => selectDates(days.filter((item) => item.date !== day.date).map((item) => item.date))}>×</button></li>)}</ul>
+        </>}
+        </>}
+        {!editing && step <= 2 && <>
+          <div className="form-two-columns">
+            <label className="field-label">
+              Default hours
+              <div className="input-with-suffix">
+                <input type="number" min="0.01" step="0.01" placeholder="e.g. 7.6" value={defaultHours} onChange={(event) => changeDefaultHours(event.currentTarget.value)} />
+                <span>hours</span>
+              </div>
+            </label>
+            <label className="field-label">
+              Default pool
+              <select value={defaultPoolId} onChange={(event) => changeDefaultPool(Number(event.currentTarget.value))}>
+                {pools.map((pool) => <option key={pool.id} value={pool.id}>{pool.name}</option>)}
+              </select>
+            </label>
+          </div>
+          <p className="wizard-hint">Defaults apply to each selected date. You can adjust individual days in Hours &amp; pools; split allocations keep their own values.</p>
+        </>}
+        {(editing || step === 2) && <>
         <div className="event-days-editor">
           <div className="event-days-heading">
             <span>Days covered</span>
@@ -714,13 +795,15 @@ export function EventModal({
             return (
               <div className="event-day-card" key={dayIndex}>
                 <div className="event-day-header">
+                  {editing ? (
                     <CalendarPicker label="Date"
                       value={day.date}
                       onChange={(date) => {
                         updateDay(dayIndex, (current) => ({ ...current, date }));
                       }}
                     />
-                  {days.length > 1 && (
+                  ) : <strong>{prettyDate(day.date)}</strong>}
+                  {editing && days.length > 1 && (
                     <button
                       className="icon-button event-day-remove"
                       type="button"
@@ -794,16 +877,30 @@ export function EventModal({
               </div>
             );
           })}
-          <button className="button button-soft button-small add-day-button" type="button" onClick={addDay}>
+          {editing && <button className="button button-soft button-small add-day-button" type="button" onClick={addDay}>
             <span className="button-plus">+</span>
             Add another day
-          </button>
+          </button>}
         </div>
+        </>}
+        {!editing && step === 3 && <section className="event-review" aria-label="Event overview">
+          <h3>{name.trim()}</h3>
+          <p>{reviewDays.length} {reviewDays.length === 1 ? "day" : "days"} · {formatHours(reviewDays.reduce((total, day) => total + day.allocations.reduce((sum, allocation) => sum + allocation.hours, 0), 0))} hours total</p>
+          {reviewDays.map((day) => <div className="event-day-card" key={day.date}>
+            <strong>{prettyDate(day.date)}</strong>
+            {day.allocations.map((allocation) => <div className="event-review-allocation" key={allocation.pool_id}><span>{pools.find((pool) => pool.id === allocation.pool_id)?.name}</span><strong>{formatHours(allocation.hours)} h</strong></div>)}
+          </div>)}
+          <div className={warnings.length ? "event-review-warnings" : "event-review-clear"}>
+            <strong>{warnings.length ? "Balance warnings" : "No negative pool balances projected"}</strong>
+            {warnings.length > 0 && <><ul>{warnings.map((warning) => <li key={warning}>{warning}</li>)}</ul><p>You can still add this event, or go back to adjust the allocations.</p></>}
+          </div>
+        </section>}
         {error && <p className="form-error" role="alert">{error}</p>}
         <div className="modal-actions">
           <button className="button button-quiet" type="button" onClick={onClose}>Cancel</button>
+          {!editing && step > 1 && <button className="button button-quiet" type="button" onClick={() => { setStep(step - 1); setError(""); }}>Back</button>}
           <button className="button button-primary" type="submit">
-            {editing ? "Save changes" : "Add to plan"}
+            {editing ? "Save changes" : step === 1 ? "Next: hours & pools" : step === 2 ? "Review event" : "Add to plan"}
           </button>
         </div>
       </form>
