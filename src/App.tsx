@@ -905,7 +905,6 @@ function PoolCardContent({
   onSelect,
   onViewUsage,
   onViewInformation,
-  onEdit,
   onAddTime,
   sortable,
   overlay = false,
@@ -979,7 +978,6 @@ function PoolCardContent({
               <path d="M7 4.5v15M10 8h6M10 11.5h6M10 15h4" />
             </svg>
           </button>
-          <button className="icon-button" type="button" title="Edit pool" aria-label={`Edit ${pool.name}`} onClick={onEdit}>✎</button>
           <button className="icon-button" type="button" title="Pool information" aria-label={`View information for ${pool.name}`} onClick={onViewInformation}>ⓘ</button>
         </div>
       </div>
@@ -1015,6 +1013,7 @@ function PoolCardContent({
 function PoolInformationModal({
   pool,
   store,
+  onEdit,
   onEditAddition,
   onEditRecurring,
   onClose,
@@ -1083,6 +1082,9 @@ function PoolInformationModal({
         )}
         </div>
       </section>
+      <div className="modal-actions">
+        <button className="icon-button" type="button" title="Edit pool" aria-label={`Edit ${pool.name}`} onClick={onEdit}>⚙</button>
+      </div>
     </ModalFrame>
   );
 }
