@@ -309,7 +309,11 @@ export function BalanceChart({
 
   return (
     <section className="history-panel">
-      <button className="history-today-button button button-primary button-small" type="button" title="Select today (or the next weekday when weekends are ignored) and clear the selected event" onClick={onToday}>
+      <button className="history-today-button button button-primary button-small" type="button" title="Select today (or the next weekday when weekends are ignored) and clear the selected event. Double-click to restore the default timeline." onClick={onToday} onDoubleClick={() => {
+        selectedPresetRef.current = defaultTimeline;
+        setSelectedPreset(defaultTimeline);
+        setBrushRange(timelineRange(defaultTimeline, history, today, todayIndex, lastIndex));
+      }}>
         Today
       </button>
       <div className="history-panel-header">
