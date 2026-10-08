@@ -25,6 +25,8 @@ interface BalanceChartProps {
   poolHistories: Record<number, BalancePoint[]>;
   selectedEvent?: LeaveEvent;
   eventSelectionRequest?: number;
+  zoomToSelectedEvent?: boolean;
+  widenSelectedEvent?: boolean;
 }
 
 interface ChartPoint extends BalancePoint {
@@ -116,6 +118,8 @@ export function BalanceChart({
   poolHistories,
   selectedEvent,
   eventSelectionRequest,
+  zoomToSelectedEvent,
+  widenSelectedEvent,
 }: BalanceChartProps) {
   const [poolSelections, setPoolSelections] = useState<Record<number, boolean>>({});
   const [combinedTotals, setCombinedTotals] = useState(false);
@@ -183,6 +187,22 @@ export function BalanceChart({
     if (eventStart === undefined || eventEnd === undefined) return;
     const bufferedStart = Math.max(0, eventStart - 7);
     const bufferedEnd = Math.min(lastIndex, eventEnd + 7);
+    if (zoomToSelectedEvent) {
+      setBrushRange({ startIndex: bufferedStart, endIndex: bufferedEnd });
+      selectedPresetRef.current = null;
+      setSelectedPreset(null);
+      return;
+    }
+    if (widenSelectedEvent) {
+      const startDate = addMonths(history[eventStart].date, -6);
+      const endDate = addMonths(history[eventEnd].date, 6);
+      const startIndex = history.findIndex((point) => point.date >= startDate);
+      const endIndex = history.findIndex((point) => point.date >= endDate);
+      setBrushRange({ startIndex: Math.max(0, startIndex), endIndex: endIndex < 0 ? lastIndex : endIndex });
+      selectedPresetRef.current = null;
+      setSelectedPreset(null);
+      return;
+    }
     if (brushRange.startIndex <= bufferedStart && brushRange.endIndex >= bufferedEnd) return;
     setBrushRange((current) => {
       if (current.startIndex <= bufferedStart && current.endIndex >= bufferedEnd) return current;
@@ -192,7 +212,7 @@ export function BalanceChart({
     });
     selectedPresetRef.current = null;
     setSelectedPreset(null);
-  }, [eventSelectionRequest, eventStart, eventEnd, lastIndex]);
+  }, [eventSelectionRequest, eventStart, eventEnd, lastIndex, zoomToSelectedEvent, widenSelectedEvent]);
   const chartData = useMemo<ChartPoint[]>(
     () => {
       const balances = Object.fromEntries(selectedPools.map((pool) => [pool.id,

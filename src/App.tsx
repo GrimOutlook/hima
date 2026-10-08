@@ -65,7 +65,7 @@ function App() {
     useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
   );
   const [balanceDate, setBalanceDate] = useState(todayDate);
-  const [eventSelection, setEventSelection] = useState<{ id: number; request: number } | null>(null);
+  const [eventSelection, setEventSelection] = useState<{ id: number; request: number; zoom: boolean; wide: boolean } | null>(null);
   const selectedEvent = store.events.find((event) => event.id === eventSelection?.id);
   const [selectedUsesPoolId, setSelectedUsesPoolId] = useState<number | null>(null);
   const [modal, setModal] = useState<ModalState | null>(null);
@@ -143,6 +143,15 @@ function App() {
     if (firstPoolId !== undefined) {
       setModal({ type: "new-event", initialDays: freshEventDays(firstPoolId) });
     }
+  }
+
+  function selectEvent(id: number) {
+    setEventSelection((current) => ({
+      id,
+      request: (current?.request ?? 0) + 1,
+      zoom: current?.id === id ? !current.zoom : false,
+      wide: current?.id === id && current.zoom,
+    }));
   }
 
   function exportData() {
@@ -486,6 +495,8 @@ function App() {
           poolHistories={poolHistories}
           selectedEvent={selectedEvent}
           eventSelectionRequest={eventSelection?.request}
+          zoomToSelectedEvent={eventSelection?.zoom}
+          widenSelectedEvent={eventSelection?.wide}
         />
 
         <div className="section-heading-row">
@@ -607,7 +618,7 @@ function App() {
                       <article className={`event-row${selectedEvent?.id === event.id ? " event-row-selected" : ""}`} key={event.id}
                         onClick={(click) => {
                           if (click.target instanceof Element && click.target.closest("button")) return;
-                          setEventSelection((current) => ({ id: event.id, request: (current?.request ?? 0) + 1 }));
+                          selectEvent(event.id);
                         }}>
                         <div className="event-date-block">
                           <span className="event-month">{monthLabel(firstDate)}</span>
@@ -617,7 +628,7 @@ function App() {
                           <strong><button className="pool-select-button" type="button"
                             aria-label={`Highlight ${event.name} in graph`}
                             aria-pressed={selectedEvent?.id === event.id}
-                            onClick={() => setEventSelection((current) => ({ id: event.id, request: (current?.request ?? 0) + 1 }))}
+                            onClick={() => selectEvent(event.id)}
                           >{event.name}</button></strong>
                           <span>{eventDateRangeLabel(event)}</span>
                           <span className={statusClass}>{status}</span>
