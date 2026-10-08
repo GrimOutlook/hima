@@ -3,6 +3,7 @@ import { HexColorInput, HexColorPicker } from "react-colorful";
 import { CalendarPicker } from "./CalendarPicker";
 import { SettingTooltip } from "./SettingTooltip";
 import { POOL_COLORS } from "./poolColors";
+import { TIMELINE_PRESETS, type TimelinePreset } from "./settings";
 import {
   addDays,
   freshEventDays,
@@ -66,11 +67,13 @@ export function ModalFrame({
   );
 }
 
-export function SettingsModal({ firstDayOfWeek, onChange, ignoreWeekends, onIgnoreWeekendsChange, onClose }: {
+export function SettingsModal({ firstDayOfWeek, onChange, ignoreWeekends, onIgnoreWeekendsChange, defaultTimeline, onDefaultTimelineChange, onClose }: {
   firstDayOfWeek: Weekday;
   onChange: (day: Weekday) => void;
   ignoreWeekends: boolean;
   onIgnoreWeekendsChange: (ignore: boolean) => void;
+  defaultTimeline: TimelinePreset;
+  onDefaultTimelineChange: (preset: TimelinePreset) => void;
   onClose: () => void;
 }) {
   const contentRef = useRef<HTMLDivElement>(null);
@@ -108,6 +111,13 @@ export function SettingsModal({ firstDayOfWeek, onChange, ignoreWeekends, onIgno
         </select>
       </label>
       <p className="wizard-hint" id="week-start-description">Calendar pickers display weeks starting on this day.</p>
+      <label className="field-label">
+        Default timeline
+        <select value={defaultTimeline} onChange={(event) => onDefaultTimelineChange(event.currentTarget.value as TimelinePreset)} aria-describedby="default-timeline-description">
+          {TIMELINE_PRESETS.map((preset) => <option key={preset} value={preset}>{preset === "±6 month" ? "±6 months" : preset}</option>)}
+        </select>
+      </label>
+      <p className="wizard-hint" id="default-timeline-description">The graph timeline shown when first loading the page. ±6 months shows six months before and after today.</p>
       <fieldset className="pool-visibility-settings">
         <label><input type="checkbox" checked={ignoreWeekends} onChange={(event) => onIgnoreWeekendsChange(event.currentTarget.checked)} aria-describedby="ignore-weekends-description" />Ignore weekends</label>
       </fieldset>

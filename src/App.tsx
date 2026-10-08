@@ -5,7 +5,7 @@ import { CSS } from "@dnd-kit/utilities";
 import { BalanceChart } from "./BalanceChart";
 import { CalendarPicker } from "./CalendarPicker";
 import { poolColor } from "./poolColors";
-import { FirstDayOfWeekContext, IgnoreWeekendsContext, loadFirstDayOfWeek, loadIgnoreWeekends, nextWeekday, saveSettings } from "./settings";
+import { FirstDayOfWeekContext, IgnoreWeekendsContext, loadDefaultTimeline, loadFirstDayOfWeek, loadIgnoreWeekends, nextWeekday, saveSettings } from "./settings";
 import {
   AdditionModal,
   ModalFrame,
@@ -63,6 +63,7 @@ type ModalState =
 function App() {
   const [firstDayOfWeek, setFirstDayOfWeek] = useState(loadFirstDayOfWeek);
   const [ignoreWeekends, setIgnoreWeekends] = useState(loadIgnoreWeekends);
+  const [defaultTimeline, setDefaultTimeline] = useState(loadDefaultTimeline);
   const [store, setStore] = useState<Store>(loadStore);
   const [draggedPoolId, setDraggedPoolId] = useState<number | null>(null);
   const draggedPool = store.pools.find((pool) => pool.id === draggedPoolId);
@@ -129,8 +130,8 @@ function App() {
   }, [store]);
 
   useEffect(() => {
-    saveSettings(firstDayOfWeek, ignoreWeekends);
-  }, [firstDayOfWeek, ignoreWeekends]);
+    saveSettings(firstDayOfWeek, ignoreWeekends, defaultTimeline);
+  }, [firstDayOfWeek, ignoreWeekends, defaultTimeline]);
 
   useEffect(() => () => {
     if (eventClickTimer.current !== null) clearTimeout(eventClickTimer.current);
@@ -567,6 +568,7 @@ function App() {
         </section>
 
         <BalanceChart
+          defaultTimeline={defaultTimeline}
           history={history}
           today={chartHistoryEnd}
           selectedDate={balanceDate}
@@ -786,7 +788,7 @@ function App() {
         </footer>
       </main>
 
-      {selectedModal?.type === "settings" && <SettingsModal firstDayOfWeek={firstDayOfWeek} onChange={setFirstDayOfWeek} ignoreWeekends={ignoreWeekends} onIgnoreWeekendsChange={setIgnoreWeekends} onClose={closeSettings} />}
+      {selectedModal?.type === "settings" && <SettingsModal firstDayOfWeek={firstDayOfWeek} onChange={setFirstDayOfWeek} ignoreWeekends={ignoreWeekends} onIgnoreWeekendsChange={setIgnoreWeekends} defaultTimeline={defaultTimeline} onDefaultTimelineChange={setDefaultTimeline} onClose={closeSettings} />}
       {informationPool && (
         <PoolInformationModal {...poolCardProps(informationPool)} onEditCap={(capId) => setModal({ type: "edit-cap", poolId: informationPool.id, capId })} onClose={() => setModal(null)} />
       )}

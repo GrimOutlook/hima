@@ -3,6 +3,18 @@ import { addDays, WEEKDAYS, type Weekday } from "./model";
 
 const STORAGE_KEY = "hima.settings.v1";
 
+export const TIMELINE_PRESETS = ["all time", "±6 month", "YTD", "6 month", "3 month", "1 year", "5 year", "Previous Year", "YFD", "future 6 month", "future 3 month", "future 1 year", "future 5 year", "Next Year"] as const;
+export type TimelinePreset = typeof TIMELINE_PRESETS[number];
+
+export function loadDefaultTimeline(): TimelinePreset {
+  try {
+    const saved = JSON.parse(window.localStorage.getItem(STORAGE_KEY) ?? "null");
+    return TIMELINE_PRESETS.find((preset) => preset === saved?.defaultTimeline) ?? "±6 month";
+  } catch {
+    return "±6 month";
+  }
+}
+
 export const FirstDayOfWeekContext = createContext<Weekday>("Monday");
 export const IgnoreWeekendsContext = createContext(false);
 
@@ -37,9 +49,9 @@ export function loadFirstDayOfWeek(): Weekday {
   return "Monday";
 }
 
-export function saveSettings(firstDayOfWeek: Weekday, ignoreWeekends: boolean): void {
+export function saveSettings(firstDayOfWeek: Weekday, ignoreWeekends: boolean, defaultTimeline: TimelinePreset): void {
   try {
-    window.localStorage.setItem(STORAGE_KEY, JSON.stringify({ firstDayOfWeek, ignoreWeekends }));
+    window.localStorage.setItem(STORAGE_KEY, JSON.stringify({ firstDayOfWeek, ignoreWeekends, defaultTimeline }));
   } catch {
     // Keep settings usable when browser storage is unavailable or full.
   }

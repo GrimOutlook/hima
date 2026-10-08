@@ -1,5 +1,5 @@
 import { Fragment, useContext, useEffect, useMemo, useRef, useState } from "react";
-import { IgnoreWeekendsContext, isWeekend } from "./settings";
+import { IgnoreWeekendsContext, isWeekend, TIMELINE_PRESETS, type TimelinePreset } from "./settings";
 import {
   Area,
   AreaChart,
@@ -18,6 +18,7 @@ import {
 import { addMonths, formatHours, formatSignedHours, prettyDate, type BalancePoint, type LeaveEvent, type Pool } from "./model";
 
 interface BalanceChartProps {
+  defaultTimeline: TimelinePreset;
   history: BalancePoint[];
   today: string;
   selectedDate: string;
@@ -44,9 +45,6 @@ const PLOT_LEFT = 68;
 const PLOT_RIGHT = 18;
 const ACTUAL_COLOR = "#4b7955";
 const PROJECTED_COLOR = "#bd856a";
-const TIMELINE_PRESETS = ["all time", "±6 month", "YTD", "6 month", "3 month", "1 year", "5 year", "Previous Year", "YFD", "future 6 month", "future 3 month", "future 1 year", "future 5 year", "Next Year"] as const;
-
-type TimelinePreset = typeof TIMELINE_PRESETS[number];
 
 const TIMELINE_TOOLTIPS: Record<TimelinePreset, string> = {
   "all time": "Show the entire available timeline",
@@ -143,6 +141,7 @@ function monthYearLabel(value: string | undefined): string {
 }
 
 export function BalanceChart({
+  defaultTimeline,
   history: timelineHistory,
   today,
   selectedDate,
@@ -193,11 +192,11 @@ export function BalanceChart({
   const todayIsVisible = history[todayIndex]?.date === today;
   const selectedIndex = history.findIndex((point) => point.date === selectedDate);
   const lastIndex = Math.max(0, history.length - 1);
-  const [selectedPreset, setSelectedPreset] = useState<TimelinePreset | null>("1 year");
+  const [selectedPreset, setSelectedPreset] = useState<TimelinePreset | null>(defaultTimeline);
   const [brushRange, setBrushRange] = useState(() =>
-    timelineRange("1 year", history, today, todayIndex, lastIndex),
+    timelineRange(defaultTimeline, history, today, todayIndex, lastIndex),
   );
-  const selectedPresetRef = useRef<TimelinePreset | null>("1 year");
+  const selectedPresetRef = useRef<TimelinePreset | null>(defaultTimeline);
   const previousSelectedIndex = useRef(selectedIndex);
   useEffect(() => {
     const activePreset = selectedPresetRef.current;
