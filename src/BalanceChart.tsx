@@ -114,6 +114,17 @@ export function BalanceChart({
 }: BalanceChartProps) {
   const [poolSelections, setPoolSelections] = useState<Record<number, boolean>>({});
   const [combinedTotals, setCombinedTotals] = useState(false);
+  const poolDropdownRef = useRef<HTMLDetailsElement>(null);
+  useEffect(() => {
+    function closePoolDropdown(event: PointerEvent) {
+      const dropdown = poolDropdownRef.current;
+      if (dropdown?.open && event.target instanceof Node && !dropdown.contains(event.target)) {
+        dropdown.open = false;
+      }
+    }
+    document.addEventListener("pointerdown", closePoolDropdown);
+    return () => document.removeEventListener("pointerdown", closePoolDropdown);
+  }, []);
   const selectedPools = pools.filter((pool) => poolSelections[pool.id] ?? !pool.hidden_from_graph);
   const selectedPool = selectedPools.length === 1 ? selectedPools[0] : undefined;
   const series = combinedTotals && selectedPools.length > 0
@@ -224,7 +235,7 @@ export function BalanceChart({
           {pools.length > 0 && (
             <div className="history-pool-filter">
               <span>Show</span>
-              <details className="history-pool-dropdown">
+              <details ref={poolDropdownRef} className="history-pool-dropdown">
                 <summary aria-label="Select pools shown in graph">
                   {selectedPool?.name ?? `${selectedPools.length} pools selected`}
                 </summary>
