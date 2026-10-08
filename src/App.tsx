@@ -669,7 +669,7 @@ function PoolCard({
     <article
       className={isSelected ? "pool-card pool-card-selected" : "pool-card"}
       onClick={(event) => {
-        if (event.target instanceof Element && event.target.closest("button")) return;
+        if (event.target instanceof Element && event.target.closest("button, summary")) return;
         onSelect();
       }}
     >
@@ -716,7 +716,9 @@ function PoolCard({
           <strong>{formatHours(lifetimeTotals.used)}<small> h</small></strong>
         </div>
       </div>
-      <div className="pool-rules">
+      <details className="pool-rules-disclosure">
+        <summary>Caps and accruals</summary>
+        <div className="pool-rules">
         {pool.additions.length === 0 && pool.recurring.length === 0 && pool.caps.length === 0 ? (
           <p className="no-rules">No time added yet. Add a balance or set a schedule.</p>
         ) : (
@@ -755,7 +757,8 @@ function PoolCard({
             ))}
           </>
         )}
-      </div>
+        </div>
+      </details>
       <div className="pool-card-footer">
         <span className="pool-unit-note">Tracked in hours</span>
         <button className="button button-soft button-small" type="button" onClick={onAddTime}>
