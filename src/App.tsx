@@ -1,4 +1,7 @@
 import { useEffect, useMemo, useRef, useState, type ChangeEvent } from "react";
+import { closestCenter, defaultDropAnimationSideEffects, DndContext, DragOverlay, KeyboardSensor, PointerSensor, useSensor, useSensors } from "@dnd-kit/core";
+import { defaultAnimateLayoutChanges, SortableContext, sortableKeyboardCoordinates, useSortable, verticalListSortingStrategy } from "@dnd-kit/sortable";
+import { CSS } from "@dnd-kit/utilities";
 import { BalanceChart } from "./BalanceChart";
 import { CalendarPicker } from "./CalendarPicker";
 import {
@@ -52,6 +55,12 @@ type ModalState =
 
 function App() {
   const [store, setStore] = useState<Store>(loadStore);
+  const [draggedPoolId, setDraggedPoolId] = useState<number | null>(null);
+  const draggedPool = store.pools.find((pool) => pool.id === draggedPoolId);
+  const poolDragSensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 6 } }),
+    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
+  );
   const [balanceDate, setBalanceDate] = useState(todayDate);
   const [selectedChartPoolId, setSelectedChartPoolId] = useState<number | null>(null);
   const [selectedUsesPoolId, setSelectedUsesPoolId] = useState<number | null>(null);
@@ -94,6 +103,34 @@ function App() {
 
   function createPool() {
     setModal({ type: "new-pool" });
+  }
+
+  function reorderPool(poolId: number, targetId: number) {
+    setStore((current) => {
+      const from = current.pools.findIndex((pool) => pool.id === poolId);
+      const to = current.pools.findIndex((pool) => pool.id === targetId);
+      if (from < 0 || to < 0 || from === to) return current;
+      const pools = [...current.pools];
+      const [pool] = pools.splice(from, 1);
+      pools.splice(to, 0, pool);
+      return { ...current, pools };
+    });
+  }
+
+  function poolCardProps(pool: Pool): PoolCardProps {
+    return {
+      pool, balanceDate, store,
+      isSelected: usesFilterPool?.id === pool.id,
+      onSelect: () => setSelectedUsesPoolId((current) => current === pool.id ? null : pool.id),
+      onViewUsage: () => setModal({ type: "pool-usage", poolId: pool.id }),
+      onEdit: () => setModal({ type: "edit-pool", poolId: pool.id }),
+      onDelete: () => removePool(pool.id, pool.name),
+      onAddTime: () => setModal({ type: "add-time", poolId: pool.id }),
+      onEditAddition: (additionId) => setModal({ type: "edit-addition", poolId: pool.id, additionId }),
+      onEditRecurring: (ruleId) => setModal({ type: "edit-recurring", poolId: pool.id, ruleId }),
+      onDeleteAddition: (additionId) => removeAddition(pool.id, additionId, false),
+      onDeleteRecurring: (ruleId) => removeAddition(pool.id, ruleId, true),
+    };
   }
 
   function createEvent() {
@@ -442,6 +479,17 @@ function App() {
 
         <div className="workspace-grid">
           <section className="pools-column" aria-label="Leave pools">
+            <DndContext
+              sensors={poolDragSensors}
+              collisionDetection={closestCenter}
+              onDragStart={({ active }) => setDraggedPoolId(Number(active.id))}
+              onDragCancel={() => setDraggedPoolId(null)}
+              onDragEnd={({ active, over }) => {
+                if (over && active.id !== over.id) reorderPool(Number(active.id), Number(over.id));
+                setDraggedPoolId(null);
+              }}
+            >
+            <SortableContext items={store.pools.map((pool) => pool.id)} strategy={verticalListSortingStrategy}>
             {store.pools.length === 0 ? (
               <div className="empty-card pool-empty">
                 <div className="empty-illustration">✳</div>
@@ -455,21 +503,18 @@ function App() {
             ) : store.pools.map((pool) => (
               <PoolCard
                 key={pool.id}
-                pool={pool}
-                balanceDate={balanceDate}
-                store={store}
-                isSelected={usesFilterPool?.id === pool.id}
-                onSelect={() => setSelectedUsesPoolId((current) => current === pool.id ? null : pool.id)}
-                onViewUsage={() => setModal({ type: "pool-usage", poolId: pool.id })}
-                onEdit={() => setModal({ type: "edit-pool", poolId: pool.id })}
-                onDelete={() => removePool(pool.id, pool.name)}
-                onAddTime={() => setModal({ type: "add-time", poolId: pool.id })}
-                onEditAddition={(additionId) => setModal({ type: "edit-addition", poolId: pool.id, additionId })}
-                onEditRecurring={(ruleId) => setModal({ type: "edit-recurring", poolId: pool.id, ruleId })}
-                onDeleteAddition={(additionId) => removeAddition(pool.id, additionId, false)}
-                onDeleteRecurring={(ruleId) => removeAddition(pool.id, ruleId, true)}
+                {...poolCardProps(pool)}
               />
             ))}
+            </SortableContext>
+            <DragOverlay adjustScale={false} dropAnimation={{
+              duration: 220,
+              easing: "cubic-bezier(0.2, 0.8, 0.2, 1)",
+              sideEffects: defaultDropAnimationSideEffects({ styles: { active: { opacity: "0" } } }),
+            }}>
+              {draggedPool ? <PoolCardContent {...poolCardProps(draggedPool)} overlay /> : null}
+            </DragOverlay>
+            </DndContext>
           </section>
 
           <section className="events-column" aria-label="Planned leave events">
@@ -655,7 +700,17 @@ interface PoolCardProps {
   onDeleteRecurring: (id: number) => void;
 }
 
-function PoolCard({
+function PoolCard(props: PoolCardProps) {
+  const sortable = useSortable({
+    id: props.pool.id,
+    disabled: props.store.pools.length < 2,
+    animateLayoutChanges: (args) => args.isSorting && defaultAnimateLayoutChanges(args),
+    transition: { duration: 220, easing: "cubic-bezier(0.2, 0.8, 0.2, 1)" },
+  });
+  return <PoolCardContent {...props} sortable={sortable} />;
+}
+
+function PoolCardContent({
   pool,
   balanceDate,
   store,
@@ -669,12 +724,21 @@ function PoolCard({
   onEditRecurring,
   onDeleteAddition,
   onDeleteRecurring,
-}: PoolCardProps) {
+  sortable,
+  overlay = false,
+}: PoolCardProps & { sortable?: ReturnType<typeof useSortable>; overlay?: boolean }) {
   const currentBalance = poolBalanceOn(store, pool.id, balanceDate);
   const lifetimeTotals = poolTotalsOn(store, pool.id, todayDate());
   return (
     <article
-      className={isSelected ? "pool-card pool-card-selected" : "pool-card"}
+      ref={sortable?.setNodeRef}
+      style={{
+        transform: CSS.Translate.toString(sortable?.transform ?? null),
+        transition: sortable?.transition,
+        opacity: sortable?.isDragging ? 0 : undefined,
+        height: overlay ? "100%" : undefined,
+      }}
+      className={`pool-card${isSelected ? " pool-card-selected" : ""}${overlay ? " pool-card-dragging" : ""}`}
       onClick={(event) => {
         if (event.target instanceof Element && event.target.closest("button, summary")) return;
         onSelect();
@@ -682,6 +746,15 @@ function PoolCard({
     >
       <div className="pool-card-header">
         <div className="pool-title-group">
+          {store.pools.length > 1 && <button
+            ref={sortable?.setActivatorNodeRef}
+            {...sortable?.attributes}
+            {...sortable?.listeners}
+            className="icon-button pool-drag-handle"
+            type="button"
+            aria-label={`Reorder ${pool.name}`}
+            title="Drag to reorder, or press Space then use the arrow keys"
+          ><span aria-hidden="true">⠿</span></button>}
           <div className="pool-icon">◌</div>
           <div>
             <h3>
