@@ -65,18 +65,18 @@ function App() {
     useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
   );
   const [balanceDate, setBalanceDate] = useState(todayDate);
-  const [selectedChartPoolId, setSelectedChartPoolId] = useState<number | null>(null);
   const [selectedUsesPoolId, setSelectedUsesPoolId] = useState<number | null>(null);
   const [modal, setModal] = useState<ModalState | null>(null);
   const importInputRef = useRef<HTMLInputElement>(null);
   const chartHistoryEnd = todayDate();
   const balance = totalsOn(store, balanceDate);
-  const chartPoolId = selectedChartPoolId !== null && store.pools.some((pool) => pool.id === selectedChartPoolId)
-    ? selectedChartPoolId
-    : null;
   const history = useMemo(
-    () => balanceHistory(store, chartHistoryEnd, chartPoolId ?? undefined),
-    [store, chartHistoryEnd, chartPoolId],
+    () => balanceHistory({ ...store, pools: store.pools.map((pool) => ({ ...pool, hidden_from_graph: false })) }, chartHistoryEnd),
+    [store, chartHistoryEnd],
+  );
+  const poolHistories = useMemo(
+    () => Object.fromEntries(store.pools.map((pool) => [pool.id, balanceHistory(store, chartHistoryEnd, pool.id)])),
+    [store, chartHistoryEnd],
   );
   const firstPoolId = store.pools[0]?.id;
   const timeline = [...store.events].sort((left, right) =>
@@ -485,8 +485,7 @@ function App() {
           selectedDate={balanceDate}
           onDateChange={setBalanceDate}
           pools={store.pools}
-          selectedPoolId={chartPoolId}
-          onPoolChange={setSelectedChartPoolId}
+          poolHistories={poolHistories}
         />
 
         <div className="section-heading-row">

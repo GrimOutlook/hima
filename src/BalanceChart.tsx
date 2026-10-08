@@ -4,6 +4,8 @@ import {
   AreaChart,
   Brush,
   CartesianGrid,
+  Line,
+  LineChart,
   ReferenceLine,
   ResponsiveContainer,
   Tooltip,
@@ -19,14 +21,14 @@ interface BalanceChartProps {
   selectedDate: string;
   onDateChange: (date: string) => void;
   pools: Pool[];
-  selectedPoolId: number | null;
-  onPoolChange: (poolId: number | null) => void;
+  poolHistories: Record<number, BalancePoint[]>;
 }
 
 interface ChartPoint extends BalancePoint {
   index: number;
   actualBalance: number | null;
   projectedBalance: number | null;
+  [key: string]: string | number | boolean | null;
 }
 
 const CHART_HEIGHT = 340;
@@ -82,7 +84,12 @@ function BalanceTooltip({
         <i className={point.projected ? "tooltip-projected-dot" : "tooltip-actual-dot"} />
         {point.projected ? "Projected balance" : "Actual balance"}
       </span>
-      <strong>{formatHours(point.balance)} h</strong>
+      {payload.filter((entry) => entry.value != null &&
+        (point.projected || !String(entry.dataKey).endsWith("_projected"))).map((entry) => (
+        <strong key={String(entry.dataKey)} style={{ color: entry.color }}>
+          {entry.name}: {formatHours(Number(entry.value))} h
+        </strong>
+      ))}
     </div>
   );
 }
@@ -98,16 +105,32 @@ function monthYearLabel(value: string | undefined): string {
 }
 
 export function BalanceChart({
-  history,
+  history: timelineHistory,
   today,
   selectedDate,
   onDateChange,
   pools,
-  selectedPoolId,
-  onPoolChange,
+  poolHistories,
 }: BalanceChartProps) {
-  const selectedPool = pools.find((pool) => pool.id === selectedPoolId);
-  const hiddenPoolCount = pools.filter((pool) => pool.hidden_from_graph).length;
+  const [poolSelections, setPoolSelections] = useState<Record<number, boolean>>({});
+  const [combinedTotals, setCombinedTotals] = useState(false);
+  const selectedPools = pools.filter((pool) => poolSelections[pool.id] ?? !pool.hidden_from_graph);
+  const selectedPool = selectedPools.length === 1 ? selectedPools[0] : undefined;
+  const series = combinedTotals && selectedPools.length > 0
+    ? [{ key: "combined", name: "Combined Totals", color: ACTUAL_COLOR }]
+    : selectedPools.map((pool, index) => ({
+      key: `pool_${pool.id}`, name: pool.name,
+      color: pool.color || [ACTUAL_COLOR, PROJECTED_COLOR, "#547eaa", "#9b6dad", "#ad913e"][index % 5],
+    }));
+  const history = useMemo(() => {
+    const balances = new Map<string, number>();
+    for (const pool of selectedPools) {
+      for (const point of poolHistories[pool.id] ?? []) {
+        balances.set(point.date, (balances.get(point.date) ?? 0) + point.balance);
+      }
+    }
+    return timelineHistory.map((point) => ({ ...point, balance: balances.get(point.date) ?? 0 }));
+  }, [timelineHistory, poolHistories, pools, poolSelections]);
   const todayIndex = Math.max(0, history.findIndex((point) => point.date === today));
   const selectedIndex = history.findIndex((point) => point.date === selectedDate);
   const lastIndex = Math.max(0, history.length - 1);
@@ -137,13 +160,24 @@ export function BalanceChart({
     setSelectedPreset(null);
   }, [selectedIndex, lastIndex]);
   const chartData = useMemo<ChartPoint[]>(
-    () => history.map((point, index) => ({
+    () => {
+      const balances = Object.fromEntries(selectedPools.map((pool) => [pool.id,
+        new Map((poolHistories[pool.id] ?? []).map((point) => [point.date, point.balance])),
+      ]));
+      return history.map((point, index) => ({
       ...point,
       index,
       actualBalance: point.projected ? null : point.balance,
       projectedBalance: point.projected || index === todayIndex ? point.balance : null,
-    })),
-    [history, todayIndex],
+      ...Object.fromEntries(series.flatMap((item) => {
+        const pool = selectedPools.find((pool) => item.key === `pool_${pool.id}`);
+        const balance = pool ? balances[pool.id].get(point.date) ?? 0 : point.balance;
+        return [[`${item.key}_actual`, point.projected ? null : balance],
+          [`${item.key}_projected`, point.projected || index === todayIndex ? balance : null]];
+      })),
+    }));
+    },
+    [history, todayIndex, poolHistories, combinedTotals],
   );
   const todayPoint = history[todayIndex];
   const currentBalance = todayPoint?.balance ?? 0;
@@ -155,7 +189,9 @@ export function BalanceChart({
   const visibleEnd = Math.max(visibleStart, Math.min(brushRange.endIndex, lastIndex));
   const visibleStartDate = history[visibleStart]?.date ?? today;
   const visibleEndDate = history[visibleEnd]?.date ?? today;
-  const values = history.slice(visibleStart, visibleEnd + 1).map((point) => point.balance);
+  const values = chartData.slice(visibleStart, visibleEnd + 1).flatMap((point) =>
+    series.flatMap((item) => [point[`${item.key}_actual`], point[`${item.key}_projected`]])
+      .filter((value): value is number => typeof value === "number"));
   const minBalance = values.length ? Math.min(...values) : 0;
   const maxBalance = values.length ? Math.max(...values) : 0;
   const spread = maxBalance - minBalance;
@@ -180,26 +216,31 @@ export function BalanceChart({
           <p>
             {selectedPool
               ? `Balance history and a projection through next year for ${selectedPool.name}.`
-               : hiddenPoolCount > 0
-                 ? `Balance history and a projection through next year across visible pools (${hiddenPoolCount} hidden).`
-                 : "Balance history and a projection through next year across all pools."}
+               : "Balance history and a projection through next year for the selected pools."}
           </p>
           {pools.length > 0 && (
-            <label className="history-pool-filter">
+            <div className="history-pool-filter">
               <span>Show</span>
-              <select
-                aria-label="Pool shown in graph"
-                value={selectedPoolId ?? ""}
-                onChange={(event) => {
-                  const value = event.currentTarget.value;
-                  onPoolChange(value === "" ? null : Number(value));
-                }}
-              >
-                <option value="">{hiddenPoolCount > 0 ? "All visible pools" : "All pools"}</option>
-                {pools.map((pool) => <option key={pool.id} value={pool.id}>{pool.name}</option>)}
-              </select>
+              <details className="history-pool-dropdown">
+                <summary aria-label="Select pools shown in graph">
+                  {selectedPool?.name ?? `${selectedPools.length} pools selected`}
+                </summary>
+                <div className="history-pool-options" role="group" aria-label="Pools shown in graph">
+                  {pools.map((pool) => (
+                    <label key={pool.id}>
+                      <input type="checkbox" checked={poolSelections[pool.id] ?? !pool.hidden_from_graph}
+                        onChange={(event) => setPoolSelections((current) => ({ ...current, [pool.id]: event.target.checked }))} />
+                      {pool.name}
+                    </label>
+                  ))}
+                </div>
+              </details>
               <span>in graph</span>
-            </label>
+              <label className="history-combined-toggle">
+                <input type="checkbox" checked={combinedTotals} onChange={(event) => setCombinedTotals(event.target.checked)} />
+                Combined Totals
+              </label>
+            </div>
           )}
         </div>
         <div className="history-metrics">
@@ -207,17 +248,15 @@ export function BalanceChart({
             <strong className={change < 0 ? "history-change-negative" : undefined}>
               {formatSignedHours(change)} h
             </strong>
-            <span>change over past year</span>
+            <span>{selectedPools.length > 1 ? "combined change over past year" : "change over past year"}</span>
           </div>
           <div className="history-projection">
             <strong>{formatHours(projectionBalance)} h</strong>
-            <span>projected in twelve months</span>
+            <span>{selectedPools.length > 1 ? "combined projection in twelve months" : "projected in twelve months"}</span>
           </div>
         </div>
       </div>
-      {!selectedPool && pools.length > 0 && (
-        hiddenPoolCount === pools.length && <p className="history-pool-visibility">All pools are hidden from the combined graph. Edit a pool's visibility settings to include it.</p>
-      )}
+      {selectedPools.length === 0 && <p className="history-pool-visibility">Select a pool to show its balance in the graph.</p>}
       <div className="history-timeline-controls" role="group" aria-label="Graph timeline presets">
         <span>Timeline</span>
         {TIMELINE_PRESETS.map((preset) => (
@@ -244,10 +283,10 @@ export function BalanceChart({
         <div
           className="balance-chart-viewport"
           role="group"
-          aria-label={`${selectedPool?.name ?? "Combined PPL"} balance chart with timeline presets, zoom, and pan controls`}
+          aria-label={`${selectedPool?.name ?? (combinedTotals ? "Combined pools" : "Selected pools")} balance chart with timeline presets, zoom, and pan controls`}
         >
           <ResponsiveContainer width="100%" height={CHART_HEIGHT}>
-            <AreaChart
+            <LineChart
               className="balance-chart-inner"
               data={chartData}
               margin={{ top: 38, right: PLOT_RIGHT, bottom: 0, left: 0 }}
@@ -257,7 +296,7 @@ export function BalanceChart({
                 const point = chartData[Number(activeLabel)];
                 if (point) onDateChange(point.date);
               }}
-              aria-label={`Daily ${selectedPool ? `${selectedPool.name} ` : "combined PPL "}balance history and forecast through next year`}
+              aria-label={`Daily ${selectedPool?.name ?? (combinedTotals ? "combined pools" : "selected pools")} balance history and forecast through next year`}
             >
               <CartesianGrid stroke="#eeefe9" vertical={false} />
               <XAxis
@@ -316,39 +355,14 @@ export function BalanceChart({
               {domain[0] <= 0 && domain[1] >= 0 && (
                 <ReferenceLine y={0} stroke="#b8c5b9" strokeDasharray="4 4" />
               )}
-              <Area
-                name="Actual"
-                dataKey="actualBalance"
-                type="monotoneX"
-                baseValue={domain[0]}
-                stroke={ACTUAL_COLOR}
-                strokeWidth={2.5}
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                fill={ACTUAL_COLOR}
-                fillOpacity={0.1}
-                connectNulls={false}
-                dot={false}
-                activeDot={{ r: 5, fill: "#fff", stroke: ACTUAL_COLOR, strokeWidth: 2 }}
-                isAnimationActive={false}
-              />
-              <Area
-                name="Projected"
-                dataKey="projectedBalance"
-                type="monotoneX"
-                baseValue={domain[0]}
-                stroke={PROJECTED_COLOR}
-                strokeWidth={2.5}
-                strokeDasharray="7 5"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                fill={PROJECTED_COLOR}
-                fillOpacity={0.1}
-                connectNulls={false}
-                dot={false}
-                activeDot={{ r: 5, fill: "#fff", stroke: PROJECTED_COLOR, strokeWidth: 2 }}
-                isAnimationActive={false}
-              />
+              {series.map((item) => (
+                <Fragment key={item.key}>
+                  <Line name={item.name} dataKey={`${item.key}_actual`} type="monotoneX"
+                    stroke={item.color} strokeWidth={2.5} dot={false} isAnimationActive={false} />
+                  <Line name={`${item.name} (projected)`} dataKey={`${item.key}_projected`} type="monotoneX"
+                    stroke={item.color} strokeWidth={2.5} strokeDasharray="7 5" dot={false} isAnimationActive={false} />
+                </Fragment>
+              ))}
               <Tooltip
                 content={(props) => <BalanceTooltip {...props} />}
                 cursor={{ stroke: "#a6afa5", strokeDasharray: "3 4" }}
@@ -382,14 +396,17 @@ export function BalanceChart({
                   />
                 </AreaChart>
               </Brush>
-            </AreaChart>
+            </LineChart>
           </ResponsiveContainer>
         </div>
       </div>
       <div className="history-footnote">
-        <span className="history-legend-dot" />
+        {series.map((item) => <span key={item.key} className="history-series-label">
+          <i style={{ background: item.color }} />{item.name}
+        </span>)}
+        <span aria-hidden="true" style={{ width: 16, borderTop: "2px solid #747e74" }} />
         Actual
-        <span className="history-projection-dot" />
+        <span aria-hidden="true" style={{ width: 16, borderTop: "2px dashed #747e74" }} />
         Projected
         <span className="history-range">
           {prettyDate(visibleStartDate)} – {prettyDate(visibleEndDate)} · hover for daily balances; click to select a date; drag the range handles to zoom and the selection to pan
