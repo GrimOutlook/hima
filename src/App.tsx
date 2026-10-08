@@ -16,6 +16,7 @@ import {
   type PoolCapFormData,
 } from "./Modals";
 import {
+  addDays,
   allocateIds,
   balanceHistory,
   capRangesOverlap,
@@ -186,6 +187,9 @@ function App() {
   }
 
   function selectEvent(id: number) {
+    const startDate = store.events.find((event) => event.id === id)?.days
+      .map((day) => day.date).sort()[0];
+    if (startDate) setBalanceDate(addDays(startDate, -1));
     if (eventClickTimer.current !== null) clearTimeout(eventClickTimer.current);
     eventClickTimer.current = setTimeout(() => {
       setHighlightedEventId((current) => current === id ? null : id);
