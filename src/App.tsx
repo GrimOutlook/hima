@@ -545,6 +545,13 @@ function App() {
           today={chartHistoryEnd}
           selectedDate={balanceDate}
           onDateChange={setBalanceDate}
+          onToday={() => {
+            if (eventClickTimer.current !== null) clearTimeout(eventClickTimer.current);
+            eventClickTimer.current = null;
+            setHighlightedEventId(null);
+            setEventSelection(null);
+            setBalanceDate(chartHistoryEnd);
+          }}
           pools={store.pools}
           poolHistories={poolHistories}
           selectedEvent={selectedEvent}

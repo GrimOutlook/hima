@@ -21,6 +21,7 @@ interface BalanceChartProps {
   today: string;
   selectedDate: string;
   onDateChange: (date: string) => void;
+  onToday: () => void;
   pools: Pool[];
   poolHistories: Record<number, BalancePoint[]>;
   selectedEvent?: LeaveEvent;
@@ -115,6 +116,7 @@ export function BalanceChart({
   today,
   selectedDate,
   onDateChange,
+  onToday,
   pools,
   poolHistories,
   selectedEvent,
@@ -280,7 +282,7 @@ export function BalanceChart({
 
   return (
     <section className="history-panel">
-      <button className="history-today-button button button-primary button-small" type="button" onClick={() => onDateChange(today)}>
+      <button className="history-today-button button button-primary button-small" type="button" onClick={onToday}>
         Today
       </button>
       <div className="history-panel-header">
