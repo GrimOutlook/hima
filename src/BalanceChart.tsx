@@ -336,7 +336,6 @@ export function BalanceChart({
           </Fragment>
         ))}
       </div>
-      {selectedEvent && <p style={{ color: PROJECTED_COLOR }}>Highlighted: {selectedEvent.name} · {selectedEvent.days.length} leave dates</p>}
       <div className="balance-chart-wrap">
         <div
           className="balance-chart-viewport"
@@ -359,7 +358,7 @@ export function BalanceChart({
               <CartesianGrid stroke="#eeefe9" vertical={false} />
               {eventIndices.map((index) => (
                 <ReferenceArea key={`event-day-${index}`} x1={index - 0.5} x2={index + 0.5}
-                  fill={PROJECTED_COLOR} fillOpacity={0.22} strokeOpacity={0} ifOverflow="hidden" />
+                  fill="#facc15" fillOpacity={0.3} strokeOpacity={0} ifOverflow="hidden" />
               ))}
               <XAxis
                 dataKey="index"
@@ -400,10 +399,6 @@ export function BalanceChart({
                   className: "chart-today-label",
                 }}
               />
-              {eventIndices.map((index) => (
-                <ReferenceLine key={`event-marker-${index}`} x={index} stroke={PROJECTED_COLOR}
-                  strokeOpacity={0.7} strokeDasharray="2 3" />
-              ))}
               {selectedIndex >= 0 && selectedIndex !== todayIndex && (
                 <ReferenceLine
                   x={selectedIndex}
