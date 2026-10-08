@@ -1,5 +1,5 @@
 import { createPortal } from "react-dom";
-import { useCallback, useEffect, useId, useLayoutEffect, useRef, useState, type FormEvent } from "react";
+import { useCallback, useEffect, useId, useLayoutEffect, useRef, useState } from "react";
 import { addDays, addMonths, isValidDate, prettyDate, todayDate, validDateOrFallback } from "./model";
 
 interface CalendarPickerProps {
@@ -33,14 +33,11 @@ function startOfMonth(value: string): string {
 export function CalendarPicker({ value, onChange, label = "BALANCE ON", optional = false, min, selectedDates, onDatesChange }: CalendarPickerProps) {
   const id = useId();
   const calendarId = `${id}-calendar`;
-  const entryId = `${id}-entry`;
-  const errorId = `${id}-error`;
   const rootRef = useRef<HTMLDivElement>(null);
   const triggerRef = useRef<HTMLButtonElement>(null);
   const calendarRef = useRef<HTMLDivElement>(null);
   const lastValidDate = useRef(isValidDate(value) ? value : todayDate());
   const [isOpen, setIsOpen] = useState(false);
-  const [draftDate, setDraftDate] = useState(lastValidDate.current);
   const [viewMonth, setViewMonth] = useState(startOfMonth(lastValidDate.current));
   const [error, setError] = useState("");
   const [position, setPosition] = useState<CalendarPosition>({ top: 0, left: 0, width: CALENDAR_WIDTH });
@@ -91,11 +88,9 @@ export function CalendarPicker({ value, onChange, label = "BALANCE ON", optional
   useEffect(() => {
     if (isValidDate(value)) {
       lastValidDate.current = value;
-      setDraftDate(value);
       setViewMonth(startOfMonth(value));
     } else if (value !== "" || label === "BALANCE ON") {
       const fallback = lastValidDate.current;
-      setDraftDate(fallback);
       onChange(fallback);
     }
   }, [label, onChange, value]);
@@ -148,8 +143,8 @@ export function CalendarPicker({ value, onChange, label = "BALANCE ON", optional
   });
 
   function openCalendar() {
-    const initialDate = isValidDate(value) ? value : lastValidDate.current;
-    setDraftDate(initialDate);
+    const selectedDate = selectedDates ? selectedDates[selectedDates.length - 1] : value;
+    const initialDate = selectedDate && isValidDate(selectedDate) ? selectedDate : todayDate();
     setViewMonth(startOfMonth(initialDate));
     setError("");
     updatePosition();
@@ -164,12 +159,10 @@ export function CalendarPicker({ value, onChange, label = "BALANCE ON", optional
     const resolvedDate = validDateOrFallback(candidate, lastValidDate.current);
     if (resolvedDate !== candidate) {
       const fallback = resolvedDate;
-      setDraftDate(fallback);
       setError(`Invalid date. Reverted to ${prettyDate(fallback)}.`);
       return false;
     }
     lastValidDate.current = resolvedDate;
-    setDraftDate(resolvedDate);
     setViewMonth(startOfMonth(resolvedDate));
     setError("");
     if (selectedDates && onDatesChange) {
@@ -182,12 +175,6 @@ export function CalendarPicker({ value, onChange, label = "BALANCE ON", optional
     setIsOpen(false);
     triggerRef.current?.focus();
     return true;
-  }
-
-  function submitDate(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    event.stopPropagation();
-    selectDate(draftDate.trim());
   }
 
   return (
@@ -223,6 +210,9 @@ export function CalendarPicker({ value, onChange, label = "BALANCE ON", optional
           aria-label={`Choose ${label.toLowerCase()}`}
           style={{ top: position.top, left: position.left, width: position.width }}
         >
+          <button className="calendar-footer-button calendar-clear-button calendar-top-today" type="button" disabled={Boolean(min && today < min)} onClick={() => selectDate(today)}>
+            Today
+          </button>
           <div className="calendar-header">
             <button
               className="calendar-nav-button"
@@ -330,47 +320,26 @@ export function CalendarPicker({ value, onChange, label = "BALANCE ON", optional
               <span className="calendar-day-empty" key={`empty-${index}`} />
             ))}
           </div>
-          <div className="calendar-footer">
-            {selectedDates && onDatesChange && <button className="calendar-today-button" type="button" onClick={() => {
-              dragRef.current = null;
-              setDragDates(null);
-              setError("");
-              onDatesChange([]);
-            }}>Clear</button>}
-            {selectedDates && <button className="calendar-today-button" type="button" onClick={() => {
-              setIsOpen(false);
-              triggerRef.current?.focus();
-            }}>Done selecting dates</button>}
-            <button className="calendar-today-button" type="button" disabled={Boolean(min && today < min)} onClick={() => selectDate(todayDate())}>
-              Go to today
-            </button>
+          {error && <p className="calendar-date-error" role="alert">{error}</p>}
+          {(optional || selectedDates) && <div className="calendar-footer">
             {optional && <button className="calendar-today-button" type="button" onClick={() => {
               onChange("");
               setIsOpen(false);
               triggerRef.current?.focus();
             }}>Clear date</button>}
-            <form className="calendar-date-entry" onSubmit={submitDate}>
-              <label htmlFor={entryId}>Enter date</label>
-              <div>
-                <input
-                  id={entryId}
-                  type="text"
-                  inputMode="numeric"
-                  placeholder="YYYY-MM-DD"
-                  maxLength={10}
-                  value={draftDate}
-                  aria-invalid={Boolean(error)}
-                  aria-describedby={error ? errorId : undefined}
-                  onChange={(event) => {
-                    setDraftDate(event.currentTarget.value);
-                    setError("");
-                  }}
-                />
-                <button className="calendar-apply-button" type="submit">Go</button>
-              </div>
-              {error && <p id={errorId} className="calendar-date-error" role="alert">{error}</p>}
-            </form>
-          </div>
+            {selectedDates && <div className="calendar-footer-actions">
+              {onDatesChange && <button className="calendar-footer-button calendar-clear-button" type="button" onClick={() => {
+                dragRef.current = null;
+                setDragDates(null);
+                setError("");
+                onDatesChange([]);
+              }}>Clear</button>}
+              <button className="calendar-footer-button calendar-done-button" type="button" onClick={() => {
+                setIsOpen(false);
+                triggerRef.current?.focus();
+              }}>Done</button>
+            </div>}
+          </div>}
         </div>,
         document.body,
       )}
