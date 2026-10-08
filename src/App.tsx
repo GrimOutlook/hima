@@ -6,6 +6,7 @@ import { BalanceChart } from "./BalanceChart";
 import { CalendarPicker } from "./CalendarPicker";
 import {
   AdditionModal,
+  ModalFrame,
   EventModal,
   PoolModal,
   PoolUsageModal,
@@ -47,6 +48,7 @@ type ModalState =
   | { type: "new-pool" }
   | { type: "edit-pool"; poolId: number }
   | { type: "pool-usage"; poolId: number }
+  | { type: "pool-info"; poolId: number }
   | { type: "add-time"; poolId: number }
   | { type: "edit-addition"; poolId: number; additionId: number }
   | { type: "edit-recurring"; poolId: number; ruleId: number }
@@ -96,6 +98,9 @@ function App() {
   const usagePool = selectedModal?.type === "pool-usage"
     ? store.pools.find((pool) => pool.id === selectedModal.poolId)
     : undefined;
+  const informationPool = selectedModal?.type === "pool-info"
+    ? store.pools.find((pool) => pool.id === selectedModal.poolId)
+    : undefined;
 
   useEffect(() => {
     saveStore(store);
@@ -123,6 +128,7 @@ function App() {
       isSelected: usesFilterPool?.id === pool.id,
       onSelect: () => setSelectedUsesPoolId((current) => current === pool.id ? null : pool.id),
       onViewUsage: () => setModal({ type: "pool-usage", poolId: pool.id }),
+      onViewInformation: () => setModal({ type: "pool-info", poolId: pool.id }),
       onEdit: () => setModal({ type: "edit-pool", poolId: pool.id }),
       onDelete: () => removePool(pool.id, pool.name),
       onAddTime: () => setModal({ type: "add-time", poolId: pool.id }),
@@ -629,6 +635,9 @@ function App() {
         </footer>
       </main>
 
+      {informationPool && (
+        <PoolInformationModal {...poolCardProps(informationPool)} onClose={() => setModal(null)} />
+      )}
       {selectedModal?.type === "new-pool" && (
         <PoolModal
           key="new-pool"
@@ -691,6 +700,7 @@ interface PoolCardProps {
   isSelected: boolean;
   onSelect: () => void;
   onViewUsage: () => void;
+  onViewInformation: () => void;
   onEdit: () => void;
   onDelete: () => void;
   onAddTime: () => void;
@@ -717,18 +727,14 @@ function PoolCardContent({
   isSelected,
   onSelect,
   onViewUsage,
+  onViewInformation,
   onEdit,
   onDelete,
   onAddTime,
-  onEditAddition,
-  onEditRecurring,
-  onDeleteAddition,
-  onDeleteRecurring,
   sortable,
   overlay = false,
 }: PoolCardProps & { sortable?: ReturnType<typeof useSortable>; overlay?: boolean }) {
   const currentBalance = poolBalanceOn(store, pool.id, balanceDate);
-  const lifetimeTotals = poolTotalsOn(store, pool.id, todayDate());
   return (
     <article
       ref={sortable?.setNodeRef}
@@ -780,6 +786,7 @@ function PoolCardContent({
             </svg>
           </button>
           <button className="icon-button" type="button" title="Edit pool" aria-label={`Edit ${pool.name}`} onClick={onEdit}>✎</button>
+          <button className="icon-button" type="button" title="Pool information" aria-label={`View information for ${pool.name}`} onClick={onViewInformation}>ⓘ</button>
           <button className="icon-button delete-button" type="button" title="Delete pool" aria-label={`Delete ${pool.name}`} onClick={onDelete}>×</button>
         </div>
       </div>
@@ -787,6 +794,28 @@ function PoolCardContent({
         {formatHours(currentBalance)}<span>h</span>
       </div>
       <div className="pool-balance-caption">available on {prettyDate(balanceDate)}</div>
+    </article>
+  );
+}
+
+function PoolInformationModal({
+  pool,
+  store,
+  onEditAddition,
+  onEditRecurring,
+  onDeleteAddition,
+  onDeleteRecurring,
+  onClose,
+}: PoolCardProps & { onClose: () => void }) {
+  const lifetimeTotals = poolTotalsOn(store, pool.id, todayDate());
+  return (
+    <ModalFrame
+      icon="ⓘ"
+      title={`${pool.name} information`}
+      description="Lifetime totals through today, balance caps and time schedules."
+      labelledBy="pool-information-title"
+      onClose={onClose}
+    >
       <div className="pool-lifetime-metrics" aria-label={`Lifetime totals for ${pool.name} through today`}>
         <div className="pool-lifetime-metric">
           <span>Lifetime accrued</span>
@@ -797,8 +826,8 @@ function PoolCardContent({
           <strong>{formatHours(lifetimeTotals.used)}<small> h</small></strong>
         </div>
       </div>
-      <details className="pool-rules-disclosure">
-        <summary>Caps, accruals and use-by dates</summary>
+      <section className="pool-rules-disclosure" aria-labelledby="pool-information-rules-title">
+        <h3 id="pool-information-rules-title">Caps, accruals and use-by dates</h3>
         <div className="pool-rules">
         {pool.additions.length === 0 && pool.recurring.length === 0 && pool.caps.length === 0 ? (
           <p className="no-rules">No time added yet. Add a balance or set a schedule.</p>
@@ -839,11 +868,8 @@ function PoolCardContent({
           </>
         )}
         </div>
-      </details>
-      <div className="pool-card-footer">
-        <span className="pool-unit-note">Tracked in hours</span>
-      </div>
-    </article>
+      </section>
+    </ModalFrame>
   );
 }
 

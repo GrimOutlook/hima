@@ -36,7 +36,7 @@ interface ModalFrameProps {
   children: ReactNode;
 }
 
-function ModalFrame({
+export function ModalFrame({
   icon,
   iconClass = "",
   title,
