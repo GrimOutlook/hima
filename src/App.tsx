@@ -255,6 +255,7 @@ function App() {
                     {
                       id: ids.firstId,
                       amount: form.amount,
+                      reset: form.reset || undefined,
                       cadence: form.cadence,
                       start_date: form.date,
                       ...(form.endDate ? { end_date: form.endDate } : {}),
@@ -270,7 +271,7 @@ function App() {
                 }
               : {
                   ...pool,
-                  additions: [...pool.additions, { id: ids.firstId, amount: form.amount, date: form.date }],
+                  additions: [...pool.additions, { id: ids.firstId, amount: form.amount, date: form.date, reset: form.reset || undefined }],
                 };
           }),
         };
@@ -285,7 +286,7 @@ function App() {
             ...pool,
             additions: pool.additions.map((addition) =>
               addition.id === selectedModal.additionId
-                ? { ...addition, amount: form.amount, date: form.date }
+                ? { ...addition, amount: form.amount, date: form.date, reset: form.reset || undefined }
                 : addition,
             ),
           }),
@@ -303,6 +304,7 @@ function App() {
                 ? {
                     ...rule,
                     amount: form.amount,
+                    reset: form.reset || undefined,
                     cadence: form.cadence,
                     start_date: form.date,
                     end_date: form.endDate,
@@ -717,7 +719,7 @@ function PoolCard({
         </div>
       </div>
       <details className="pool-rules-disclosure">
-        <summary>Caps and accruals</summary>
+        <summary>Caps, accruals and use-by dates</summary>
         <div className="pool-rules">
         {pool.additions.length === 0 && pool.recurring.length === 0 && pool.caps.length === 0 ? (
           <p className="no-rules">No time added yet. Add a balance or set a schedule.</p>
@@ -733,7 +735,7 @@ function PoolCard({
             {[...pool.recurring].sort((left, right) => right.start_date.localeCompare(left.start_date)).map((rule) => (
               <div className="rule-row" key={`recurring-${rule.id}`}>
                 <span className="rule-symbol recurring-symbol">↻</span>
-                <span className="rule-copy">+{formatHours(rule.amount)} h {recurringScheduleDescription(rule)}</span>
+                <span className="rule-copy">{rule.reset ? `Reset to ${formatHours(rule.amount)} h` : `+${formatHours(rule.amount)} h`} {recurringScheduleDescription(rule)}</span>
                 <span className="rule-date">
                   {rule.cadence === "YearlyNthWeekday" ? "starting " : "from "}{prettyDate(rule.start_date)}
                   {rule.end_date ? ` · until ${prettyDate(rule.end_date)}` : ""}
@@ -747,7 +749,7 @@ function PoolCard({
             {[...pool.additions].sort((left, right) => right.date.localeCompare(left.date)).map((addition) => (
               <div className="rule-row" key={`addition-${addition.id}`}>
                 <span className="rule-symbol one-time-symbol">+</span>
-                <span className="rule-copy">+{formatHours(addition.amount)} h one-time</span>
+                <span className="rule-copy">{addition.reset ? `Reset to ${formatHours(addition.amount)} h` : `+${formatHours(addition.amount)} h one-time`}</span>
                 <span className="rule-date">on {prettyDate(addition.date)}</span>
                 <div className="rule-actions">
                   <button className="icon-button" type="button" title="Edit one-time addition" aria-label="Edit one-time addition" onClick={() => onEditAddition(addition.id)}>✎</button>
@@ -763,7 +765,7 @@ function PoolCard({
         <span className="pool-unit-note">Tracked in hours</span>
         <button className="button button-soft button-small" type="button" onClick={onAddTime}>
           <span className="button-plus">+</span>
-          Add time
+          Add time / use-by
         </button>
       </div>
     </article>
@@ -788,6 +790,7 @@ function AdditionModalForState({ modal, pools, onClose, onSave }: AdditionModalF
       <AdditionModal
         poolName={pool.name}
         mode="edit-one-time"
+        initialReset={addition.reset}
         initialAmount={formatHours(addition.amount)}
         initialDate={addition.date}
         onClose={onClose}
@@ -802,6 +805,7 @@ function AdditionModalForState({ modal, pools, onClose, onSave }: AdditionModalF
       <AdditionModal
         poolName={pool.name}
         mode="edit-recurring"
+        initialReset={rule.reset}
         initialAmount={formatHours(rule.amount)}
         initialDate={rule.start_date}
         initialEndDate={rule.end_date}

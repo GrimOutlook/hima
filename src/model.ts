@@ -11,12 +11,14 @@ export type Cadence = "Weekly" | "Fortnightly" | "Monthly" | "Yearly" | "YearlyN
 
 export interface OneTimeAddition {
   id: number;
+  reset?: boolean;
   amount: number;
   date: string;
 }
 
 export interface RecurringAddition {
   id: number;
+  reset?: boolean;
   amount: number;
   cadence: Cadence;
   start_date: string;
@@ -207,8 +209,9 @@ export function normalizeStore(value: unknown): Store {
               const additionId = numberValue(addition.id);
               const date = stringValue(addition.date);
               const amount = amountValue(addition.amount);
-              return additionId && isValidDate(date) && amount > 0
-                ? [{ id: additionId, date, amount }]
+              const reset = addition.reset === true;
+              return additionId && isValidDate(date) && (reset || amount > 0)
+                ? [{ id: additionId, date, amount: reset ? Math.max(0, amount) : amount, ...(reset ? { reset: true } : {}) }]
                 : [];
             })
           : [];
@@ -226,10 +229,12 @@ export function normalizeStore(value: unknown): Store {
               const validNthWeekdayRule =
                 cadence !== "YearlyNthWeekday" ||
                 (nthWeekday !== null && weekday !== null && month >= 1 && month <= 12);
-              return ruleId && isValidDate(startDate) && amount > 0 && (!endDate || isValidDate(endDate)) && validNthWeekdayRule
+              const reset = rule.reset === true;
+              return ruleId && isValidDate(startDate) && (reset || amount > 0) && (!endDate || isValidDate(endDate)) && validNthWeekdayRule
                 ? [{
                     id: ruleId,
-                    amount,
+                    amount: reset ? Math.max(0, amount) : amount,
+                    ...(reset ? { reset: true } : {}),
                     start_date: startDate,
                     cadence,
                     ...(isValidDate(endDate) ? { end_date: endDate } : {}),
@@ -664,10 +669,11 @@ interface PoolLedgerSnapshot {
 interface PoolDailyActions {
   accrued: number;
   used: number;
+  reset?: number;
 }
 
 function poolLedgerForDates(pool: Pool, events: LeaveEvent[], dates: string[]): PoolLedgerSnapshot[] {
-  if (pool.caps.length === 0) {
+  if (pool.caps.length === 0 && !pool.additions.some((addition) => addition.reset) && !pool.recurring.some((rule) => rule.reset)) {
     return dates.map((date) => {
       if (!isValidDate(date)) return { accrued: 0, used: 0, balance: 0 };
       const oneTime = pool.additions
@@ -693,14 +699,15 @@ function poolLedgerForDates(pool: Pool, events: LeaveEvent[], dates: string[]): 
   const actionForDate = (date: string): PoolDailyActions => {
     const existing = actions.get(date);
     if (existing) return existing;
-    const created = { accrued: 0, used: 0 };
+    const created: PoolDailyActions = { accrued: 0, used: 0 };
     actions.set(date, created);
     return created;
   };
 
   for (const addition of pool.additions) {
     if (isValidDate(addition.date) && addition.date <= throughDate) {
-      actionForDate(addition.date).accrued += addition.amount;
+      if (addition.reset) actionForDate(addition.date).reset = addition.amount;
+      else actionForDate(addition.date).accrued += addition.amount;
     }
   }
 
@@ -736,7 +743,8 @@ function poolLedgerForDates(pool: Pool, events: LeaveEvent[], dates: string[]): 
         occurrenceDate > recurringEnd ||
         occurrenceDate <= previousOccurrence
       ) break;
-      actionForDate(occurrenceDate).accrued += rule.amount;
+      if (rule.reset) actionForDate(occurrenceDate).reset = rule.amount;
+      else actionForDate(occurrenceDate).accrued += rule.amount;
       previousOccurrence = occurrenceDate;
       if (rule.cadence !== "YearlyNthWeekday") occurrenceIndex += 1;
     }
@@ -770,6 +778,8 @@ function poolLedgerForDates(pool: Pool, events: LeaveEvent[], dates: string[]): 
       balance += acceptedAccrual - daily.used;
       accrued += acceptedAccrual;
       used += daily.used;
+      // Reset dates replace the remaining balance at the end of the day.
+      if (daily.reset !== undefined) balance = daily.reset;
       actionIndex += 1;
     }
     return { accrued, used, balance };

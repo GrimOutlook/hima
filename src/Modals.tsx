@@ -364,6 +364,7 @@ export function PoolUsageModal({ pool, events, onClose }: PoolUsageModalProps) {
 }
 
 export interface AdditionFormData {
+  reset: boolean;
   amount: number;
   date: string;
   recurring: boolean;
@@ -375,6 +376,7 @@ export interface AdditionFormData {
 }
 
 interface AdditionModalProps {
+  initialReset?: boolean;
   poolName: string;
   mode: "add" | "edit-one-time" | "edit-recurring";
   initialAmount?: string;
@@ -389,6 +391,7 @@ interface AdditionModalProps {
 }
 
 export function AdditionModal({
+  initialReset = false,
   poolName,
   mode,
   initialAmount = "",
@@ -402,6 +405,7 @@ export function AdditionModal({
   onSave,
 }: AdditionModalProps) {
   const adding = mode === "add";
+  const [reset, setReset] = useState(initialReset);
   const [amount, setAmount] = useState(initialAmount);
   const [date, setDate] = useState(initialDate);
   const [endDate, setEndDate] = useState(initialEndDate);
@@ -414,9 +418,11 @@ export function AdditionModal({
 
   function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    const parsedAmount = parseHours(amount);
+    const parsedAmount = reset && amount.trim() === "" ? 0 : parseHours(amount, reset);
     if (parsedAmount === null) {
-      setError("Enter an amount greater than zero with up to two decimal places.");
+      setError(reset
+        ? "Enter a reset balance of zero or more with up to two decimal places."
+        : "Enter an amount greater than zero with up to two decimal places.");
       return;
     }
     if (!isValidDate(date)) {
@@ -436,10 +442,11 @@ export function AdditionModal({
       return;
     }
     if (recurring && endDate && endDate < date) {
-      setError("The end date must be on or after the first addition date.");
+      setError("The end date must be on or after the schedule's start date.");
       return;
     }
     const saveError = onSave({
+      reset,
       amount: parsedAmount,
       date,
       recurring,
@@ -451,8 +458,8 @@ export function AdditionModal({
   }
 
   const title = adding
-    ? `Add time to ${poolName}`
-    : `Edit addition in ${poolName}`;
+    ? `Add ${reset ? "use-by date" : "time"} to ${poolName}`
+    : `Edit ${reset ? "use-by date" : "addition"} in ${poolName}`;
 
   return (
     <ModalFrame
@@ -460,7 +467,9 @@ export function AdditionModal({
       iconClass="modal-icon-add"
       title={title}
       description={
-        adding
+        reset
+          ? "Set the balance to your chosen amount at the end of each reset date, after additions and leave usage."
+          : adding
           ? "Choose a one-time addition or set a repeating schedule."
           : "Update this addition's amount, date, or schedule."
       }
@@ -468,6 +477,13 @@ export function AdditionModal({
       onClose={onClose}
     >
       <form className="modal-form" onSubmit={submit}>
+        <label className="field-label">
+          Action
+          <select value={reset ? "reset" : "add"} onChange={(event) => setReset(event.currentTarget.value === "reset")}>
+            <option value="add">Add time</option>
+            <option value="reset">Reset balance / use-by date</option>
+          </select>
+        </label>
         {adding && (
           <div className="segmented-control">
             <button
@@ -487,13 +503,13 @@ export function AdditionModal({
           </div>
         )}
         <label className="field-label">
-          Time to add
+          {reset ? "Reset balance to" : "Time to add"}
           <div className="input-with-suffix">
             <input
               type="number"
-              min="0.01"
+              min={reset ? "0" : "0.01"}
               step="0.01"
-              placeholder="e.g. 7.6"
+              placeholder={reset ? "0" : "e.g. 7.6"}
               value={amount}
               onChange={(event) => setAmount(event.currentTarget.value)}
             />
@@ -538,8 +554,8 @@ export function AdditionModal({
         )}
         <label className="field-label">
           {recurring
-            ? cadence === "YearlyNthWeekday" ? "Start schedule on" : "First addition on"
-            : "Add on"}
+             ? cadence === "YearlyNthWeekday" ? "Start schedule on" : reset ? "First use-by date" : "First addition on"
+             : reset ? "Use-by date" : "Add on"}
           <input type="date" value={date} onChange={(event) => setDate(event.currentTarget.value)} />
         </label>
         {recurring && (
@@ -557,7 +573,7 @@ export function AdditionModal({
         <div className="modal-actions">
           <button className="button button-quiet" type="button" onClick={onClose}>Cancel</button>
           <button className="button button-primary" type="submit">
-            {adding ? "Save addition" : "Save changes"}
+            {adding ? reset ? "Save use-by date" : "Save addition" : "Save changes"}
           </button>
         </div>
       </form>
