@@ -598,6 +598,28 @@ function App() {
                 <span className="button-plus">+</span>
                 Add pool
               </button>
+              <button
+                className="button button-outline button-small"
+                type="button"
+                disabled={store.pools.length === 0}
+                onClick={createEvent}
+              >
+                <span className="button-plus">+</span>
+                Add event
+              </button>
+              <button
+                className="text-button"
+                type="button"
+                disabled={highlightedEventId === null && selectedUsesPoolId === null}
+                onClick={() => {
+                  if (eventClickTimer.current !== null) clearTimeout(eventClickTimer.current);
+                  eventClickTimer.current = null;
+                  setHighlightedEventId(null);
+                  setSelectedUsesPoolId(null);
+                }}
+              >
+                Clear Selection
+              </button>
             </div>
           </div>
           <span className="as-of-label">Balances as of {prettyDate(balanceDate)}</span>
@@ -649,28 +671,7 @@ function App() {
                 <div>
                   <div className="section-overline">MAKE SPACE FOR LIFE</div>
                   <h2>Planned leave</h2>
-                  <button
-                    className="text-button"
-                    type="button"
-                    disabled={highlightedEventId === null}
-                    onClick={() => {
-                      if (eventClickTimer.current !== null) clearTimeout(eventClickTimer.current);
-                      eventClickTimer.current = null;
-                      setHighlightedEventId(null);
-                    }}
-                  >
-                    Clear Selection
-                  </button>
                 </div>
-                <button
-                  className="button button-outline button-small"
-                  type="button"
-                  disabled={store.pools.length === 0}
-                  onClick={createEvent}
-                >
-                  <span className="button-plus">+</span>
-                  Add event
-                </button>
               </div>
               <p className="events-caption">
                 {usesFilterPool ? `Showing leave using ${usesFilterPool.name}.` : "Each event day draws from its selected pool."}
