@@ -490,18 +490,30 @@ export function AdditionModal({
       onClose={onClose}
     >
       <form className="modal-form" onSubmit={submit}>
-        <label className="field-label">
-          Action
-          <select value={cap ? "cap" : reset ? "reset" : "add"} onChange={(event) => {
-            setCap(event.currentTarget.value === "cap");
-            setReset(event.currentTarget.value === "reset");
-            setError("");
-          }}>
-            <option value="add">Add time</option>
-            <option value="reset">Reset balance / use-by date</option>
-            {adding && onSaveCap && <option value="cap">Balance cap</option>}
-          </select>
-        </label>
+        <div className="segmented-control" role="group" aria-label="Action">
+          {[
+            { value: "add", label: "Add time" },
+            { value: "reset", label: "Reset balance" },
+            ...(adding && onSaveCap ? [{ value: "cap", label: "Balance cap" }] : []),
+          ].map((action) => {
+            const selected = action.value === (cap ? "cap" : reset ? "reset" : "add");
+            return (
+              <button
+                key={action.value}
+                className={selected ? "segment is-active" : "segment"}
+                type="button"
+                aria-pressed={selected}
+                onClick={() => {
+                  setCap(action.value === "cap");
+                  setReset(action.value === "reset");
+                  setError("");
+                }}
+              >
+                {action.label}
+              </button>
+            );
+          })}
+        </div>
         {adding && !cap && (
           <div className="segmented-control">
             <button
