@@ -299,8 +299,9 @@ button:focus-visible, input:focus-visible, select:focus-visible, a:focus-visible
 .history-pool-filter { display: inline-flex; align-items: center; gap: 7px; margin-top: 12px; color: #858d84; font-size: 10px; }
 .history-pool-filter { flex-wrap: wrap; }
 .history-pool-dropdown { position: relative; color: #46564a; }
-.history-pool-dropdown summary { cursor: pointer; padding: 7px 10px; border: 1px solid #e6e8e1; border-radius: 7px; background: #fff; }
-.history-pool-options { position: absolute; top: calc(100% + 4px); left: 0; z-index: 10; min-width: 190px; max-height: 260px; overflow-y: auto; padding: 8px; border: 1px solid #e6e8e1; border-radius: 7px; background: #fff; box-shadow: 0 5px 15px #00000015; }
+.history-pool-dropdown > .history-pool-options { display: none; }
+.history-pool-dropdown.is-open > .history-pool-options { display: block; }
+.history-pool-options { position: absolute; top: 100%; left: 0; z-index: 10; min-width: 190px; max-width: calc(100vw - 48px); max-height: 260px; overflow-y: auto; padding: 12px; border: 1px solid #e9ebe5; border-radius: 8px; background: #fff; box-shadow: 0 8px 24px #00000014; color: #778078; font-size: 9px; }
 .history-pool-options label, .history-combined-toggle { display: flex; align-items: center; gap: 7px; cursor: pointer; }
 .history-pool-options label { padding: 6px; }
 .history-combined-toggle { margin-left: 8px; }

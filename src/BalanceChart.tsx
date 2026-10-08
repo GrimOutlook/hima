@@ -158,17 +158,7 @@ export function BalanceChart({
   const [poolSelections, setPoolSelections] = useState<Record<number, boolean>>({});
   const [combinedTotals, setCombinedTotals] = useState(false);
   const [timelineMenuOpen, setTimelineMenuOpen] = useState(false);
-  const poolDropdownRef = useRef<HTMLDetailsElement>(null);
-  useEffect(() => {
-    function closePoolDropdown(event: PointerEvent) {
-      const dropdown = poolDropdownRef.current;
-      if (dropdown?.open && event.target instanceof Node && !dropdown.contains(event.target)) {
-        dropdown.open = false;
-      }
-    }
-    document.addEventListener("pointerdown", closePoolDropdown);
-    return () => document.removeEventListener("pointerdown", closePoolDropdown);
-  }, []);
+  const [poolMenuOpen, setPoolMenuOpen] = useState(false);
   const eventPoolIds = useMemo(() => selectedEvent
     ? new Set(selectedEvent.days.flatMap((day) => day.allocations
       .filter((allocation) => allocation.hours > 0)
@@ -328,10 +318,21 @@ export function BalanceChart({
           {pools.length > 0 && (
             <div className="history-pool-filter">
               <span>Show</span>
-              <details ref={poolDropdownRef} className="history-pool-dropdown">
-                <summary aria-label="Select pools shown in graph">
+              <div className={`history-pool-dropdown${poolMenuOpen ? " is-open" : ""}`}
+                onMouseEnter={() => setPoolMenuOpen(true)}
+                onMouseLeave={() => setPoolMenuOpen(false)}
+                onBlur={(event) => {
+                  if (!event.currentTarget.contains(event.relatedTarget)) setPoolMenuOpen(false);
+                }}
+                onKeyDown={(event) => {
+                  if (event.key === "Escape") setPoolMenuOpen(false);
+                }}>
+                <button className="history-timeline-preset history-timeline-trigger" type="button"
+                  aria-label="Select pools shown in graph" aria-expanded={poolMenuOpen}
+                  onClick={() => setPoolMenuOpen((open) => !open)}>
                   {selectedPool?.name ?? `${selectedPools.length} pools selected`}
-                </summary>
+                  <span aria-hidden="true">▾</span>
+                </button>
                 <div className="history-pool-options" role="group" aria-label="Pools shown in graph">
                   {pools.map((pool) => (
                     <label key={pool.id}>
@@ -342,7 +343,7 @@ export function BalanceChart({
                     </label>
                   ))}
                 </div>
-              </details>
+              </div>
               <span>in graph</span>
               <label className="history-combined-toggle">
                 <input type="checkbox" checked={combinedTotals} onChange={(event) => setCombinedTotals(event.target.checked)} />
