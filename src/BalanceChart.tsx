@@ -209,6 +209,9 @@ export function BalanceChart({
 
   return (
     <section className="history-panel">
+      <button className="history-today-button button button-primary button-small" type="button" onClick={() => onDateChange(today)}>
+        Today
+      </button>
       <div className="history-panel-header">
         <div>
           <div className="section-overline">BALANCE TIMELINE</div>

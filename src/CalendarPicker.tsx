@@ -180,11 +180,6 @@ export function CalendarPicker({ value, onChange, label = "BALANCE ON", optional
   return (
     <div className={label === "BALANCE ON" ? "date-picker" : "date-picker date-picker-field"} ref={rootRef}>
       <span id={`${id}-label`}>{label}</span>
-      {label === "BALANCE ON" && (
-        <button className="date-picker-today" type="button" onClick={() => selectDate(todayDate())}>
-          Today
-        </button>
-      )}
       <button
         ref={triggerRef}
         className="date-picker-trigger"
