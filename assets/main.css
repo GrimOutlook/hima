@@ -244,6 +244,14 @@ button:focus-visible, input:focus-visible, select:focus-visible, a:focus-visible
 .text-button:hover { color: #294d36; }
 .timeline-list { margin-top: 17px; border-top: 1px solid #f0f0eb; }
 .event-row { display: grid; grid-template-columns: 38px minmax(0, 1fr) auto 49px; align-items: center; gap: 10px; padding: 13px 0; border-bottom: 1px solid #f0f0eb; }
+.event-pool-bar { grid-column: 1 / -1; display: flex; height: 6px; overflow: hidden; border-radius: 3px; background: #f0f0eb; }
+.event-pool-bar > span { height: 100%; }
+.pool-color-settings { margin: 0; padding: 0; border: 0; min-width: 0; }
+.pool-color-settings legend { margin-bottom: 8px; font-size: 11px; font-weight: 600; }
+.pool-color-options { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-bottom: 10px; }
+.pool-color-swatch { width: 30px; height: 30px; border: 2px solid transparent; border-radius: 50%; color: white; cursor: pointer; }
+.pool-color-swatch[aria-pressed="true"] { outline: 2px solid #3e5d45; outline-offset: 2px; }
+.pool-color-options .button[aria-pressed="true"] { outline: 2px solid #3e5d45; outline-offset: 2px; }
 .event-date-block { display: grid; place-items: center; align-content: center; width: 37px; height: 43px; border-radius: 9px; color: #617966; background: #eff4ef; }
 .event-month { font-size: 8px; line-height: 1.1; font-weight: 700; letter-spacing: .6px; }
 .event-date-block strong { margin-top: 2px; font: 700 16px/1 'Manrope', sans-serif; }
@@ -388,6 +396,14 @@ button:focus-visible, input:focus-visible, select:focus-visible, a:focus-visible
   transition: border-color .15s, box-shadow .15s;
 }
 .field-label input::placeholder { color: #b4b9b2; }
+.pool-custom-color-picker { padding: 14px; border: 1px solid #e6e8e1; border-radius: 12px; background: #f8f9f5; }
+.pool-custom-color-picker .react-colorful { width: 100%; height: 180px; }
+.pool-custom-color-picker .react-colorful__saturation { border-radius: 8px 8px 0 0; }
+.pool-custom-color-picker .react-colorful__hue { height: 16px; border-radius: 0 0 8px 8px; }
+.pool-custom-color-picker .react-colorful__pointer { width: 20px; height: 20px; }
+.pool-custom-color-value { display: flex; align-items: center; gap: 12px; margin-top: 14px; }
+.pool-custom-color-value .field-label { flex: 1; min-width: 0; }
+.pool-custom-color-preview { width: 36px; height: 36px; flex-shrink: 0; border-radius: 9px; border: 1px solid rgba(0,0,0,.1); }
 .field-label input:focus, .field-label select:focus { outline: 0; border-color: #9cb5a0; box-shadow: 0 0 0 3px rgba(84,119,93,.1); }
 .form-two-columns { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
 .input-with-suffix { position: relative; }

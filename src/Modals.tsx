@@ -1,5 +1,7 @@
 import { useState, type FormEvent, type ReactNode } from "react";
+import { HexColorInput, HexColorPicker } from "react-colorful";
 import { CalendarPicker } from "./CalendarPicker";
+import { POOL_COLORS } from "./poolColors";
 import {
   addDays,
   capRangesOverlap,
@@ -66,6 +68,7 @@ export function ModalFrame({
 }
 
 interface PoolModalProps {
+  initialColor?: string;
   editing: boolean;
   initialName?: string;
   initialDate?: string;
@@ -73,7 +76,7 @@ interface PoolModalProps {
   initialHiddenFromGraph?: boolean;
   initialHiddenFromTotal?: boolean;
   onClose: () => void;
-  onSave: (name: string, openingAmount: string, openingDate: string, caps: PoolCapFormData[], hiddenFromGraph: boolean, hiddenFromTotal: boolean) => string | null;
+  onSave: (name: string, openingAmount: string, openingDate: string, caps: PoolCapFormData[], hiddenFromGraph: boolean, hiddenFromTotal: boolean, color?: string) => string | null;
 }
 
 export interface PoolCapFormData {
@@ -91,6 +94,7 @@ interface PoolCapDraft {
 }
 
 export function PoolModal({
+  initialColor = "#60866b",
   editing,
   initialName = "",
   initialDate = todayDate(),
@@ -101,6 +105,9 @@ export function PoolModal({
   onSave,
 }: PoolModalProps) {
   const [name, setName] = useState(initialName);
+  const [color, setColor] = useState(initialColor);
+  const [customColor, setCustomColor] = useState(!POOL_COLORS.includes(initialColor.toLowerCase()));
+  const [colorPickerOpen, setColorPickerOpen] = useState(false);
   const [hiddenFromGraph, setHiddenFromGraph] = useState(initialHiddenFromGraph);
   const [hiddenFromTotal, setHiddenFromTotal] = useState(initialHiddenFromTotal);
   const [openingAmount, setOpeningAmount] = useState("");
@@ -158,7 +165,7 @@ export function PoolModal({
       setError("Cap date ranges must not overlap.");
       return;
     }
-    const saveError = onSave(trimmedName, openingAmount, openingDate, savedCaps, hiddenFromGraph, hiddenFromTotal);
+    const saveError = onSave(trimmedName, openingAmount, openingDate, savedCaps, hiddenFromGraph, hiddenFromTotal, editing ? color : undefined);
     if (saveError) setError(saveError);
   }
 
@@ -186,6 +193,56 @@ export function PoolModal({
             onChange={(event) => setName(event.currentTarget.value)}
           />
         </label>
+        {editing && (
+          <fieldset className="pool-color-settings">
+            <legend>Pool color</legend>
+            <div className="pool-color-options" role="group" aria-label="Default color palette">
+              {POOL_COLORS.map((paletteColor) => (
+                <button
+                  key={paletteColor}
+                  type="button"
+                  className="pool-color-swatch"
+                  style={{ backgroundColor: paletteColor }}
+                  aria-label={`Select color ${paletteColor}`}
+                  aria-pressed={!customColor && color.toLowerCase() === paletteColor}
+                  title={paletteColor}
+                  onClick={() => {
+                    setColor(paletteColor);
+                    setCustomColor(false);
+                    setColorPickerOpen(false);
+                  }}
+                >
+                  {!customColor && color.toLowerCase() === paletteColor ? "✓" : ""}
+                </button>
+              ))}
+              <button
+                type="button"
+                className="button button-soft button-small"
+                aria-pressed={customColor}
+                aria-expanded={colorPickerOpen}
+                onClick={() => {
+                  setCustomColor(true);
+                  setColorPickerOpen((open) => !open);
+                }}
+              >
+                Color palette
+              </button>
+            </div>
+            {colorPickerOpen && (
+              <div className="pool-custom-color-picker">
+                <HexColorPicker color={color} onChange={setColor} />
+                <div className="pool-custom-color-value">
+                  <span className="pool-custom-color-preview" style={{ backgroundColor: color }} aria-hidden="true" />
+                  <label className="field-label">
+                    Hex color
+                    <HexColorInput color={color} onChange={setColor} prefixed aria-label="Custom hex color" />
+                  </label>
+                  <button className="button button-soft button-small" type="button" onClick={() => setColorPickerOpen(false)}>Done</button>
+                </div>
+              </div>
+            )}
+          </fieldset>
+        )}
         {!editing && (
           <div className="form-two-columns">
             <label className="field-label">

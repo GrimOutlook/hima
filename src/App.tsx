@@ -4,6 +4,7 @@ import { defaultAnimateLayoutChanges, SortableContext, sortableKeyboardCoordinat
 import { CSS } from "@dnd-kit/utilities";
 import { BalanceChart } from "./BalanceChart";
 import { CalendarPicker } from "./CalendarPicker";
+import { poolColor } from "./poolColors";
 import {
   AdditionModal,
   ModalFrame,
@@ -221,6 +222,7 @@ function App() {
     capFormData: PoolCapFormData[],
     hiddenFromGraph: boolean,
     hiddenFromTotal: boolean,
+    color?: string,
   ): string | null {
     if (selectedModal?.type === "edit-pool") {
       if (!store.pools.some((pool) => pool.id === selectedModal.poolId)) return "This pool no longer exists.";
@@ -236,7 +238,7 @@ function App() {
           ...current,
           next_id: newCapCount > 0 ? ids.nextId : current.next_id,
           pools: current.pools.map((pool) =>
-            pool.id === selectedModal.poolId ? { ...pool, name, caps, hidden_from_graph: hiddenFromGraph, hidden_from_total: hiddenFromTotal } : pool,
+            pool.id === selectedModal.poolId ? { ...pool, name, caps, color, hidden_from_graph: hiddenFromGraph, hidden_from_total: hiddenFromTotal } : pool,
           ),
         };
       });
@@ -596,6 +598,14 @@ function App() {
                         ? "Partly included"
                         : "After selected date";
                     const firstDate = event.days.map((day) => day.date).sort()[0] ?? "";
+                    const fullEvent = store.events.find((candidate) => candidate.id === event.id) ?? event;
+                    const totalHours = eventTotalHours(fullEvent);
+                    const poolShares = store.pools.map((pool) => ({
+                      pool,
+                      hours: fullEvent.days.reduce((total, day) => total + day.allocations
+                        .filter((allocation) => allocation.pool_id === pool.id)
+                        .reduce((sum, allocation) => sum + allocation.hours, 0), 0),
+                    })).filter((share) => share.hours > 0);
                     return (
                       <article className="event-row" key={event.id}>
                         <div className="event-date-block">
@@ -634,6 +644,19 @@ function App() {
                             ×
                           </button>
                         </div>
+                        {totalHours > 0 && (
+                          <div className="event-pool-bar" role="img" aria-label={poolShares.map(({ pool, hours }) =>
+                            `${pool.name}: ${formatHours(hours)} hours (${(hours / totalHours * 100).toFixed(1)}%)`,
+                          ).join(", ")}>
+                            {poolShares.map(({ pool, hours }) => (
+                              <span
+                                key={pool.id}
+                                style={{ width: `${hours / totalHours * 100}%`, backgroundColor: poolColor(pool.id, pool.color) }}
+                                title={`${pool.name}: ${formatHours(hours)} h (${(hours / totalHours * 100).toFixed(1)}%)`}
+                              />
+                            ))}
+                          </div>
+                        )}
                       </article>
                     );
                   })}
@@ -671,6 +694,7 @@ function App() {
           key={`edit-pool-${selectedModal.poolId}`}
           editing
           initialName={store.pools.find((pool) => pool.id === selectedModal.poolId)?.name ?? ""}
+          initialColor={poolColor(selectedModal.poolId, store.pools.find((pool) => pool.id === selectedModal.poolId)?.color)}
           initialCaps={store.pools.find((pool) => pool.id === selectedModal.poolId)?.caps ?? []}
           initialHiddenFromGraph={store.pools.find((pool) => pool.id === selectedModal.poolId)?.hidden_from_graph}
           initialHiddenFromTotal={store.pools.find((pool) => pool.id === selectedModal.poolId)?.hidden_from_total}
@@ -782,7 +806,7 @@ function PoolCardContent({
             aria-label={`Reorder ${pool.name}`}
             title="Drag to reorder, or press Space then use the arrow keys"
           ><span aria-hidden="true">⠿</span></button>}
-          <div className="pool-icon">◌</div>
+          <div className="pool-icon" style={{ color: poolColor(pool.id, pool.color), backgroundColor: `${poolColor(pool.id, pool.color)}20` }}>◌</div>
           <div>
             <h3>
               <button

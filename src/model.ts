@@ -36,6 +36,7 @@ export interface PoolCap {
 }
 
 export interface Pool {
+  color?: string;
   id: number;
   name: string;
   hidden_from_graph?: boolean;
@@ -270,6 +271,7 @@ export function normalizeStore(value: unknown): Store {
           if (!previous || (previous.end_date && previous.end_date < cap.start_date)) caps.push(cap);
         }
         return [{ id, name, additions, recurring, caps,
+          ...(typeof pool.color === "string" && /^#[0-9a-f]{6}$/i.test(pool.color) ? { color: pool.color } : {}),
           ...(pool.hidden_from_graph === true ? { hidden_from_graph: true } : {}),
           ...(pool.hidden_from_total === true ? { hidden_from_total: true } : {}),
         }];
