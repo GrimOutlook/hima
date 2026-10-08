@@ -24,6 +24,7 @@ interface BalanceChartProps {
   pools: Pool[];
   poolHistories: Record<number, BalancePoint[]>;
   selectedEvent?: LeaveEvent;
+  zoomEvent?: LeaveEvent;
   eventSelectionRequest?: number;
   zoomToSelectedEvent?: boolean;
   widenSelectedEvent?: boolean;
@@ -117,6 +118,7 @@ export function BalanceChart({
   pools,
   poolHistories,
   selectedEvent,
+  zoomEvent,
   eventSelectionRequest,
   zoomToSelectedEvent,
   widenSelectedEvent,
@@ -181,8 +183,25 @@ export function BalanceChart({
   }, [selectedIndex, lastIndex]);
   const eventIndices = [...new Set(selectedEvent?.days.map((day) =>
     history.findIndex((point) => point.date === day.date)) ?? [])].filter((index) => index >= 0).sort((a, b) => a - b);
-  const eventStart = eventIndices[0];
-  const eventEnd = eventIndices.at(-1);
+  const highlightedStart = eventIndices[0];
+  const highlightedEnd = eventIndices.at(-1);
+  useEffect(() => {
+    if (highlightedStart === undefined || highlightedEnd === undefined) return;
+    const bufferedStart = Math.max(0, highlightedStart - 7);
+    const bufferedEnd = Math.min(lastIndex, highlightedEnd + 7);
+    if (brushRange.startIndex <= bufferedStart && brushRange.endIndex >= bufferedEnd) return;
+    setBrushRange((current) => {
+      const size = Math.max(current.endIndex - current.startIndex, bufferedEnd - bufferedStart);
+      const startIndex = Math.max(0, Math.min(bufferedStart, Math.max(current.startIndex, bufferedEnd - size), lastIndex - size));
+      return { startIndex, endIndex: Math.min(lastIndex, startIndex + size) };
+    });
+    selectedPresetRef.current = null;
+    setSelectedPreset(null);
+  }, [selectedEvent?.id, highlightedStart, highlightedEnd, lastIndex]);
+  const zoomIndices = (zoomEvent?.days.map((day) =>
+    history.findIndex((point) => point.date === day.date)) ?? []).filter((index) => index >= 0).sort((a, b) => a - b);
+  const eventStart = zoomIndices[0];
+  const eventEnd = zoomIndices.at(-1);
   useEffect(() => {
     if (eventStart === undefined || eventEnd === undefined) return;
     const bufferedStart = Math.max(0, eventStart - 7);
@@ -203,15 +222,6 @@ export function BalanceChart({
       setSelectedPreset(null);
       return;
     }
-    if (brushRange.startIndex <= bufferedStart && brushRange.endIndex >= bufferedEnd) return;
-    setBrushRange((current) => {
-      if (current.startIndex <= bufferedStart && current.endIndex >= bufferedEnd) return current;
-      const size = Math.max(current.endIndex - current.startIndex, bufferedEnd - bufferedStart);
-      const startIndex = Math.max(0, Math.min(bufferedStart, Math.max(current.startIndex, bufferedEnd - size), lastIndex - size));
-      return { startIndex, endIndex: Math.min(lastIndex, startIndex + size) };
-    });
-    selectedPresetRef.current = null;
-    setSelectedPreset(null);
   }, [eventSelectionRequest, eventStart, eventEnd, lastIndex, zoomToSelectedEvent, widenSelectedEvent]);
   const chartData = useMemo<ChartPoint[]>(
     () => {

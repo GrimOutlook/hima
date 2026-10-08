@@ -66,7 +66,10 @@ function App() {
   );
   const [balanceDate, setBalanceDate] = useState(todayDate);
   const [eventSelection, setEventSelection] = useState<{ id: number; request: number; zoom: boolean; wide: boolean } | null>(null);
-  const selectedEvent = store.events.find((event) => event.id === eventSelection?.id);
+  const [highlightedEventId, setHighlightedEventId] = useState<number | null>(null);
+  const selectedEvent = store.events.find((event) => event.id === highlightedEventId);
+  const zoomEvent = store.events.find((event) => event.id === eventSelection?.id);
+  const eventClickTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [selectedUsesPoolId, setSelectedUsesPoolId] = useState<number | null>(null);
   const [modal, setModal] = useState<ModalState | null>(null);
   const importInputRef = useRef<HTMLInputElement>(null);
@@ -109,6 +112,10 @@ function App() {
     saveStore(store);
   }, [store]);
 
+  useEffect(() => () => {
+    if (eventClickTimer.current !== null) clearTimeout(eventClickTimer.current);
+  }, []);
+
   function createPool() {
     setModal({ type: "new-pool" });
   }
@@ -146,10 +153,20 @@ function App() {
   }
 
   function selectEvent(id: number) {
+    if (eventClickTimer.current !== null) clearTimeout(eventClickTimer.current);
+    eventClickTimer.current = setTimeout(() => {
+      setHighlightedEventId((current) => current === id ? null : id);
+      eventClickTimer.current = null;
+    }, 300);
+  }
+
+  function zoomToEvent(id: number) {
+    if (eventClickTimer.current !== null) clearTimeout(eventClickTimer.current);
+    eventClickTimer.current = null;
     setEventSelection((current) => ({
       id,
       request: (current?.request ?? 0) + 1,
-      zoom: current?.id === id ? !current.zoom : false,
+      zoom: current?.id === id ? !current.zoom : true,
       wide: current?.id === id && current.zoom,
     }));
   }
@@ -494,6 +511,7 @@ function App() {
           pools={store.pools}
           poolHistories={poolHistories}
           selectedEvent={selectedEvent}
+          zoomEvent={zoomEvent}
           eventSelectionRequest={eventSelection?.request}
           zoomToSelectedEvent={eventSelection?.zoom}
           widenSelectedEvent={eventSelection?.wide}
@@ -559,6 +577,18 @@ function App() {
                 <div>
                   <div className="section-overline">MAKE SPACE FOR LIFE</div>
                   <h2>Planned leave</h2>
+                  <button
+                    className="text-button"
+                    type="button"
+                    disabled={highlightedEventId === null}
+                    onClick={() => {
+                      if (eventClickTimer.current !== null) clearTimeout(eventClickTimer.current);
+                      eventClickTimer.current = null;
+                      setHighlightedEventId(null);
+                    }}
+                  >
+                    Clear Selection
+                  </button>
                 </div>
                 <button
                   className="button button-outline button-small"
@@ -619,6 +649,10 @@ function App() {
                         onClick={(click) => {
                           if (click.target instanceof Element && click.target.closest("button")) return;
                           selectEvent(event.id);
+                        }}
+                        onDoubleClick={(click) => {
+                          if (click.target instanceof Element && click.target.closest("button")) return;
+                          zoomToEvent(event.id);
                         }}>
                         <div className="event-date-block">
                           <span className="event-month">{monthLabel(firstDate)}</span>
@@ -628,7 +662,9 @@ function App() {
                           <strong><button className="pool-select-button" type="button"
                             aria-label={`Highlight ${event.name} in graph`}
                             aria-pressed={selectedEvent?.id === event.id}
+                            title="Click to toggle highlight; double-click to switch zoom modes"
                             onClick={() => selectEvent(event.id)}
+                            onDoubleClick={() => zoomToEvent(event.id)}
                           >{event.name}</button></strong>
                           <span>{eventDateRangeLabel(event)}</span>
                           <span className={statusClass}>{status}</span>
