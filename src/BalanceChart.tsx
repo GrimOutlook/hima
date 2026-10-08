@@ -311,7 +311,7 @@ export function BalanceChart({
                 setBrushRange(timelineRange(preset, history, today, todayIndex, lastIndex));
               }}
             >
-              {preset}
+              {preset === "all time" ? "All" : preset}
             </button>
           </Fragment>
         ))}
