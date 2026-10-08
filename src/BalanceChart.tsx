@@ -439,6 +439,16 @@ export function BalanceChart({
               aria-label={`Daily ${selectedPool?.name ?? (combinedTotals ? "combined pools" : "selected pools")} balance history and forecast through next year`}
             >
               <CartesianGrid stroke="#eeefe9" vertical={false} />
+              {visibleEndDate > today && (
+                <ReferenceArea
+                  x1={Math.max(visibleStart, todayIndex)}
+                  x2={visibleEnd}
+                  fill="#969d95"
+                  fillOpacity={0.16}
+                  strokeOpacity={0}
+                  ifOverflow="hidden"
+                />
+              )}
               {eventIndices.map((index) => (
                 <ReferenceArea key={`event-day-${index}`} x1={index - 0.5} x2={index + 0.5}
                   fill="#facc15" fillOpacity={0.3} strokeOpacity={0} ifOverflow="hidden" />
@@ -504,7 +514,7 @@ export function BalanceChart({
                   <Line name={item.name} dataKey={`${item.key}_actual`} type="monotoneX"
                     stroke={item.color} strokeWidth={2.5} dot={false} isAnimationActive={false} />
                   <Line name={`${item.name} (projected)`} dataKey={`${item.key}_projected`} type="monotoneX"
-                    stroke={item.color} strokeWidth={2.5} strokeDasharray="7 5" dot={false} isAnimationActive={false} />
+                    stroke={item.color} strokeWidth={2.5} dot={false} isAnimationActive={false} />
                 </Fragment>
               ))}
               <Tooltip
@@ -550,7 +560,7 @@ export function BalanceChart({
         </span>)}
         <span aria-hidden="true" style={{ width: 16, borderTop: "2px solid #747e74" }} />
         Actual
-        <span aria-hidden="true" style={{ width: 16, borderTop: "2px dashed #747e74" }} />
+        <span aria-hidden="true" style={{ width: 16, height: 10, background: "rgba(150, 157, 149, 0.16)", borderTop: "2px solid #747e74" }} />
         Projected
         <span className="history-range">
           {prettyDate(visibleStartDate)} – {prettyDate(visibleEndDate)} · hover for daily balances; click to select a date and scroll to the nearest event; drag the range handles to zoom and the selection to pan
