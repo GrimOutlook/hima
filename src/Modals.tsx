@@ -175,11 +175,6 @@ export function PoolModal({
       onClose={onClose}
     >
       <form className="modal-form" onSubmit={submit}>
-        <fieldset className="pool-visibility-settings">
-          <legend>Pool visibility</legend>
-          <label><input type="checkbox" checked={hiddenFromGraph} onChange={(event) => setHiddenFromGraph(event.currentTarget.checked)} />Hide from combined graph</label>
-          <label><input type="checkbox" checked={hiddenFromTotal} onChange={(event) => setHiddenFromTotal(event.currentTarget.checked)} />Hide from overall balance total</label>
-        </fieldset>
         <label className="field-label">
           Pool name
           <input
@@ -284,6 +279,11 @@ export function PoolModal({
             </div>
           ))}
         </div>
+        <fieldset className="pool-visibility-settings">
+          <legend>Pool visibility</legend>
+          <label><input type="checkbox" checked={hiddenFromGraph} onChange={(event) => setHiddenFromGraph(event.currentTarget.checked)} />Hide from combined graph</label>
+          <label><input type="checkbox" checked={hiddenFromTotal} onChange={(event) => setHiddenFromTotal(event.currentTarget.checked)} />Hide from overall balance total</label>
+        </fieldset>
         {error && <p className="form-error" role="alert">{error}</p>}
         <div className="modal-actions">
           <button className="button button-quiet" type="button" onClick={onClose}>Cancel</button>
