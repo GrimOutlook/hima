@@ -43,9 +43,26 @@ const PLOT_LEFT = 68;
 const PLOT_RIGHT = 18;
 const ACTUAL_COLOR = "#4b7955";
 const PROJECTED_COLOR = "#bd856a";
-const TIMELINE_PRESETS = ["all time", "YTD", "6 month", "3 month", "1 year", "5 year", "YFD", "Next Year"] as const;
+const TIMELINE_PRESETS = ["all time", "±6 month", "YTD", "6 month", "3 month", "1 year", "5 year", "Previous Year", "YFD", "future 6 month", "future 3 month", "future 1 year", "future 5 year", "Next Year"] as const;
 
 type TimelinePreset = typeof TIMELINE_PRESETS[number];
+
+const TIMELINE_TOOLTIPS: Record<TimelinePreset, string> = {
+  "all time": "Show the entire available timeline",
+  "±6 month": "Show one year centered on today: six months before and six months after",
+  "YTD": "Show January 1 of this year through today",
+  "6 month": "Show the past six months through today",
+  "3 month": "Show the past three months through today",
+  "1 year": "Show the past year through today",
+  "5 year": "Show the past five years through today",
+  "Previous Year": "Show January 1 through December 31 of last year",
+  "YFD": "Show today through December 31 of this year",
+  "future 6 month": "Show today through six months from now",
+  "future 3 month": "Show today through three months from now",
+  "future 1 year": "Show today through one year from now",
+  "future 5 year": "Show today through five years from now",
+  "Next Year": "Show January 1 through December 31 of next year",
+};
 
 function timelineRange(
   preset: TimelinePreset,
@@ -55,16 +72,29 @@ function timelineRange(
   lastIndex: number,
 ) {
   if (preset === "all time") return { startIndex: 0, endIndex: lastIndex };
+  if (preset === "±6 month") {
+    const startDate = addMonths(today, -6);
+    const endDate = addMonths(today, 6);
+    const startIndex = history.findIndex((point) => point.date >= startDate);
+    const endIndex = history.findIndex((point) => point.date >= endDate);
+    return { startIndex: startIndex < 0 ? 0 : startIndex, endIndex: endIndex < 0 ? lastIndex : endIndex };
+  }
   if (preset === "YFD") {
-    const endDate = addMonths(today, 12);
+    const endDate = `${today.slice(0, 4)}-12-31`;
     const endIndex = history.findIndex((point) => point.date >= endDate);
     return { startIndex: todayIndex, endIndex: endIndex < 0 ? lastIndex : endIndex };
   }
-  if (preset === "Next Year") {
-    const nextYear = Number(today.slice(0, 4)) + 1;
-    const startIndex = history.findIndex((point) => point.date >= `${nextYear}-01-01`);
-    const endIndex = history.findIndex((point) => point.date >= `${nextYear}-12-31`);
+  if (preset === "Next Year" || preset === "Previous Year") {
+    const year = Number(today.slice(0, 4)) + (preset === "Next Year" ? 1 : -1);
+    const startIndex = history.findIndex((point) => point.date >= `${year}-01-01`);
+    const endIndex = history.findIndex((point) => point.date >= `${year}-12-31`);
     return { startIndex: startIndex < 0 ? lastIndex : startIndex, endIndex: endIndex < 0 ? lastIndex : endIndex };
+  }
+  if (preset.startsWith("future ")) {
+    const months = preset === "future 6 month" ? 6 : preset === "future 3 month" ? 3 : preset === "future 5 year" ? 60 : 12;
+    const endDate = addMonths(today, months);
+    const endIndex = history.findIndex((point) => point.date >= endDate);
+    return { startIndex: todayIndex, endIndex: endIndex < 0 ? lastIndex : endIndex };
   }
 
   const startDate = preset === "YTD"
@@ -127,6 +157,7 @@ export function BalanceChart({
 }: BalanceChartProps) {
   const [poolSelections, setPoolSelections] = useState<Record<number, boolean>>({});
   const [combinedTotals, setCombinedTotals] = useState(false);
+  const [timelineMenuOpen, setTimelineMenuOpen] = useState(false);
   const poolDropdownRef = useRef<HTMLDetailsElement>(null);
   useEffect(() => {
     function closePoolDropdown(event: PointerEvent) {
@@ -282,7 +313,7 @@ export function BalanceChart({
 
   return (
     <section className="history-panel">
-      <button className="history-today-button button button-primary button-small" type="button" onClick={onToday}>
+      <button className="history-today-button button button-primary button-small" type="button" title="Select today and clear the selected event" onClick={onToday}>
         Today
       </button>
       <div className="history-panel-header">
@@ -334,27 +365,48 @@ export function BalanceChart({
         </div>
       </div>
       {selectedPools.length === 0 && <p className="history-pool-visibility">Select a pool to show its balance in the graph.</p>}
-      <div className="history-timeline-controls" role="group" aria-label="Graph timeline presets">
-        <span>Timeline</span>
-        {TIMELINE_PRESETS.map((preset) => (
-          <Fragment key={preset}>
-            {(preset === "YTD" || preset === "YFD") && (
-              <span className="history-timeline-separator" aria-hidden="true" />
-            )}
-            <button
-              className={`history-timeline-preset${selectedPreset === preset ? " is-active" : ""}`}
-              type="button"
-              aria-pressed={selectedPreset === preset}
-              onClick={() => {
-                selectedPresetRef.current = preset;
-                setSelectedPreset(preset);
-                setBrushRange(timelineRange(preset, history, today, todayIndex, lastIndex));
-              }}
-            >
-              {preset === "all time" ? "All" : preset}
-            </button>
-          </Fragment>
+      <div className={`history-timeline-dropdown${timelineMenuOpen ? " is-open" : ""}`}
+        onMouseEnter={() => setTimelineMenuOpen(true)}
+        onMouseLeave={() => setTimelineMenuOpen(false)}
+        onBlur={(event) => {
+          if (!event.currentTarget.contains(event.relatedTarget)) setTimelineMenuOpen(false);
+        }}
+        onKeyDown={(event) => {
+          if (event.key === "Escape") setTimelineMenuOpen(false);
+        }}>
+        <button className="history-timeline-preset history-timeline-trigger" type="button"
+          aria-expanded={timelineMenuOpen} onClick={() => setTimelineMenuOpen((open) => !open)}>
+          Timeline <span aria-hidden="true">▾</span>
+        </button>
+        <div className="history-timeline-controls" role="group" aria-label="Graph timeline presets">
+        {([
+          { label: "General", presets: TIMELINE_PRESETS.slice(0, 2) },
+          { label: "Past", presets: TIMELINE_PRESETS.slice(2, 8) },
+          { label: "Future", presets: TIMELINE_PRESETS.slice(8) },
+        ]).map(({ label, presets }) => (
+          <div className="history-timeline-group" role="group" aria-label={label} key={label}>
+            <span className="history-timeline-heading">{label}</span>
+            <div className="history-timeline-buttons">
+              {presets.map((preset) => (
+                <button
+                  key={preset}
+                  className={`history-timeline-preset${selectedPreset === preset ? " is-active" : ""}`}
+                  type="button"
+                  title={TIMELINE_TOOLTIPS[preset]}
+                  aria-pressed={selectedPreset === preset}
+                  onClick={() => {
+                    selectedPresetRef.current = preset;
+                    setSelectedPreset(preset);
+                    setBrushRange(timelineRange(preset, history, today, todayIndex, lastIndex));
+                  }}
+                >
+                  {preset === "all time" ? "All" : preset.replace(/^future /, "")}
+                </button>
+              ))}
+            </div>
+          </div>
         ))}
+        </div>
       </div>
       <div className="balance-chart-wrap">
         <div
