@@ -67,13 +67,15 @@ export function ModalFrame({
   );
 }
 
-export function SettingsModal({ firstDayOfWeek, onChange, ignoreWeekends, onIgnoreWeekendsChange, defaultTimeline, onDefaultTimelineChange, onClose }: {
+export function SettingsModal({ firstDayOfWeek, onChange, ignoreWeekends, onIgnoreWeekendsChange, defaultTimeline, onDefaultTimelineChange, onExport, onImport, onClose }: {
   firstDayOfWeek: Weekday;
   onChange: (day: Weekday) => void;
   ignoreWeekends: boolean;
   onIgnoreWeekendsChange: (ignore: boolean) => void;
   defaultTimeline: TimelinePreset;
   onDefaultTimelineChange: (preset: TimelinePreset) => void;
+  onExport: () => void;
+  onImport: () => void;
   onClose: () => void;
 }) {
   const contentRef = useRef<HTMLDivElement>(null);
@@ -122,6 +124,12 @@ export function SettingsModal({ firstDayOfWeek, onChange, ignoreWeekends, onIgno
         <label><input type="checkbox" checked={ignoreWeekends} onChange={(event) => onIgnoreWeekendsChange(event.currentTarget.checked)} aria-describedby="ignore-weekends-description" />Ignore weekends</label>
       </fieldset>
       <p className="wizard-hint" id="ignore-weekends-description">Skip Saturdays and Sundays in the graph and calendar selections. Existing entries and balance calculations are preserved.</p>
+      <div className="field-label">Data backup</div>
+      <p className="wizard-hint">Export your data as a JSON backup or import a saved backup.</p>
+      <div className="modal-actions">
+        <button className="button button-outline" type="button" onClick={onExport}>Export JSON</button>
+        <button className="button button-outline" type="button" onClick={onImport}>Import JSON</button>
+      </div>
       <div className="modal-actions">
         <button className="button button-primary" type="button" onClick={onClose}>Done</button>
       </div>
