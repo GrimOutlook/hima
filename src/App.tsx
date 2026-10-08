@@ -968,7 +968,7 @@ function PoolCardContent({
                 {pool.name}
               </button>
             </h3>
-            <div className="pool-subtitle">Personal leave pool</div>
+            <div className="pool-subtitle">{pool.new_additions_expire_same_day ? "Holiday" : "Personal Leave"}</div>
           </div>
         </div>
         <div className="pool-actions">
