@@ -213,6 +213,12 @@ button:focus-visible, input:focus-visible, select:focus-visible, a:focus-visible
 .pool-balance { margin-top: 18px; color: #2d4437; font: 700 34px/1 'Manrope', sans-serif; letter-spacing: -1.6px; }
 .pool-balance span { padding-left: 5px; color: #7e8a80; font: 500 12px 'DM Sans', sans-serif; letter-spacing: 0; }
 .pool-balance-negative { color: #b86350; }
+.pool-balance-row { display: flex; align-items: baseline; flex-wrap: wrap; gap: 10px; }
+.pool-balance-change { color: #c44848; font: 700 24px/1 'Manrope', sans-serif; letter-spacing: -1px; }
+.pool-balance-change-added { color: #367ac6; }
+.pool-time-added { color: #367ac6; }
+.pool-time-used { color: #c44848; }
+.pool-balance-change span { padding-left: 5px; font: 500 12px 'DM Sans', sans-serif; letter-spacing: 0; }
 .pool-balance-caption { margin-top: 5px; color: #969b94; font-size: 10px; }
 .pool-event-subtraction { margin-top: 15px; padding: 12px; border-radius: 9px; background: #fbf3ef; }
 .pool-event-subtraction-heading { display: flex; align-items: center; gap: 8px; color: #a65e4d; }

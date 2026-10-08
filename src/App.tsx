@@ -204,7 +204,7 @@ function App() {
   function selectEvent(id: number) {
     const startDate = store.events.find((event) => event.id === id)?.days
       .map((day) => day.date).sort()[0];
-    if (startDate) setBalanceDate(addDays(startDate, -1));
+    if (startDate) setBalanceDate(startDate);
     if (eventClickTimer.current !== null) clearTimeout(eventClickTimer.current);
     eventClickTimer.current = setTimeout(() => {
       setHighlightedEventId((current) => current === id ? null : id);
@@ -911,6 +911,20 @@ function PoolCardContent({
   overlay = false,
 }: PoolCardProps & { sortable?: ReturnType<typeof useSortable>; overlay?: boolean }) {
   const currentBalance = poolBalanceOn(store, pool.id, balanceDate);
+  const dayAdded = poolTotalsOn(store, pool.id, balanceDate).accrued
+    - poolTotalsOn(store, pool.id, addDays(balanceDate, -1)).accrued;
+  const dayHours = store.events.reduce((total, event) => total + event.days
+    .filter((day) => day.date === balanceDate)
+    .flatMap((day) => day.allocations)
+    .filter((allocation) => allocation.pool_id === pool.id)
+    .reduce((sum, allocation) => sum + allocation.hours, 0), 0);
+  const startingBalance = dayHours > 0
+    ? poolBalanceOn({ ...store, events: store.events.map((event) => ({
+        ...event, days: event.days.filter((day) => day.date !== balanceDate),
+      })) }, pool.id, balanceDate)
+    : currentBalance;
+  const balanceChanged = currentBalance !== startingBalance - dayAdded;
+  const balanceIncreased = currentBalance > startingBalance - dayAdded;
   const eventHours = selectedEvent?.days.reduce((total, day) => total + day.allocations
     .filter((allocation) => allocation.pool_id === pool.id)
     .reduce((sum, allocation) => sum + allocation.hours, 0), 0) ?? 0;
@@ -969,16 +983,23 @@ function PoolCardContent({
           <button className="icon-button" type="button" title="Pool information" aria-label={`View information for ${pool.name}`} onClick={onViewInformation}>ⓘ</button>
         </div>
       </div>
-      <div className={currentBalance < 0 ? "pool-balance pool-balance-negative" : "pool-balance"}>
-        {formatHours(currentBalance)}<span>h</span>
+      <div className="pool-balance-row">
+        <div className={startingBalance - dayAdded < 0 ? "pool-balance pool-balance-negative" : "pool-balance"}>
+          {formatHours(startingBalance - dayAdded)}<span>h</span>
+        </div>
+        {(dayHours > 0 || dayAdded > 0) && <div className={`pool-balance-change${balanceIncreased ? " pool-balance-change-added" : ""}`}>→ {formatHours(currentBalance)}<span>h</span></div>}
       </div>
-      <div className="pool-balance-caption">available on {prettyDate(balanceDate)}</div>
+      <div className="pool-balance-caption">
+        starting balance on {prettyDate(balanceDate)}
+        {balanceChanged && dayAdded > 0 && <span className="pool-time-added"> · +{formatHours(dayAdded)} h added</span>}
+        {balanceChanged && dayHours > 0 && <span className="pool-time-used"> · {formatHours(dayHours)} h used that day</span>}
+      </div>
       {selectedEvent && eventHours > 0 && (
         <div className="pool-event-subtraction">
           <div className="pool-event-subtraction-heading">
             <span className="pool-event-subtraction-icon" aria-hidden="true">−</span>
             <span className="pool-event-subtraction-label">{selectedEvent.name}</span>
-            <strong>−{formatHours(eventHours)} h</strong>
+            <strong>−{formatHours(eventHours)}h Total</strong>
           </div>
           <div className="pool-event-subtraction-track" role="img"
             aria-label={`${selectedEvent.name} draws ${formatHours(eventHours)} hours from ${pool.name}, ${(eventHours / eventTotal * 100).toFixed(1)}% of the event total`}>
