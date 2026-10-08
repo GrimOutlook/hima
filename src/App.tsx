@@ -715,7 +715,9 @@ function App() {
           modal={selectedModal}
           onDelete={(id, recurring) => removeAddition(selectedModal.poolId, id, recurring)}
           pools={store.pools}
-          onClose={() => setModal(null)}
+          onClose={() => setModal(selectedModal.type === "add-time"
+            ? null
+            : { type: "pool-info", poolId: selectedModal.poolId })}
           onSave={saveAddition}
           onSaveCap={saveCap}
         />
@@ -893,7 +895,7 @@ function PoolInformationModal({
                   {rule.end_date ? ` · until ${prettyDate(rule.end_date)}` : ""}
                 </span>
                 <div className="rule-actions">
-                  <button className="icon-button" type="button" title="Edit recurring addition" aria-label="Edit recurring addition" onClick={() => onEditRecurring(rule.id)}>✎</button>
+                  <button className="icon-button" type="button" title={rule.reset ? "Edit recurring balance reset" : "Edit recurring addition"} aria-label={rule.reset ? "Edit recurring balance reset" : "Edit recurring addition"} onClick={() => onEditRecurring(rule.id)}>✎</button>
                 </div>
               </div>
             ))}
@@ -903,7 +905,7 @@ function PoolInformationModal({
                 <span className="rule-copy">{addition.reset ? `Reset to ${formatHours(addition.amount)} h` : `+${formatHours(addition.amount)} h one-time`}</span>
                 <span className="rule-date">on {prettyDate(addition.date)}</span>
                 <div className="rule-actions">
-                  <button className="icon-button" type="button" title="Edit one-time addition" aria-label="Edit one-time addition" onClick={() => onEditAddition(addition.id)}>✎</button>
+                  <button className="icon-button" type="button" title={addition.reset ? "Edit balance reset" : "Edit one-time addition"} aria-label={addition.reset ? "Edit balance reset" : "Edit one-time addition"} onClick={() => onEditAddition(addition.id)}>✎</button>
                 </div>
               </div>
             ))}

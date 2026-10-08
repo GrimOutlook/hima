@@ -430,7 +430,7 @@ export function AdditionModal({
 
   const title = cap ? `${adding ? "Add balance cap to" : "Edit balance cap in"} ${poolName}` : adding
     ? `Add ${reset ? "use-by date" : "time"} to ${poolName}`
-    : `Edit ${reset ? "use-by date" : "addition"} in ${poolName}`;
+    : `Edit ${reset ? "balance reset" : "addition"} in ${poolName}`;
 
   return (
     <ModalFrame
@@ -450,7 +450,7 @@ export function AdditionModal({
       onClose={onClose}
     >
       <form className="modal-form" onSubmit={submit}>
-        {mode !== "edit-cap" && <div className="segmented-control" role="group" aria-label="Action">
+        {adding && <div className="segmented-control" role="group" aria-label="Action">
           {[
             { value: "add", label: "Add time" },
             { value: "reset", label: "Reset balance" },
@@ -543,8 +543,8 @@ export function AdditionModal({
           </div>
         )}
         <CalendarPicker label={cap ? "Starts on" : recurring
-             ? cadence === "YearlyNthWeekday" ? "Start schedule on" : reset ? "First use-by date" : "First addition on"
-              : reset ? "Use-by date" : "Add on"} value={date} onChange={setDate} />
+             ? cadence === "YearlyNthWeekday" ? "Start schedule on" : reset ? "First reset on" : "First addition on"
+              : reset ? "Reset on" : "Add on"} value={date} onChange={setDate} />
         {(cap || recurring) && (
             <CalendarPicker label="End date (inclusive, optional)" optional
               min={date}
@@ -554,10 +554,10 @@ export function AdditionModal({
         )}
         {error && <p className="form-error" role="alert">{error}</p>}
         <div className="modal-actions">
-          {!adding && onDelete && <DeleteButton label={cap ? "Delete balance cap" : recurring ? "Delete recurring addition" : "Delete one-time addition"} onDelete={onDelete} />}
+          {!adding && onDelete && <DeleteButton label={cap ? "Delete balance cap" : reset ? "Delete balance reset" : recurring ? "Delete recurring addition" : "Delete one-time addition"} onDelete={onDelete} />}
           <button className="button button-quiet" type="button" onClick={onClose}>Cancel</button>
           <button className="button button-primary" type="submit">
-            {cap ? "Save balance cap" : adding ? reset ? "Save use-by date" : "Save addition" : "Save changes"}
+            {cap ? "Save balance cap" : reset ? "Save balance reset" : "Save addition"}
           </button>
         </div>
       </form>
