@@ -331,10 +331,10 @@ button:focus-visible, input:focus-visible, select:focus-visible, a:focus-visible
 .tooltip-actual-dot { background: #4b7955; }
 .tooltip-projected-dot { background: #bd856a; }
 .balance-chart-tooltip strong { color: #2d4437; font: 700 15px 'Manrope', sans-serif; }
-.history-footnote { display: flex; align-items: center; gap: 7px; padding-top: 8px; color: #92988f; font-size: 9px; }
+.history-footnote { display: flex; flex-wrap: wrap; align-items: center; gap: 7px; padding-top: 8px; color: #92988f; font-size: 9px; }
 .history-legend-dot { width: 7px; height: 7px; border-radius: 50%; background: #4b7955; }
 .history-projection-dot { width: 7px; height: 7px; margin-left: 7px; border-radius: 50%; background: #bd856a; }
-.history-range { margin-left: auto; }
+.history-range { width: 100%; margin-left: 0; }
 
 .empty-card { display: flex; align-items: center; flex-direction: column; padding: 33px 26px; text-align: center; }
 .empty-illustration { display: grid; place-items: center; width: 46px; height: 46px; border-radius: 15px; color: #66866d; background: #edf3ee; font-size: 25px; }
