@@ -2,6 +2,56 @@ use hima_api::db::{Database, SaveError};
 use serde_json::json;
 use sqlx::PgPool;
 
+#[sqlx::test(migrations = false)]
+#[ignore = "requires DATABASE_URL with PostgreSQL CREATEDB privileges"]
+async fn upgrade_preserves_planners_and_rejects_changed_migrations(pool: PgPool) {
+    // Start with the deployed planner-only schema, rather than testing only a
+    // fresh installation of the latest schema.
+    let initial = sqlx::migrate::Migrator {
+        migrations: std::borrow::Cow::Borrowed(&hima_api::db::MIGRATOR.migrations[..1]),
+        ignore_missing: false,
+        locking: true,
+        no_tx: false,
+    };
+    initial.run(&pool).await.unwrap();
+    let db = Database::from_pool(pool.clone());
+    let user = db.ensure_user("https://upgrade", "existing").await.unwrap();
+    let document = json!({"version":1,"pools":[],"events":[],"next_id":9});
+    let before = db.save(user, &document, 0).await.unwrap();
+    db.migrate().await.unwrap();
+    db.migrate().await.unwrap();
+    assert_eq!(db.load(user).await.unwrap().unwrap(), before);
+    sqlx::query("INSERT INTO sessions (token_hash,user_id,csrf_token,expires_at) VALUES ('upgrade-session',$1,'csrf',clock_timestamp() + interval '1 hour')")
+        .bind(user).execute(&pool).await.unwrap();
+    let versions: Vec<i64> =
+        sqlx::query_scalar("SELECT version FROM _sqlx_migrations WHERE success ORDER BY version")
+            .fetch_all(&pool)
+            .await
+            .unwrap();
+    assert_eq!(versions, vec![202610090001, 202610090002]);
+
+    // A release must fail closed if an applied migration has been rewritten.
+    sqlx::query(
+        "UPDATE _sqlx_migrations SET checksum = decode('00', 'hex') WHERE version = 202610090001",
+    )
+    .execute(&pool)
+    .await
+    .unwrap();
+    assert!(matches!(
+        db.migrate().await,
+        Err(sqlx::migrate::MigrateError::VersionMismatch(202610090001))
+    ));
+    assert_eq!(db.load(user).await.unwrap().unwrap(), before);
+    assert_eq!(
+        sqlx::query_scalar::<_, i64>("SELECT count(*) FROM sessions WHERE user_id=$1")
+            .bind(user)
+            .fetch_one(&pool)
+            .await
+            .unwrap(),
+        1
+    );
+}
+
 // SQLx creates and migrates an isolated database for each test and drops it.
 // Explicitly ignored by default so offline backend checks remain usable.
 #[sqlx::test(migrations = "./migrations")]

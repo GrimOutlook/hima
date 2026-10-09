@@ -29,6 +29,48 @@ afterEach(() => { controller.stop(); vi.useRealTimers(); });
 async function start() { controller.start(); await settle(); }
 
 describe("remote planner lifecycle", () => {
+  it("recovers a committed write whose acknowledgement was lost without overwriting remote data", async () => {
+    await start();
+    const save = deferred<StoredPlanner>();
+    vi.mocked(api.save).mockReturnValueOnce(save.promise);
+    controller.edit(() => doc("Committed")); await tick();
+    controller.edit(() => doc("Queued after commit"));
+    // The server committed revision 2, but the browser saw a network failure.
+    save.reject(new Error("Connection lost")); await settle();
+    vi.mocked(api.save).mockRejectedValueOnce(new PersistenceError("revision_conflict", "Changed", 409));
+    controller.retry(); await tick();
+    expect(api.save).toHaveBeenLastCalledWith(doc("Queued after commit"), 1, a, expect.any(AbortSignal));
+    expect(controller.getSnapshot()).toMatchObject({ document: doc("Queued after commit"), revision: 1, saveStatus: "conflict" });
+    vi.mocked(api.load).mockResolvedValueOnce(stored(doc("Committed"), 2));
+    await controller.fetchLatest();
+    expect(controller.getSnapshot().latest).toEqual({ document: doc("Committed"), revision: 2 });
+    await tick();
+    expect(api.save).toHaveBeenCalledTimes(2);
+    controller.resolveConflict(true); await tick();
+    expect(api.save).toHaveBeenLastCalledWith(doc("Queued after commit"), 2, a, expect.any(AbortSignal));
+    expect(controller.getSnapshot()).toMatchObject({ revision: 3, saveStatus: "saved" });
+  });
+
+  it("preserves local and remote copies when migration conflict recovery cannot load", async () => {
+    const migration = { document: doc("Local"), warnings: [], error: null, raw: "original", fingerprint: "original" };
+    const local = { read: () => migration, confirm: vi.fn() };
+    controller = new PlannerController(api, 500, local);
+    await start();
+    vi.mocked(api.save).mockRejectedValueOnce(new PersistenceError("conflict", "Changed", 409));
+    vi.mocked(api.load).mockRejectedValueOnce(new Error("Unavailable"));
+    await controller.migrate(); await tick();
+    expect(controller.getSnapshot()).toMatchObject({ document: doc("Remote"), revision: 1, migration, resolving: false, error: "Unavailable" });
+    expect(local.confirm).not.toHaveBeenCalled();
+    expect(api.save).toHaveBeenCalledTimes(1);
+    vi.mocked(api.save).mockRejectedValueOnce(new PersistenceError("conflict", "Changed", 409));
+    vi.mocked(api.load).mockResolvedValueOnce(stored(doc("Latest"), 4));
+    await controller.migrate();
+    expect(local.confirm).not.toHaveBeenCalled();
+    await controller.migrate();
+    expect(api.save).toHaveBeenLastCalledWith(doc("Local"), 4, a, expect.any(AbortSignal));
+    expect(local.confirm).toHaveBeenCalledWith(1, "original");
+  });
+
   it("requires explicit migration, preserves failures/cancellation, and confirms only acknowledged uploads", async () => {
     const migration = { document: doc("Local"), warnings: [], error: null, raw: "original", fingerprint: "original" };
     const local = { read: vi.fn(() => migration), confirm: vi.fn() };

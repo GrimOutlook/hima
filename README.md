@@ -233,8 +233,39 @@ DATABASE_URL=postgres://postgres:hima-dev@127.0.0.1:5432/hima cargo test --locke
 ```
 
 Regular `cargo test` runs offline validation and HTTP tests; the explicitly ignored
-PostgreSQL suite runs separately in CI, covering fresh migrations, constraints,
+PostgreSQL suite runs separately in CI, covering fresh migrations, upgrades from
+the planner-only schema, rejected migration checksum changes, constraints,
 per-user isolation, atomic revisions, invalid-write preservation, and reconnect persistence.
+
+### Persistence regression coverage
+
+The required CI jobs run frontend lint/typecheck/tests/build, Rust
+format/Clippy/offline tests/release builds, PostgreSQL integration tests, both
+development and production HTTPS proxy tests, and Nix release package builds.
+Database tests are explicitly enabled with `--ignored`; a normal offline
+`cargo test` alone does not verify authentication or database isolation.
+
+| Contract | Regression suite |
+| --- | --- |
+| Version-1 compatibility and invalid document rejection | `backend/tests/document.rs`, `src/plannerApi.test.ts`, `src/schemaVersion.test.ts` |
+| Fresh schema, populated upgrades, checksum failure, constraints and reconnect persistence | `backend/tests/postgres.rs` |
+| Signed OIDC rejection, session rotation/expiry/logout, CSRF and unauthenticated access | `backend/tests/auth.rs` |
+| Cross-user HTTP isolation and simultaneous create/update revision races | `backend/tests/auth.rs` (`planner_http_contract`) |
+| Loading/retry, queued edits, stale responses, account changes, conflicts and lost save acknowledgements | `src/plannerController.test.ts`, `src/useStoredPlanner.test.tsx` |
+| Explicit local migration, failed uploads/conflict recovery, retained source data | `src/plannerController.test.ts`, `src/localMigration.test.ts` |
+| HTTPS routing, cookies, save/restart/logout and callback log redaction | `deploy/test_https_proxy.py` |
+
+Run the database suites together against a disposable PostgreSQL 17 instance:
+
+```sh
+DATABASE_URL=postgres://TEST_ROLE:TEST_PASSWORD@127.0.0.1:5432/TEST_DB cargo test --locked --manifest-path backend/Cargo.toml --test postgres --test auth -- --ignored
+```
+
+SQLx creates isolated databases; the test role needs `CREATEDB`. The auth fixture
+starts its own local provider with real RSA signatures and exercises actual HTTP
+requests; no production provider credentials are needed. Follow the
+[deployment acceptance checks](deploy/README.md#health-and-acceptance-checks)
+for the real-provider browser smoke test.
 
 ### OIDC login and browser sessions
 
