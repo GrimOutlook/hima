@@ -21,6 +21,7 @@ import {
   addDays,
   allocateIds,
   balanceHistory,
+  balanceHistoryForDates,
   capRangesOverlap,
   dayLabel,
   eventDateRangeLabel,
@@ -97,8 +98,11 @@ function App() {
     [store, chartHistoryEnd],
   );
   const poolHistories = useMemo(
-    () => Object.fromEntries(store.pools.map((pool) => [pool.id, balanceHistory(store, chartHistoryEnd, pool.id)])),
-    [store, chartHistoryEnd],
+    () => {
+      const dates = history.map((point) => point.date);
+      return Object.fromEntries(store.pools.map((pool) => [pool.id, balanceHistoryForDates(store, chartHistoryEnd, dates, pool.id)]));
+    },
+    [store, chartHistoryEnd, history],
   );
   const firstPoolId = store.pools[0]?.id;
   const timeline = [...store.events].sort((left, right) =>

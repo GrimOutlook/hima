@@ -686,6 +686,16 @@ export function balanceHistory(store: Store, today: string, poolId?: number): Ba
   for (let date = start; date <= end; date = addDays(date, 1)) {
     dates.push(date);
   }
+  return balanceHistoryForDates(store, today, dates, poolId);
+}
+
+// Chart series must replay their ledgers over the same dates, even when a
+// different pool supplies the earliest opening balance or latest leave event.
+export function balanceHistoryForDates(store: Store, today: string, dates: string[], poolId?: number): BalancePoint[] {
+  if (!isValidDate(today)) return [];
+  const pools = poolId === undefined
+    ? store.pools.filter((pool) => !pool.hidden_from_graph)
+    : store.pools.filter((pool) => pool.id === poolId);
   const ledgers = pools.map((pool) => poolLedgerForDates(pool, store.events, dates));
   return dates.map((date, index) => ({
     date,

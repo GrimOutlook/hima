@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   allocateIds,
   balanceHistory,
+  balanceHistoryForDates,
   capRangesOverlap,
   emptyStore,
   eventBalanceWarnings,
@@ -31,6 +32,34 @@ function recurring(
 ): RecurringAddition {
   return { id: 1, amount, cadence, start_date, ...(end_date ? { end_date } : {}) };
 }
+
+describe("shared chart timeline", () => {
+  it.each([false, true])("preserves balances beyond another pool's last event (capped: %s)", (capped) => {
+    const store = { ...emptyStore(), pools: [100, 50].map((amount, index): Pool => ({
+      id: index + 1, name: `Pool ${index + 1}`, recurring: [],
+      additions: [{ id: index + 3, date: index === 0 ? "2026-01-01" : "2020-01-01", amount }],
+      caps: capped ? [{ id: index + 5, max_balance: 200, start_date: "2020-01-01" }] : [],
+    })), events: [{ id: 7, name: "Future leave", days: [{
+      date: "2029-06-01", allocations: [{ pool_id: 2, hours: 10 }],
+    }] }] };
+    const today = "2026-10-06";
+    const combined = balanceHistory(store, today);
+    const dates = combined.map((point) => point.date);
+    const histories = store.pools.map((pool) => balanceHistoryForDates(store, today, dates, pool.id));
+
+    expect(dates[0]).toBe("2020-01-01");
+    expect(dates.at(-1)).toBe("2029-06-08");
+    for (const history of histories) {
+      expect(history.map((point) => point.date)).toEqual(dates);
+      expect(history.at(-1)?.projected).toBe(true);
+    }
+    expect(histories[0][0]?.balance).toBe(0);
+    expect(histories[0].find((point) => point.date === "2028-01-01")?.balance).toBe(100);
+    expect(histories[0].at(-1)?.balance).toBe(100);
+    expect(histories[1].at(-1)?.balance).toBe(40);
+    expect(combined.at(-1)?.balance).toBe(140);
+  });
+});
 
 describe("fractional hour balances", () => {
   it.each([false, true])("does not warn for fully used weekly accruals (capped: %s)", (capped) => {
