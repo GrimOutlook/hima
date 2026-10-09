@@ -7,6 +7,7 @@ import { CalendarPicker } from "./CalendarPicker";
 import { poolColor } from "./poolColors";
 import { parseBackupJson, serializeBackupJson } from "./backup";
 import { useStoredPlanner } from "./useStoredPlanner";
+import { usePoolCardFigures } from "./usePoolCardFigures";
 import { FirstDayOfWeekContext, IgnoreWeekendsContext, loadDefaultTimeline, loadFirstDayOfWeek, loadIgnoreWeekends, nextWeekday, saveSettings } from "./settings";
 import {
   AdditionModal,
@@ -20,7 +21,6 @@ import {
   type PoolCapFormData,
 } from "./Modals";
 import {
-  addDays,
   allocateIds,
   balanceHistoryDates,
   balanceHistoryForDates,
@@ -32,7 +32,6 @@ import {
   freshEventDays,
   monthLabel,
   parseHours,
-  poolBalanceOn,
   poolTotalsOn,
   prettyDate,
   recurringScheduleDescription,
@@ -930,19 +929,7 @@ function PoolCardContent({
   sortable,
   overlay = false,
 }: PoolCardProps & { sortable?: ReturnType<typeof useSortable>; overlay?: boolean }) {
-  const currentBalance = poolBalanceOn(store, pool.id, balanceDate);
-  const dayAdded = poolTotalsOn(store, pool.id, balanceDate).accrued
-    - poolTotalsOn(store, pool.id, addDays(balanceDate, -1)).accrued;
-  const dayHours = store.events.reduce((total, event) => total + event.days
-    .filter((day) => day.date === balanceDate)
-    .flatMap((day) => day.allocations)
-    .filter((allocation) => allocation.pool_id === pool.id)
-    .reduce((sum, allocation) => sum + allocation.hours, 0), 0);
-  const startingBalance = dayHours > 0
-    ? poolBalanceOn({ ...store, events: store.events.map((event) => ({
-        ...event, days: event.days.filter((day) => day.date !== balanceDate),
-      })) }, pool.id, balanceDate)
-    : currentBalance;
+  const { currentBalance, dayAdded, dayHours, startingBalance } = usePoolCardFigures(store, pool.id, balanceDate);
   const balanceChanged = currentBalance !== startingBalance - dayAdded;
   const balanceIncreased = currentBalance > startingBalance - dayAdded;
   const eventHours = selectedEvent?.days.reduce((total, day) => total + day.allocations
