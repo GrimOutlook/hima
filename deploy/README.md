@@ -248,6 +248,25 @@ and persistence check:
    planner and session must remain intact, with no new sign-in prompt.
 4. Edit again and check save succeeds; verify an invalid CSRF write returns 403.
 5. Test a database restore in isolation and compare saved planner/revision data.
+6. In a second tab signed into the same account, load the planner before editing
+   the first tab. Save distinct edits in the first tab, then edit the second.
+   The second must show a conflict and retain its draft; fetch the latest copy,
+   export both copies, and explicitly choose which to keep. Reload to confirm
+   the chosen document and revision. A stale write must never silently win.
+7. Use a separate browser profile to sign into a second test account. It must
+   not see the first account's pool/event. Save a distinct planner, then confirm
+   the first profile still sees only its own data. Log out and verify `/api/me`
+   and `/api/planner` return 401 and the UI no longer exposes the loaded planner.
+8. On a test account, use browser developer tools to go offline after making an
+   edit. The failure must retain the draft and offer export/retry. Go online and
+   retry; if the earlier write committed, resolve the revision conflict explicitly.
+   Confirm the final planner after reload. Repeat a local migration with an
+   interrupted upload: its source must remain available until acknowledgement.
+
+Record the deployed commit, public origin, browser/provider used, observed
+planner revisions before/after restart, and pass/fail for each step in the
+release record. Run against disposable test accounts and retain exported copies
+while exercising conflict and failure recovery.
 
 CI runs PostgreSQL migrations, reconnect persistence, signed-provider auth,
 planner HTTP/CSRF tests, the development proxy integration, frontend checks,
