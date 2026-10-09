@@ -7,6 +7,7 @@ interface CalendarPickerProps {
   value: string;
   onChange: (date: string) => void;
   label?: string;
+  variant?: "balance" | "field";
   display?: "large-date";
   optional?: boolean;
   min?: string;
@@ -31,7 +32,7 @@ function startOfMonth(value: string): string {
   return `${value.slice(0, 7)}-01`;
 }
 
-export function CalendarPicker({ value, onChange, label = "BALANCE ON", display, optional = false, min, selectedDates, onDatesChange }: CalendarPickerProps) {
+export function CalendarPicker({ value, onChange, label = "BALANCE ON", variant = "field", display, optional = false, min, selectedDates, onDatesChange }: CalendarPickerProps) {
   const firstDayOfWeek = useContext(FirstDayOfWeekContext);
   const ignoreWeekends = useContext(IgnoreWeekendsContext);
   const weekStart = WEEKDAYS.indexOf(firstDayOfWeek);
@@ -102,11 +103,11 @@ export function CalendarPicker({ value, onChange, label = "BALANCE ON", display,
     if (isValidDate(value)) {
       lastValidDate.current = value;
       setViewMonth(startOfMonth(value));
-    } else if (value !== "" || label === "BALANCE ON") {
+    } else if (value !== "" || variant === "balance") {
       const fallback = lastValidDate.current;
       onChange(fallback);
     }
-  }, [label, onChange, value]);
+  }, [variant, onChange, value]);
 
   useLayoutEffect(() => {
     if (!isOpen) return;
@@ -244,7 +245,7 @@ export function CalendarPicker({ value, onChange, label = "BALANCE ON", display,
   }
 
   return (
-    <div className={display === "large-date" ? "date-picker date-picker-large" : label === "BALANCE ON" ? "date-picker" : "date-picker date-picker-field"} ref={rootRef}>
+    <div className={display === "large-date" ? "date-picker date-picker-large" : variant === "balance" ? "date-picker" : "date-picker date-picker-field"} ref={rootRef}>
       {display !== "large-date" && <span id={`${id}-label`}>{label}</span>}
       <button
         ref={triggerRef}
