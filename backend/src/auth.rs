@@ -30,7 +30,7 @@ type Client = CoreClient<
 pub struct Auth {
     client: Client,
     http: openidconnect::reqwest::Client,
-    db: Database,
+    pub(crate) db: Database,
     origin: String,
     secure: bool,
     client_id: String,
@@ -186,14 +186,14 @@ impl Auth {
         }
         found.filter(|v| v.len() >= 32 && v.len() <= 128)
     }
-    async fn session(&self, headers: &HeaderMap) -> Result<Session, ApiError> {
+    pub(crate) async fn session(&self, headers: &HeaderMap) -> Result<Session, ApiError> {
         let token = self.read_cookie(headers, false).ok_or_else(unauthorized)?;
         sqlx::query_as::<_, Session>("SELECT user_id, csrf_token FROM sessions WHERE token_hash = $1 AND expires_at > clock_timestamp()") .bind(hash(token)).fetch_optional(&self.db.pool).await.map_err(|_| unavailable())?.ok_or_else(unauthorized)
     }
 }
 #[derive(sqlx::FromRow)]
-struct Session {
-    user_id: i64,
+pub(crate) struct Session {
+    pub(crate) user_id: i64,
     csrf_token: String,
 }
 #[derive(Serialize)]

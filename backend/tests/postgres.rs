@@ -21,23 +21,32 @@ async fn persistence_validation_and_constraints(pool: PgPool) {
     assert_ne!(user, other);
     assert!(db.load(user).await.unwrap().is_none());
     let v = json!({"version":1,"pools":[],"events":[],"next_id":1});
-    let first = db.save(user, &v).await.unwrap();
+    assert!(matches!(
+        db.save(user, &v, 1).await,
+        Err(SaveError::Conflict)
+    ));
+    let first = db.save(user, &v, 0).await.unwrap();
     assert_eq!(first.revision, 1);
     for bad in [
         json!({"version":2,"pools":[],"events":[],"next_id":1}),
         json!({"version":1,"pools":[],"events":[{"id":1,"name":"Bad","days":[{"date":"2026-01-01","allocations":[{"pool_id":42,"hours":1}]}]}],"next_id":2}),
     ] {
         assert!(matches!(
-            db.save(user, &bad).await,
+            db.save(user, &bad, 1).await,
             Err(SaveError::Invalid(_))
         ));
         assert_eq!(db.load(user).await.unwrap().unwrap(), first);
     }
     assert!(db.load(other).await.unwrap().is_none());
-    let (a, b) = tokio::join!(db.save(user, &v), db.save(user, &v));
-    let mut revisions = [a.unwrap().revision, b.unwrap().revision];
-    revisions.sort();
-    assert_eq!(revisions, [2, 3]);
+    let (a, b) = tokio::join!(db.save(user, &v, 1), db.save(user, &v, 1));
+    assert!(matches!(
+        (&a, &b),
+        (Ok(_), Err(SaveError::Conflict)) | (Err(SaveError::Conflict), Ok(_))
+    ));
+    assert!(matches!(
+        db.save(user, &v, 0).await,
+        Err(SaveError::Conflict)
+    ));
     let saved = db.load(user).await.unwrap().unwrap();
     assert!(saved.updated_at >= first.updated_at);
     let options = pool.connect_options();

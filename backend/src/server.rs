@@ -21,6 +21,7 @@ pub fn router() -> Router {
         .route("/auth/callback", get(disabled))
         .route("/auth/logout", post(unauthenticated))
         .route("/api/me", get(unauthenticated))
+        .route("/api/planner", get(unauthenticated).put(unauthenticated))
         .layer(middleware::from_fn(no_store))
         .layer(middleware::from_fn(log_request))
 }
@@ -51,6 +52,7 @@ fn base_router() -> Router {
 pub fn with_auth(auth: std::sync::Arc<crate::auth::Auth>) -> Router {
     base_router()
         .merge(crate::auth::router(auth.clone()))
+        .merge(crate::planner_api::router(auth.clone()))
         .layer(middleware::from_fn_with_state(auth, crate::auth::protect))
         .layer(middleware::from_fn(no_store))
         .layer(middleware::from_fn(log_request))

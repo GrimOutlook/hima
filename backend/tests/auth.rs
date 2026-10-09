@@ -29,6 +29,257 @@ struct Provider {
     key: RsaPrivateKey,
     codes: Mutex<HashMap<String, (String, String, String)>>,
 }
+
+// Exercise the actual TCP HTTP server and shared PostgreSQL storage, using
+// independent sessions and simultaneous requests rather than a mock repository.
+async fn planner_http_contract(app: &Router, pool: &PgPool) {
+    let db = Database::from_pool(pool.clone());
+    let mut users = Vec::new();
+    let tokens = ["a".repeat(43), "b".repeat(43), "c".repeat(43)];
+    for (i, token) in tokens.iter().enumerate() {
+        let user = db
+            .ensure_user("https://planner-test", &i.to_string())
+            .await
+            .unwrap();
+        users.push(user);
+        sqlx::query("INSERT INTO sessions (token_hash,user_id,csrf_token,expires_at) VALUES ($1,$2,'planner-csrf',clock_timestamp() + interval '1 hour')")
+            .bind(hex::encode(Sha256::digest(token.as_bytes()))).bind(user).execute(pool).await.unwrap();
+    }
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let url = format!("http://{}/api/planner", listener.local_addr().unwrap());
+    let service = app.clone();
+    let task = tokio::spawn(async move { axum::serve(listener, service).await.unwrap() });
+    let client = openidconnect::reqwest::Client::new();
+    let send = |method: &str, token: &str, body: String, origin: &str, csrf: &str| {
+        client
+            .request(method.parse().unwrap(), &url)
+            .header("cookie", format!("__Host-hima-session={token}"))
+            .header("origin", origin)
+            .header("x-csrf-token", csrf)
+            .header("content-type", "application/json")
+            .body(body)
+            .send()
+    };
+    let doc = json!({"version":1,"pools":[],"events":[],"next_id":1});
+    let body = |revision, document: &Value| {
+        json!({"expected_revision":revision,"document":document}).to_string()
+    };
+    for method in ["GET", "PUT"] {
+        let r = send(
+            method,
+            "",
+            body(0, &doc),
+            "https://app.example",
+            "planner-csrf",
+        )
+        .await
+        .unwrap();
+        assert_eq!(r.status().as_u16(), 401);
+        assert_eq!(r.headers()["cache-control"], "no-store");
+    }
+    let empty = send("GET", &tokens[0], String::new(), "", "")
+        .await
+        .unwrap();
+    assert_eq!(empty.status().as_u16(), 200);
+    assert_eq!(
+        serde_json::from_str::<Value>(&empty.text().await.unwrap()).unwrap(),
+        json!({"document":null,"revision":0,"updated_at":null})
+    );
+    let missing = send(
+        "PUT",
+        &tokens[0],
+        body(1, &doc),
+        "https://app.example",
+        "planner-csrf",
+    )
+    .await
+    .unwrap();
+    assert_eq!(missing.status().as_u16(), 409);
+    for revision in [0, 1] {
+        let a_doc = json!({"version":1,"pools":[],"events":[],"next_id":2});
+        let b_doc = json!({"version":1,"pools":[],"events":[],"next_id":3});
+        let (a, b) = tokio::join!(
+            send(
+                "PUT",
+                &tokens[0],
+                body(revision, &a_doc),
+                "https://app.example",
+                "planner-csrf"
+            ),
+            send(
+                "PUT",
+                &tokens[0],
+                body(revision, &b_doc),
+                "https://app.example",
+                "planner-csrf"
+            )
+        );
+        let a = a.unwrap();
+        let b = b.unwrap();
+        assert!(matches!(
+            (a.status().as_u16(), b.status().as_u16()),
+            (200, 409) | (409, 200)
+        ));
+        let winner = if a.status().as_u16() == 200 { a } else { b };
+        let saved: Value = serde_json::from_str(&winner.text().await.unwrap()).unwrap();
+        assert_eq!(saved["revision"], revision + 1);
+        assert_eq!(
+            db.load(users[0]).await.unwrap().unwrap().document,
+            saved["document"]
+        );
+    }
+    let before = db.load(users[0]).await.unwrap().unwrap();
+    for (content_type, raw, expected_status) in [
+        ("text/plain", body(2, &doc), 415),
+        ("application/json", " ".repeat(2 * 1024 * 1024 + 1), 413),
+    ] {
+        let r = client
+            .put(&url)
+            .header("cookie", format!("__Host-hima-session={}", tokens[0]))
+            .header("origin", "https://app.example")
+            .header("x-csrf-token", "planner-csrf")
+            .header("content-type", content_type)
+            .body(raw)
+            .send()
+            .await
+            .unwrap();
+        assert_eq!(r.status().as_u16(), expected_status);
+        let error: Value = serde_json::from_str(&r.text().await.unwrap()).unwrap();
+        assert_eq!(error["error"]["code"], "invalid_request");
+        assert_eq!(db.load(users[0]).await.unwrap().unwrap(), before);
+    }
+    let loaded = client
+        .get(format!("{url}?user_id={}", users[1]))
+        .header("cookie", format!("__Host-hima-session={}", tokens[0]))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(loaded.status().as_u16(), 200);
+    assert_eq!(
+        serde_json::from_str::<Value>(&loaded.text().await.unwrap()).unwrap(),
+        serde_json::to_value(&before).unwrap()
+    );
+    for (raw, status) in [
+        (body(1, &doc), 409),
+        (body(0, &doc), 409),
+        (body(2, &json!({"version":2})), 422),
+        (
+            body(
+                2,
+                &json!({"version":1,"pools":[],"events":[{"id":1,"name":"Bad","days":[{"date":"2026-01-01","allocations":[{"pool_id":42,"hours":1}]}]}],"next_id":2}),
+            ),
+            422,
+        ),
+        (body(-1, &doc), 422),
+        (json!({"document":doc}).to_string(), 422),
+        (
+            json!({"document":doc,"expected_revision":2,"user_id":users[1]}).to_string(),
+            422,
+        ),
+        (
+            json!({"document":doc,"expected_revision":2.5}).to_string(),
+            422,
+        ),
+        ("{".into(), 400),
+    ] {
+        let r = send(
+            "PUT",
+            &tokens[0],
+            raw,
+            "https://app.example",
+            "planner-csrf",
+        )
+        .await
+        .unwrap();
+        assert_eq!(r.status().as_u16(), status);
+        let error: Value = serde_json::from_str(&r.text().await.unwrap()).unwrap();
+        assert!(error["error"]["code"].is_string());
+        assert_eq!(db.load(users[0]).await.unwrap().unwrap(), before);
+    }
+    for (origin, csrf) in [
+        ("", "planner-csrf"),
+        ("https://evil.example", "planner-csrf"),
+        ("https://app.example", ""),
+        ("https://app.example", "wrong"),
+    ] {
+        assert_eq!(
+            send("PUT", &tokens[0], body(2, &doc), origin, csrf)
+                .await
+                .unwrap()
+                .status()
+                .as_u16(),
+            403
+        );
+        assert_eq!(db.load(users[0]).await.unwrap().unwrap(), before);
+    }
+    assert_eq!(
+        send(
+            "PUT",
+            &tokens[1],
+            body(2, &doc),
+            "https://app.example",
+            "planner-csrf"
+        )
+        .await
+        .unwrap()
+        .status()
+        .as_u16(),
+        409
+    );
+    assert!(db.load(users[1]).await.unwrap().is_none());
+    assert_eq!(
+        send(
+            "PUT",
+            &tokens[1],
+            body(0, &doc),
+            "https://app.example",
+            "planner-csrf"
+        )
+        .await
+        .unwrap()
+        .status()
+        .as_u16(),
+        200
+    );
+    let own = send("GET", &tokens[1], String::new(), "", "")
+        .await
+        .unwrap();
+    let own: Value = serde_json::from_str(&own.text().await.unwrap()).unwrap();
+    assert_eq!(own["document"], doc);
+    assert_eq!(own["revision"], 1);
+    assert_eq!(db.load(users[0]).await.unwrap().unwrap(), before);
+    sqlx::query(
+        "UPDATE sessions SET expires_at=clock_timestamp() - interval '1 second' WHERE user_id=$1",
+    )
+    .bind(users[2])
+    .execute(pool)
+    .await
+    .unwrap();
+    for method in ["GET", "PUT"] {
+        assert_eq!(
+            send(
+                method,
+                &tokens[2],
+                body(0, &doc),
+                "https://app.example",
+                "planner-csrf"
+            )
+            .await
+            .unwrap()
+            .status()
+            .as_u16(),
+            401
+        );
+    }
+    task.abort();
+    for user in users {
+        sqlx::query("DELETE FROM users WHERE id=$1")
+            .bind(user)
+            .execute(pool)
+            .await
+            .unwrap();
+    }
+}
 async fn token(
     State(p): State<Arc<Provider>>,
     headers: HeaderMap,
@@ -203,6 +454,7 @@ async fn oidc_and_persistent_browser_sessions(pool: PgPool) {
         )
     };
     let app = server::with_auth(make().await.unwrap());
+    planner_http_contract(&app, &pool).await;
     for origin in [
         "http://app.example",
         "https://app.example/path",
