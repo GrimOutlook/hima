@@ -2,8 +2,48 @@
 import { act, StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 import { expect, it, vi } from "vitest";
-import { EventModal, ModalFrame, SettingsModal } from "./Modals";
+import { AdditionModal, EventModal, ModalFrame, SettingsModal } from "./Modals";
 import { emptyStore } from "./model";
+
+it("carries selected addition dates between one-time and repeating modes", async () => {
+  vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
+  const container = document.createElement("div");
+  document.body.append(container);
+  const root = createRoot(container);
+  const save = vi.fn();
+  const clickMode = async (label: string) => {
+    await act(async () => Array.from(container.querySelectorAll("button")).find((button) => button.textContent?.trim() === label)!.click());
+  };
+  const submit = async () => {
+    await act(async () => container.querySelector("form")!.dispatchEvent(new Event("submit", { bubbles: true, cancelable: true })));
+  };
+  try {
+    await act(async () => root.render(<AdditionModal mode="add" poolName="Leave" initialAmount="8"
+      initialDate="2026-06-10" onClose={vi.fn()} onSave={save} />));
+    await act(async () => container.querySelector<HTMLButtonElement>(".date-picker-trigger")!.click());
+    await act(async () => document.querySelector<HTMLButtonElement>('[data-date="2026-06-12"]')!.click());
+    await act(async () => document.activeElement!.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true, cancelable: true })));
+    // Clicking the already active mode must preserve all selected dates.
+    await clickMode("One-time");
+    await submit();
+    expect(save).toHaveBeenLastCalledWith(expect.objectContaining({ date: "2026-06-10", recurring: false,
+      additionalEntries: [{ amount: 8, date: "2026-06-12" }] }));
+    await clickMode("Repeating");
+    await submit();
+    expect(save).toHaveBeenLastCalledWith(expect.objectContaining({ date: "2026-06-10", recurring: true }));
+    await act(async () => container.querySelector<HTMLButtonElement>(".date-picker-trigger")!.click());
+    await act(async () => document.querySelector<HTMLButtonElement>('[data-date="2026-06-15"]')!.click());
+    await clickMode("Repeating");
+    await clickMode("One-time");
+    await submit();
+    expect(save).toHaveBeenLastCalledWith(expect.objectContaining({ date: "2026-06-15", recurring: false }));
+    expect(save.mock.lastCall![0]).not.toHaveProperty("additionalEntries");
+  } finally {
+    await act(async () => root.unmount());
+    container.remove();
+    vi.unstubAllGlobals();
+  }
+});
 
 it("preserves surviving event day and allocation controls when earlier rows are removed", async () => {
   vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
