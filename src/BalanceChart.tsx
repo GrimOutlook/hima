@@ -26,6 +26,7 @@ interface BalanceChartProps {
   onDateChange: (date: string) => void;
   onToday: () => void;
   pools: Pool[];
+  onPoolVisibilityChange: (poolId: number, visible: boolean) => void;
   poolHistories: Record<number, BalancePoint[]>;
   selectedEvent?: LeaveEvent;
   zoomEvent?: LeaveEvent;
@@ -149,6 +150,7 @@ export function BalanceChart({
   onDateChange,
   onToday,
   pools,
+  onPoolVisibilityChange,
   poolHistories,
   selectedEvent,
   zoomEvent,
@@ -157,7 +159,6 @@ export function BalanceChart({
   widenSelectedEvent,
 }: BalanceChartProps) {
   const ignoreWeekends = useContext(IgnoreWeekendsContext);
-  const [poolSelections, setPoolSelections] = useState<Record<number, boolean>>({});
   const [combinedTotals, setCombinedTotals] = useState(false);
   const [timelineMenuOpen, setTimelineMenuOpen] = useState(false);
   const [poolMenuOpen, setPoolMenuOpen] = useState(false);
@@ -168,7 +169,7 @@ export function BalanceChart({
     : null, [selectedEvent]);
   const selectedPools = useMemo(() => pools.filter((pool) => eventPoolIds
     ? eventPoolIds.has(pool.id)
-    : poolSelections[pool.id] ?? !pool.hidden_from_graph), [pools, poolSelections, eventPoolIds]);
+    : !pool.hidden_from_graph), [pools, eventPoolIds]);
   const selectedPool = selectedPools.length === 1 ? selectedPools[0] : undefined;
   const series = combinedTotals && selectedPools.length > 0
     ? [{ key: "combined", name: "Combined Totals", color: ACTUAL_COLOR }]
@@ -347,7 +348,7 @@ export function BalanceChart({
                     <label key={pool.id}>
                       <input type="checkbox" checked={selectedPools.some((selected) => selected.id === pool.id)}
                         disabled={eventPoolIds !== null}
-                        onChange={(event) => setPoolSelections((current) => ({ ...current, [pool.id]: event.target.checked }))} />
+                        onChange={(event) => onPoolVisibilityChange(pool.id, event.target.checked)} />
                       {pool.name}
                     </label>
                   ))}
