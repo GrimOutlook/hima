@@ -20,7 +20,7 @@
             src = pkgs.lib.cleanSource ./.;
 
             nodejs = pkgs.nodejs_22;
-            npmDepsHash = "sha256-hlGBrR7BIWAxqQn0jNHQSjeAvPNXj+nB1bCs8TJB1Vo=";
+            npmDepsHash = "sha256-kOQqmQbUAOMM3ct9PPgAP3XyTZlqkaK4A7mtyGAkeYY=";
 
             installPhase = ''
               runHook preInstall

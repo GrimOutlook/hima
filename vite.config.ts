@@ -4,9 +4,8 @@ import react from "@vitejs/plugin-react";
 export default defineConfig({
   plugins: [react()],
   build: {
-    rollupOptions: {
+    rolldownOptions: {
       output: {
-        onlyExplicitManualChunks: true,
         manualChunks(id) {
           if (id.includes("/node_modules/recharts/")) return "charts";
         },
