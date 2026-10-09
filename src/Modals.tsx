@@ -623,14 +623,20 @@ export function AdditionModal({
             <button
               className={!recurring ? "segment is-active" : "segment"}
               type="button"
-              onClick={() => setRecurring(false)}
+              onClick={() => {
+                if (recurring && !reset) setSelectedDates(date ? [date] : []);
+                setRecurring(false);
+              }}
             >
               One-time
             </button>
             <button
               className={recurring ? "segment is-active" : "segment"}
               type="button"
-              onClick={() => setRecurring(true)}
+              onClick={() => {
+                if (batchAdding) setDate(selectedDates[0] ?? "");
+                setRecurring(true);
+              }}
             >
               Repeating
             </button>
