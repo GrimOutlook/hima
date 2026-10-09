@@ -2,3 +2,4 @@
 /dist
 /.vite
 /coverage
+!/pnpm-lock.yaml
