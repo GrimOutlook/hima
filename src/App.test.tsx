@@ -5,6 +5,8 @@ import { expect, it, vi } from "vitest";
 import App from "./App";
 import { emptyStore, STORAGE_KEY, type BalancePoint } from "./model";
 
+vi.mock("./localMigration", () => ({ browserLocalSource: { read: () => null } }));
+
 vi.mock("./plannerApi", () => ({ plannerApi: {
   session: async () => ({ user_id: 1, csrf_token: "session-a" }),
   load: async () => ({ document: JSON.parse(localStorage.getItem("hima.store.v1")!), revision: 1, updated_at: "2026-10-09T12:00:00Z" }),

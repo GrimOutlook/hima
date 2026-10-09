@@ -1,4 +1,5 @@
 import { emptyStore } from "./model";
+import type { LocalMigration, LocalSource } from "./localMigration";
 import { defaultSettings, PersistenceError, validateDocument, type PlannerDocument, type PlannerPersistence, type PlannerSession } from "./plannerPersistence";
 
 export type SaveStatus = "saved" | "pending" | "failed" | "conflict";
@@ -11,9 +12,15 @@ export type PlannerSnapshot = {
   error: string | null;
   generation: number;
   recoveries: { userId: number; document: PlannerDocument }[];
+  migration?: LocalMigration | null;
+  resolving?: boolean;
+  latest?: { document: PlannerDocument; revision: number } | null;
 };
 const sameSession = (a: PlannerSession | null, b: PlannerSession) => a?.user_id === b.user_id && a.csrf_token === b.csrf_token;
 const message = (error: unknown) => error instanceof Error ? error.message : "The server could not be reached.";
+const canonical = (value: unknown): string => JSON.stringify(value, (_key, entry) =>
+  entry && typeof entry === "object" && !Array.isArray(entry)
+    ? Object.fromEntries(Object.entries(entry).sort(([a], [b]) => a.localeCompare(b))) : entry);
 
 // All writes use the token from the session that loaded the draft. A changed
 // cookie therefore cannot redirect an old draft into a different account.
@@ -28,7 +35,7 @@ export class PlannerController {
   private checking: Promise<void> | null = null;
   private saved = this.state.document;
 
-  constructor(private persistence: PlannerPersistence, private debounceMs = 500) {}
+  constructor(private persistence: PlannerPersistence, private debounceMs = 500, private local?: LocalSource) {}
   getSnapshot = () => this.state;
   subscribe = (listener: () => void) => { this.listeners.add(listener); return () => { this.listeners.delete(listener); }; };
   private publish(patch: Partial<PlannerSnapshot>) {
@@ -80,7 +87,7 @@ export class PlannerController {
           const document = loaded.document ?? { ...emptyStore(), settings: { ...defaultSettings } };
           validateDocument(document);
           this.saved = document;
-          this.publish({ phase: "ready", session, document, revision: loaded.revision, error: null });
+          this.publish({ phase: "ready", session, document, revision: loaded.revision, error: null, migration: this.local?.read(session.user_id) ?? null, latest: null, resolving: false });
         } catch (error) { if (this.current(loadEpoch)) this.loadError(error); }
       } catch (error) { if (this.current(epoch)) this.loadError(error); }
     };
@@ -98,7 +105,7 @@ export class PlannerController {
     this.publish({ phase: error instanceof PersistenceError && error.status === 401 ? "signed-out" : "error", session: null, document: emptyStore(), error: message(error), generation: this.state.generation + 1 });
   }
   edit = (update: (document: PlannerDocument) => PlannerDocument, generation = this.state.generation) => {
-    if (!this.active || this.state.phase !== "ready" || generation !== this.state.generation) return;
+    if (!this.active || this.state.phase !== "ready" || this.state.migration || generation !== this.state.generation) return;
     const document = update(this.state.document);
     validateDocument(document);
     if (document === this.state.document) return;
@@ -107,7 +114,7 @@ export class PlannerController {
   };
   private schedule() {
     clearTimeout(this.timer);
-    if (!this.active || this.state.phase !== "ready" || this.checking || this.flight || this.state.saveStatus !== "pending") return;
+    if (!this.active || this.state.phase !== "ready" || this.state.migration || this.state.resolving || this.checking || this.flight || this.state.saveStatus !== "pending") return;
     this.timer = setTimeout(() => { void this.flush(); }, this.debounceMs);
   }
   private async flush() {
@@ -125,7 +132,7 @@ export class PlannerController {
     } catch (error) {
       if (!this.current(epoch)) return;
       const conflict = error instanceof PersistenceError && error.status === 409;
-      this.publish({ saveStatus: conflict ? "conflict" : "failed", error: message(error) });
+      this.publish({ saveStatus: conflict ? "conflict" : "failed", error: message(error), latest: null });
       // Keep the draft exportable on expiry or CSRF failure. Rechecking may
       // discover a new account, but will never reuse this draft or its revision.
       if (error instanceof PersistenceError && (error.status === 401 || error.status === 403)) void this.refresh();
@@ -137,6 +144,75 @@ export class PlannerController {
     if (this.state.phase !== "ready") { void this.refresh(); return; }
     if (this.state.saveStatus !== "failed") return;
     this.publish({ saveStatus: "pending", error: null });
+    this.schedule();
+  };
+  chooseRemote = (generation = this.state.generation) => {
+    if (!this.active || this.state.phase !== "ready" || !this.state.migration || this.state.resolving || generation !== this.state.generation) return;
+    this.publish({ migration: null, error: null });
+  };
+  migrate = async (generation = this.state.generation) => {
+    const { migration, session } = this.state;
+    if (!migration?.document || !session || this.state.resolving || generation !== this.state.generation || !this.active || this.state.phase !== "ready") return;
+    const epoch = this.epoch;
+    this.publish({ resolving: true, error: null });
+    try {
+      const verified = await this.persistence.session(this.abort.signal);
+      if (!this.current(epoch)) return;
+      if (!sameSession(session, verified)) { void this.refresh(); return; }
+      const result = await this.persistence.save(migration.document, this.state.revision, session, this.abort.signal);
+      if (!this.current(epoch)) return;
+      if (result.revision !== this.state.revision + 1 || canonical(result.document) !== canonical(migration.document)) throw new Error("Migration was not confirmed by the server.");
+      this.local?.confirm(session.user_id, migration.fingerprint);
+      this.saved = migration.document;
+      this.publish({ document: migration.document, revision: result.revision, migration: null, saveStatus: "saved", generation: this.state.generation + 1 });
+    } catch (error) {
+      if (this.current(epoch)) {
+        this.publish({ error: message(error) });
+        if (error instanceof PersistenceError && error.status === 409) {
+          try {
+            const loaded = await this.persistence.load(this.abort.signal);
+            const verified = await this.persistence.session(this.abort.signal);
+            if (!this.current(epoch)) return;
+            if (!sameSession(session, verified)) { void this.refresh(); return; }
+            const document = loaded.document ?? { ...emptyStore(), settings: { ...defaultSettings } };
+            validateDocument(document);
+            this.saved = document;
+            this.publish({ document, revision: loaded.revision, error: "The remote copy changed. Review/export the latest remote copy, then explicitly choose again." });
+          } catch (loadError) { if (this.current(epoch)) this.publish({ error: message(loadError) }); }
+        }
+        if (error instanceof PersistenceError && (error.status === 401 || error.status === 403)) void this.refresh();
+      }
+    } finally { if (this.current(epoch)) this.publish({ resolving: false }); }
+  };
+  fetchLatest = async (generation = this.state.generation) => {
+    const session = this.state.session;
+    if (!session || !this.active || this.state.phase !== "ready" || this.state.resolving || this.state.saveStatus !== "conflict" || generation !== this.state.generation) return;
+    const epoch = this.epoch;
+    this.publish({ resolving: true, latest: null });
+    try {
+      const loaded = await this.persistence.load(this.abort.signal);
+      const verified = await this.persistence.session(this.abort.signal);
+      if (!this.current(epoch)) return;
+      if (!sameSession(session, verified)) { void this.refresh(); return; }
+      const document = loaded.document ?? { ...emptyStore(), settings: { ...defaultSettings } };
+      validateDocument(document);
+      this.publish({ latest: { document, revision: loaded.revision }, error: null });
+    } catch (error) {
+      if (this.current(epoch)) {
+        this.publish({ error: message(error) });
+        if (error instanceof PersistenceError && (error.status === 401 || error.status === 403)) void this.refresh();
+      }
+    }
+    finally { if (this.current(epoch)) this.publish({ resolving: false }); }
+  };
+  resolveConflict = (replace: boolean, generation = this.state.generation) => {
+    const latest = this.state.latest;
+    if (!this.active || this.state.phase !== "ready" || this.state.resolving || this.state.saveStatus !== "conflict" || !latest || generation !== this.state.generation) return;
+    if (!replace) {
+      this.preserve();
+      this.saved = latest.document;
+    }
+    this.publish({ document: replace ? this.state.document : latest.document, revision: latest.revision, latest: null, saveStatus: replace ? "pending" : "saved", error: null, generation: replace ? this.state.generation : this.state.generation + 1 });
     this.schedule();
   };
   logout = async (generation = this.state.generation) => {
@@ -156,7 +232,7 @@ export class PlannerController {
       if (error instanceof PersistenceError && error.status === 401) { this.loadError(error); return; }
       // An aborted PUT may have committed. Do not resume writes against a
       // potentially obsolete revision after a failed logout.
-      this.publish({ phase: "ready", saveStatus: "failed", error: `Logout failed: ${message(error)}` });
+      this.publish({ phase: "ready", saveStatus: "failed", resolving: false, latest: null, error: `Logout failed: ${message(error)}` });
       void this.refresh();
     }
   };

@@ -29,6 +29,112 @@ afterEach(() => { controller.stop(); vi.useRealTimers(); });
 async function start() { controller.start(); await settle(); }
 
 describe("remote planner lifecycle", () => {
+  it("requires explicit migration, preserves failures/cancellation, and confirms only acknowledged uploads", async () => {
+    const migration = { document: doc("Local"), warnings: [], error: null, raw: "original", fingerprint: "original" };
+    const local = { read: vi.fn(() => migration), confirm: vi.fn() };
+    controller = new PlannerController(api, 500, local);
+    await start();
+    controller.edit(() => doc("Blocked")); await tick();
+    expect(api.save).not.toHaveBeenCalled();
+    vi.mocked(api.save).mockRejectedValueOnce(new Error("Offline"));
+    await controller.migrate();
+    expect(controller.getSnapshot().migration).toEqual(migration);
+    expect(local.confirm).not.toHaveBeenCalled();
+    controller.chooseRemote();
+    expect(controller.getSnapshot().document).toEqual(doc("Remote"));
+    controller.stop(); controller = new PlannerController(api, 500, local); await start();
+    await controller.migrate();
+    expect(local.confirm).toHaveBeenCalledWith(1, "original");
+    expect(controller.getSnapshot()).toMatchObject({ document: doc("Local"), revision: 2, migration: null });
+  });
+  it("offers a fresh explicit choice after a migration conflict", async () => {
+    const local = { read: () => ({ document: doc("Local"), warnings: [], error: null, raw: "raw", fingerprint: "raw" }), confirm: vi.fn() };
+    controller = new PlannerController(api, 500, local);
+    await start();
+    vi.mocked(api.save).mockRejectedValueOnce(new PersistenceError("conflict", "Changed", 409));
+    vi.mocked(api.load).mockResolvedValue(stored(doc("New remote"), 7));
+    await controller.migrate();
+    expect(controller.getSnapshot()).toMatchObject({ document: doc("New remote"), revision: 7 });
+    expect(local.confirm).not.toHaveBeenCalled();
+    await controller.migrate();
+    expect(api.save).toHaveBeenLastCalledWith(doc("Local"), 7, a, expect.any(AbortSignal));
+  });
+  it("does not acknowledge an unconfirmed migration or a late save to a previous account", async () => {
+    const local = { read: () => ({ document: doc("Local"), warnings: [], error: null, raw: "raw", fingerprint: "raw" }), confirm: vi.fn() };
+    controller = new PlannerController(api, 500, local);
+    vi.mocked(api.load).mockResolvedValue(stored(null));
+    await start();
+    vi.mocked(api.save).mockResolvedValueOnce(stored(doc("Wrong"), 1));
+    await controller.migrate();
+    expect(local.confirm).not.toHaveBeenCalled();
+    expect(controller.getSnapshot().migration).toBeTruthy();
+    const save = deferred<StoredPlanner>();
+    vi.mocked(api.save).mockReturnValueOnce(save.promise);
+    const migrating = controller.migrate(); await settle();
+    const generation = controller.getSnapshot().generation;
+    vi.mocked(api.session).mockResolvedValue(b);
+    vi.mocked(api.load).mockResolvedValue(stored(doc("B"), 8));
+    await controller.refresh();
+    save.resolve(stored(doc("Local"), 1)); await migrating;
+    expect(local.confirm).not.toHaveBeenCalled();
+    expect(controller.getSnapshot().document).toEqual(doc("B"));
+    await controller.migrate(generation);
+    expect(api.save).toHaveBeenCalledTimes(2);
+  });
+  it("accepts a confirmed migration with reordered JSON keys", async () => {
+    const document = doc("Local");
+    const local = { read: () => ({ document, warnings: [], error: null, raw: "raw", fingerprint: "raw" }), confirm: vi.fn() };
+    controller = new PlannerController(api, 500, local);
+    await start();
+    vi.mocked(api.save).mockResolvedValueOnce(stored({ next_id: document.next_id, events: document.events, pools: document.pools, version: document.version }, 2));
+    await controller.migrate();
+    expect(local.confirm).toHaveBeenCalledWith(1, "raw");
+  });
+  it("retains both copies and requires another explicit choice after repeated conflicts", async () => {
+    await start();
+    vi.mocked(api.save).mockRejectedValue(new PersistenceError("conflict", "Changed", 409));
+    controller.edit(() => doc("Mine")); await tick();
+    vi.mocked(api.load).mockResolvedValue(stored(doc("Latest"), 5));
+    await controller.fetchLatest();
+    expect(controller.getSnapshot().document).toEqual(doc("Mine"));
+    controller.resolveConflict(true); await tick();
+    expect(api.save).toHaveBeenLastCalledWith(doc("Mine"), 5, a, expect.any(AbortSignal));
+    expect(controller.getSnapshot()).toMatchObject({ saveStatus: "conflict", latest: null });
+    controller.resolveConflict(true); await tick();
+    expect(api.save).toHaveBeenCalledTimes(2);
+    await controller.fetchLatest(); controller.resolveConflict(false);
+    expect(controller.getSnapshot().document).toEqual(doc("Latest"));
+    expect(controller.getSnapshot().recoveries[0]?.document).toEqual(doc("Mine"));
+  });
+  it("ignores late conflict loads and migration acknowledgements across account changes", async () => {
+    await start();
+    vi.mocked(api.save).mockRejectedValueOnce(new PersistenceError("conflict", "Changed", 409));
+    controller.edit(() => doc("Mine")); await tick();
+    const load = deferred<StoredPlanner>();
+    vi.mocked(api.load).mockReturnValueOnce(load.promise);
+    const fetching = controller.fetchLatest();
+    vi.mocked(api.session).mockResolvedValue(b);
+    vi.mocked(api.load).mockResolvedValue(stored(doc("B"), 8));
+    await controller.refresh();
+    load.resolve(stored(doc("A"), 4)); await fetching;
+    expect(controller.getSnapshot()).toMatchObject({ session: b, document: doc("B"), latest: null });
+  });
+  it("retains edits through failed latest loads and edits made while fetching", async () => {
+    await start();
+    vi.mocked(api.save).mockRejectedValueOnce(new PersistenceError("conflict", "Changed", 409));
+    controller.edit(() => doc("Mine")); await tick();
+    vi.mocked(api.load).mockRejectedValueOnce(new Error("Offline"));
+    await controller.fetchLatest();
+    expect(controller.getSnapshot()).toMatchObject({ document: doc("Mine"), saveStatus: "conflict", latest: null, error: "Offline" });
+    const load = deferred<StoredPlanner>();
+    vi.mocked(api.load).mockReturnValueOnce(load.promise);
+    const fetching = controller.fetchLatest();
+    controller.edit(() => doc("Newer edits"));
+    load.resolve(stored(doc("Remote latest"), 9)); await fetching;
+    expect(controller.getSnapshot().document).toEqual(doc("Newer edits"));
+    controller.resolveConflict(true); await tick();
+    expect(api.save).toHaveBeenLastCalledWith(doc("Newer edits"), 9, a, expect.any(AbortSignal));
+  });
   it("never writes on initial load, even for an empty account or effect replay", async () => {
     const load = deferred<StoredPlanner>();
     vi.mocked(api.load).mockReturnValue(load.promise);

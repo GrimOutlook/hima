@@ -28,6 +28,23 @@ afterEach(async () => {
   vi.restoreAllMocks(); vi.useRealTimers(); vi.unstubAllGlobals();
 });
 const tick = async () => { await act(async () => { await vi.advanceTimersByTimeAsync(500); }); };
+it("offers both-copy backups and preserves originals when migration confirmation is cancelled", async () => {
+  const original = JSON.stringify(emptyStore());
+  localStorage.setItem("hima.store.v1", original);
+  vi.spyOn(window, "confirm").mockReturnValue(false);
+  await act(async () => root.render(<App />));
+  expect(container.textContent).toContain("also has a remote planner");
+  expect(container.textContent).toContain("Export original local backup");
+  expect(container.textContent).toContain("Export remote backup");
+  const upload = [...container.querySelectorAll("button")].find((button) => button.textContent === "Upload local planner and settings")!;
+  await act(async () => upload.click()); await tick();
+  expect(plannerApi.save).not.toHaveBeenCalled();
+  expect(localStorage.getItem("hima.store.v1")).toBe(original);
+  const cancel = [...container.querySelectorAll("button")].find((button) => button.textContent === "Use remote / cancel migration")!;
+  await act(async () => cancel.click());
+  expect(container.textContent).toContain("Remote leave");
+  expect(localStorage.getItem("hima.store.v1")).toBe(original);
+});
 it("loads settings in StrictMode, preserves local bytes and routes edits/import through one queued save", async () => {
   localStorage.setItem("hima.store.v1", "legacy planner bytes");
   localStorage.setItem("hima.settings.v1", "legacy settings bytes");
@@ -35,6 +52,8 @@ it("loads settings in StrictMode, preserves local bytes and routes edits/import 
   await act(async () => root.render(<StrictMode><Probe /></StrictMode>));
   expect(planner.settings.firstDayOfWeek).toBe("Sunday");
   await tick(); expect(plannerApi.save).not.toHaveBeenCalled();
+  expect(planner.migration?.error).toBeTruthy();
+  await act(async () => planner.chooseRemote());
   await act(async () => {
     planner.setStore((store) => ({ ...store, pools: store.pools.map((pool) => ({ ...pool, name: "Changed" })) }));
     planner.setSettings({ ignoreWeekends: true });

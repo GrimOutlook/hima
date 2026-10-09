@@ -3,10 +3,11 @@ import type { Store } from "./model";
 import type { BackupSettings } from "./backup";
 import { plannerApi } from "./plannerApi";
 import { PlannerController } from "./plannerController";
+import { browserLocalSource } from "./localMigration";
 import { defaultSettings, type PlannerPersistence } from "./plannerPersistence";
 
 export function useStoredPlanner(persistence: PlannerPersistence = plannerApi) {
-  const [controller] = useState(() => new PlannerController(persistence));
+  const [controller] = useState(() => new PlannerController(persistence, 500, browserLocalSource));
   const snapshot = useSyncExternalStore(controller.subscribe, controller.getSnapshot);
   useEffect(() => {
     controller.start();
@@ -33,5 +34,7 @@ export function useStoredPlanner(persistence: PlannerPersistence = plannerApi) {
   }, [controller, generation]);
   const logout = useCallback(() => controller.logout(generation), [controller, generation]);
   return { ...snapshot, store: snapshot.document, settings: snapshot.document.settings ?? defaultSettings,
-    setStore, setSettings, importBackup, retry: controller.retry, logout };
+    setStore, setSettings, importBackup, retry: controller.retry, logout,
+    migrate: () => controller.migrate(generation), chooseRemote: () => controller.chooseRemote(generation),
+    fetchLatest: () => controller.fetchLatest(generation), resolveConflict: (replace: boolean) => controller.resolveConflict(replace, generation) };
 }
