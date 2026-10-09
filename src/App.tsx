@@ -10,6 +10,7 @@ import { usePoolCardFigures } from "./usePoolCardFigures";
 import { FirstDayOfWeekContext, IgnoreWeekendsContext, loadDefaultTimeline, loadFirstDayOfWeek, loadIgnoreWeekends, nextWeekday, saveSettings } from "./settings";
 import {
   AdditionModal,
+  PoolCapModal,
   ModalFrame,
   EventModal,
   PoolModal,
@@ -656,10 +657,10 @@ function App() {
       {selectedModal?.type === "edit-cap" && (() => {
         const pool = store.pools.find((candidate) => candidate.id === selectedModal.poolId);
         const cap = pool?.caps.find((candidate) => candidate.id === selectedModal.capId);
-        return pool && cap ? <AdditionModal
+        return pool && cap ? <PoolCapModal
           key={`edit-cap-${cap.id}`}
           poolName={pool.name}
-          mode="edit-cap"
+          editing
           onDelete={() => {
             if (!window.confirm("Remove this balance cap?")) return;
             dispatch({ type: "remove-cap", poolId: pool.id, capId: cap.id });
@@ -669,8 +670,7 @@ function App() {
           initialDate={cap.start_date}
           initialEndDate={cap.end_date}
           onClose={() => setModal({ type: "pool-info", poolId: pool.id })}
-          onSave={saveAddition}
-          onSaveCap={saveCap}
+          onSave={saveCap}
         /> : null;
       })()}
       {(selectedModal?.type === "add-time" ||

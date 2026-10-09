@@ -2,8 +2,82 @@
 import { act, StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 import { expect, it, vi } from "vitest";
-import { AdditionModal, EventModal, ModalFrame, SettingsModal } from "./Modals";
+import { AdditionModal, EventModal, ModalFrame, PoolCapModal, SettingsModal } from "./Modals";
 import { emptyStore } from "./model";
+
+it("routes cap creation separately and preserves the addition draft across action switches", async () => {
+  vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
+  const container = document.createElement("div");
+  document.body.append(container);
+  const root = createRoot(container);
+  const saveAddition = vi.fn();
+  const saveCap = vi.fn(() => "Cap could not be saved.");
+  const click = async (label: string) => {
+    await act(async () => Array.from(container.querySelectorAll("button")).find((button) => button.textContent?.trim() === label)!.click());
+  };
+  const submit = async () => {
+    await act(async () => container.querySelector("form")!.dispatchEvent(new Event("submit", { bubbles: true, cancelable: true })));
+  };
+  try {
+    await act(async () => root.render(<AdditionModal mode="add" poolName="Leave" initialAmount="8"
+      initialDate="2026-06-10" initialEndDate="2026-06-30" onClose={vi.fn()}
+      onSave={saveAddition} onSaveCap={saveCap} />));
+    await click("Repeating");
+    await click("Balance cap");
+    expect(container.querySelector("select")).toBeNull();
+    expect(container.querySelector("h2")!.textContent).toBe("Add balance cap to Leave");
+    await submit();
+    expect(saveCap).toHaveBeenCalledWith({ max_balance: 8, start_date: "2026-06-10", end_date: "2026-06-30" });
+    expect(saveAddition).not.toHaveBeenCalled();
+    expect(container.querySelector('[role="alert"]')!.textContent).toBe("Cap could not be saved.");
+    await click("Add time");
+    expect(container.querySelector('[role="alert"]')).toBeNull();
+    await submit();
+    expect(saveAddition).toHaveBeenCalledWith(expect.objectContaining({ amount: 8, date: "2026-06-10", recurring: true, endDate: "2026-06-30" }));
+    await click("Reset balance");
+    await submit();
+    expect(saveAddition).toHaveBeenLastCalledWith(expect.objectContaining({ reset: true, recurring: true }));
+  } finally {
+    await act(async () => root.unmount());
+    container.remove();
+    vi.unstubAllGlobals();
+  }
+});
+
+it("validates cap drafts, accepts zero and ongoing caps, and exposes edit deletion", async () => {
+  vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
+  const container = document.createElement("div");
+  document.body.append(container);
+  const root = createRoot(container);
+  const save = vi.fn();
+  const remove = vi.fn();
+  const render = async (amount: string, date: string, endDate = "") => {
+    await act(async () => root.render(<PoolCapModal key={`${amount}-${date}-${endDate}`} editing poolName="Leave"
+      initialAmount={amount} initialDate={date} initialEndDate={endDate} onClose={vi.fn()} onSave={save} onDelete={remove} />));
+    await act(async () => container.querySelector("form")!.dispatchEvent(new Event("submit", { bubbles: true, cancelable: true })));
+  };
+  try {
+    for (const amount of ["", "-1", "1.234"]) {
+      await render(amount, "2026-06-10");
+      expect(container.querySelector('[role="alert"]')!.textContent).toContain("maximum balance");
+    }
+    await render("8", "");
+    expect(container.querySelector('[role="alert"]')!.textContent).toContain("valid start date");
+    await render("8", "2026-06-10", "2026-06-09");
+    expect(container.querySelector('[role="alert"]')!.textContent).toContain("on or after");
+    expect(save).not.toHaveBeenCalled();
+    await render("0", "2026-06-10");
+    expect(save).toHaveBeenLastCalledWith({ max_balance: 0, start_date: "2026-06-10" });
+    await render("8", "2026-06-10", "2026-06-10");
+    expect(save).toHaveBeenLastCalledWith({ max_balance: 8, start_date: "2026-06-10", end_date: "2026-06-10" });
+    await act(async () => container.querySelector<HTMLButtonElement>('[aria-label="Delete balance cap"]')!.click());
+    expect(remove).toHaveBeenCalledOnce();
+  } finally {
+    await act(async () => root.unmount());
+    container.remove();
+    vi.unstubAllGlobals();
+  }
+});
 
 it("carries selected addition dates between one-time and repeating modes", async () => {
   vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
