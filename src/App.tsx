@@ -868,6 +868,7 @@ function App() {
           editing={selectedModal.type === "edit-event"}
           eventId={selectedModal.type === "edit-event" ? selectedModal.eventId : undefined}
           onDelete={selectedModal.type === "edit-event" ? () => {
+            if (!window.confirm("Remove this event?")) return;
             setStore((current) => ({ ...current, events: current.events.filter((event) => event.id !== selectedModal.eventId) }));
             setModal(null);
           } : undefined}
