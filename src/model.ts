@@ -719,6 +719,10 @@ export function eventPoolSummary(event: LeaveEvent, pools: Pool[]): string {
 }
 
 export function balanceHistory(store: Store, today: string, poolId?: number): BalancePoint[] {
+  return balanceHistoryForDates(store, today, balanceHistoryDates(store, today, poolId), poolId);
+}
+
+export function balanceHistoryDates(store: Store, today: string, poolId?: number): string[] {
   if (!isValidDate(today)) return [];
   const pools = poolId === undefined
     ? store.pools.filter((pool) => !pool.hidden_from_graph)
@@ -756,7 +760,7 @@ export function balanceHistory(store: Store, today: string, poolId?: number): Ba
   for (let date = start; date <= end; date = addDays(date, 1)) {
     dates.push(date);
   }
-  return balanceHistoryForDates(store, today, dates, poolId);
+  return dates;
 }
 
 // Chart series must replay their ledgers over the same dates, even when a

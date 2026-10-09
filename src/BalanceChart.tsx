@@ -21,7 +21,7 @@ import { chartRangeDates, chartRangeIndices, type ChartIndexRange } from "./char
 
 interface BalanceChartProps {
   defaultTimeline: TimelinePreset;
-  history: BalancePoint[];
+  historyDates: string[];
   today: string;
   selectedDate: string;
   onDateChange: (date: string) => void;
@@ -145,7 +145,7 @@ function monthYearLabel(value: string | undefined): string {
 
 export function BalanceChart({
   defaultTimeline,
-  history: timelineHistory,
+  historyDates,
   today,
   selectedDate,
   onDateChange,
@@ -185,8 +185,8 @@ export function BalanceChart({
         balances.set(point.date, (balances.get(point.date) ?? 0) + point.balance);
       }
     }
-    return timelineHistory.map((point) => ({ ...point, balance: balances.get(point.date) ?? 0 }));
-  }, [timelineHistory, poolHistories, selectedPools]);
+    return historyDates.map((date) => ({ date, projected: date > today, balance: balances.get(date) ?? 0 }));
+  }, [historyDates, today, poolHistories, selectedPools]);
   const history = useMemo(() => ignoreWeekends
     ? fullHistory.filter((point) => !isWeekend(point.date))
     : fullHistory, [fullHistory, ignoreWeekends]);

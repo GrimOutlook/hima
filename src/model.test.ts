@@ -3,6 +3,7 @@ import {
   addDays,
   allocateIds,
   balanceHistory,
+  balanceHistoryDates,
   balanceHistoryForDates,
   capRangesOverlap,
   emptyStore,
@@ -712,6 +713,32 @@ describe("JSON data backups", () => {
 });
 
 describe("balance chart", () => {
+  it("shares dates across hidden pools without calculating a combined ledger", () => {
+    const store = normalizeStore({
+      pools: [
+        { id: 1, name: "Visible", additions: [{ id: 3, amount: 10, date: "2025-01-01" }] },
+        { id: 2, name: "Hidden", hidden_from_graph: true, additions: [{ id: 4, amount: 20, date: "2020-01-01" }] },
+      ],
+      events: [{ id: 5, name: "Future leave", days: [{ date: "2029-01-01", allocations: [{ pool_id: 2, hours: 3 }] }] }],
+    });
+    const today = "2026-01-01";
+    const allPools = { ...store, pools: store.pools.map((pool) => ({ ...pool, hidden_from_graph: false })) };
+    const dates = balanceHistoryDates(allPools, today);
+    expect(dates[0]).toBe("2020-01-01");
+    expect(dates.at(-1)).toBe("2029-01-08");
+    const histories = store.pools.map((pool) => balanceHistoryForDates(store, today, dates, pool.id));
+    expect(histories.every((history) => history.map((point) => point.date).join() === dates.join())).toBe(true);
+    expect(histories[0].at(-1)?.balance).toBe(10);
+    expect(histories[1].at(-1)?.balance).toBe(17);
+    expect(dates.map((date, index) => ({
+      date, projected: date > today,
+      balance: histories.reduce((sum, history) => sum + history[index].balance, 0),
+    }))).toEqual(balanceHistory(allPools, today));
+    expect(balanceHistoryDates(store, today)[0]).toBe("2025-01-01");
+    expect(balanceHistoryDates(emptyStore(), today)).toEqual(balanceHistory(emptyStore(), today).map((point) => point.date));
+    expect(balanceHistoryDates(store, "invalid")).toEqual([]);
+  });
+
   it("includes a week on both sides of events outside the default graph history", () => {
     const store = normalizeStore({
       pools: [{ id: 1, name: "Leave" }],
