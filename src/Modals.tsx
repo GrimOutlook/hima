@@ -436,13 +436,80 @@ export function PoolUsageModal({ pool, events, onClose }: PoolUsageModalProps) {
   );
 }
 
+interface CapDraft {
+  amount: string;
+  date: string;
+  endDate: string;
+}
+
+export function PoolCapModal({ poolName, editing, initialAmount = "", initialDate = "", initialEndDate = "", draft, onDraftChange, actions, onClose, onSave, onDelete }: {
+  poolName: string;
+  editing: boolean;
+  initialAmount?: string;
+  initialDate?: string;
+  initialEndDate?: string;
+  draft?: CapDraft;
+  onDraftChange?: (draft: CapDraft) => void;
+  actions?: ReactNode;
+  onClose: () => void;
+  onSave: (cap: PoolCapFormData) => string | null;
+  onDelete?: () => void;
+}) {
+  const [localDraft, setLocalDraft] = useState({ amount: initialAmount, date: initialDate, endDate: initialEndDate });
+  const { amount, date, endDate } = draft ?? localDraft;
+  const [error, setError] = useState("");
+  function update(change: Partial<CapDraft>) {
+    (onDraftChange ?? setLocalDraft)({ amount, date, endDate, ...change });
+  }
+  function submit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const maxBalance = parseHours(amount, true);
+    if (amount.trim() === "" || maxBalance === null) {
+      setError("Enter a maximum balance of zero or more with up to two decimal places.");
+      return;
+    }
+    if (!isValidDate(date) || (endDate && !isValidDate(endDate))) {
+      setError("Choose a valid start date and, if provided, end date.");
+      return;
+    }
+    if (endDate && endDate < date) {
+      setError("A cap's end date must be on or after its start date.");
+      return;
+    }
+    const saveError = onSave({ max_balance: maxBalance, start_date: date, ...(endDate ? { end_date: endDate } : {}) });
+    if (saveError) setError(saveError);
+  }
+  return <ModalFrame icon="+" iconClass="modal-icon-add"
+    title={`${editing ? "Edit balance cap in" : "Add balance cap to"} ${poolName}`}
+    description="Limit the balance from accrual. Leave the end date blank for an ongoing cap; leave usage can make room again."
+    labelledBy="cap-modal-title" onClose={onClose}>
+    <form className="modal-form" onSubmit={submit}>
+      {actions}
+      <label className="field-label">Maximum balance
+        <div className="input-with-suffix">
+          <input type="number" min="0" step="0.01" placeholder="e.g. 7.6" value={amount} onChange={(event) => update({ amount: event.currentTarget.value })} />
+          <span>hours</span>
+        </div>
+      </label>
+      <CalendarPicker label="Starts on" value={date} onChange={(date) => update({ date })} />
+      <CalendarPicker label="End date (inclusive, optional)" optional min={date} value={endDate} onChange={(endDate) => update({ endDate })} />
+      {error && <p className="form-error" role="alert">{error}</p>}
+      <div className="modal-actions">
+        {editing && onDelete && <DeleteButton label="Delete balance cap" onDelete={onDelete} />}
+        <button className="button button-quiet" type="button" onClick={onClose}>Cancel</button>
+        <button className="button button-primary" type="submit">Save balance cap</button>
+      </div>
+    </form>
+  </ModalFrame>;
+}
+
 interface AdditionModalProps {
   onDelete?: () => void;
   onSaveCap?: (cap: PoolCapFormData) => string | null;
   initialReset?: boolean;
   initialExpiresSameDay?: boolean;
   poolName: string;
-  mode: "add" | "edit-one-time" | "edit-recurring" | "edit-cap";
+  mode: "add" | "edit-one-time" | "edit-recurring";
   initialAmount?: string;
   initialDate?: string;
   initialEndDate?: string;
@@ -472,8 +539,8 @@ export function AdditionModal({
   onSave,
 }: AdditionModalProps) {
   const adding = mode === "add";
-  const [reset, setReset] = useState(initialReset);
-  const [cap, setCap] = useState(mode === "edit-cap");
+  const [action, setAction] = useState<"add" | "reset" | "cap">(initialReset ? "reset" : "add");
+  const reset = action === "reset";
   const [amount, setAmount] = useState(initialAmount);
   const [date, setDate] = useState(initialDate);
   const [endDate, setEndDate] = useState(initialEndDate);
@@ -484,28 +551,10 @@ export function AdditionModal({
   const [weekday, setWeekday] = useState<Weekday>(initialWeekday);
   const [error, setError] = useState("");
   const [selectedDates, setSelectedDates] = useState<string[]>(initialDate ? [initialDate] : []);
-  const batchAdding = adding && !cap && !reset && !recurring;
+  const batchAdding = adding && !reset && !recurring;
 
   function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (cap && onSaveCap) {
-      const maxBalance = parseHours(amount, true);
-      if (amount.trim() === "" || maxBalance === null) {
-        setError("Enter a maximum balance of zero or more with up to two decimal places.");
-        return;
-      }
-      if (!isValidDate(date) || (endDate && !isValidDate(endDate))) {
-        setError("Choose a valid start date and, if provided, end date.");
-        return;
-      }
-      if (endDate && endDate < date) {
-        setError("A cap's end date must be on or after its start date.");
-        return;
-      }
-      const saveError = onSaveCap({ max_balance: maxBalance, start_date: date, ...(endDate ? { end_date: endDate } : {}) });
-      if (saveError) setError(saveError);
-      return;
-    }
     const parsedAmount = reset && amount.trim() === "" ? 0 : parseHours(amount, reset);
     if (parsedAmount === null) {
       setError(reset
@@ -555,7 +604,29 @@ export function AdditionModal({
     if (saveError) setError(saveError);
   }
 
-  const title = cap ? `${adding ? "Add balance cap to" : "Edit balance cap in"} ${poolName}` : adding
+  const actionControls = adding && <div className="segmented-control" role="group" aria-label="Action">
+    {[
+      { value: "add" as const, label: "Add time" },
+      { value: "reset" as const, label: "Reset balance" },
+      ...(onSaveCap ? [{ value: "cap" as const, label: "Balance cap" }] : []),
+    ].map((option) => {
+      const selected = option.value === action;
+      return <button key={option.value} className={selected ? "segment is-active" : "segment"}
+        type="button" aria-pressed={selected} onClick={() => {
+          setAction(option.value);
+          setError("");
+        }}>{option.label}</button>;
+    })}
+  </div>;
+
+  if (action === "cap" && onSaveCap) return <PoolCapModal poolName={poolName} editing={false}
+    draft={{ amount, date, endDate }} onDraftChange={(draft) => {
+      setAmount(draft.amount);
+      setDate(draft.date);
+      setEndDate(draft.endDate);
+    }} actions={actionControls} onClose={onClose} onSave={onSaveCap} />;
+
+  const title = adding
     ? `Add ${reset ? "use-by date" : "time"} to ${poolName}`
     : `Edit ${reset ? "balance reset" : "addition"} in ${poolName}`;
 
@@ -565,9 +636,7 @@ export function AdditionModal({
       iconClass="modal-icon-add"
       title={title}
       description={
-        cap
-          ? "Limit the balance from accrual. Leave the end date blank for an ongoing cap; leave usage can make room again."
-          : reset
+        reset
           ? "Set the balance to your chosen amount at the end of each reset date, after additions and leave usage."
           : adding
           ? "Choose dates to add the entered amount on each date, or set a repeating schedule."
@@ -577,31 +646,8 @@ export function AdditionModal({
       onClose={onClose}
     >
       <form className="modal-form" onSubmit={submit}>
-        {adding && <div className="segmented-control" role="group" aria-label="Action">
-          {[
-            { value: "add", label: "Add time" },
-            { value: "reset", label: "Reset balance" },
-            ...(adding && onSaveCap ? [{ value: "cap", label: "Balance cap" }] : []),
-          ].map((action) => {
-            const selected = action.value === (cap ? "cap" : reset ? "reset" : "add");
-            return (
-              <button
-                key={action.value}
-                className={selected ? "segment is-active" : "segment"}
-                type="button"
-                aria-pressed={selected}
-                onClick={() => {
-                  setCap(action.value === "cap");
-                  setReset(action.value === "reset");
-                  setError("");
-                }}
-              >
-                {action.label}
-              </button>
-            );
-          })}
-        </div>}
-        {adding && !cap && (
+        {actionControls}
+        {adding && (
           <div className="segmented-control">
             <button
               className={!recurring ? "segment is-active" : "segment"}
@@ -626,11 +672,11 @@ export function AdditionModal({
           </div>
         )}
         <label className="field-label">
-          {cap ? "Maximum balance" : reset ? "Reset balance to" : "Time to add"}
+          {reset ? "Reset balance to" : "Time to add"}
           <div className="input-with-suffix">
             <input
               type="number"
-              min={reset || cap ? "0" : "0.01"}
+              min={reset ? "0" : "0.01"}
               step="0.01"
               placeholder={reset ? "0" : "e.g. 7.6"}
               value={amount}
@@ -639,7 +685,7 @@ export function AdditionModal({
             <span>hours</span>
           </div>
         </label>
-        {!cap && recurring && (
+        {recurring && (
           <label className="field-label">
             Repeat every
             <select value={cadence} onChange={(event) => setCadence(event.currentTarget.value as Cadence)}>
@@ -651,7 +697,7 @@ export function AdditionModal({
             </select>
           </label>
         )}
-        {!cap && recurring && cadence === "YearlyNthWeekday" && (
+        {recurring && cadence === "YearlyNthWeekday" && (
           <div className="nth-weekday-fields">
             <label className="field-label">
               Occurrence
@@ -675,12 +721,12 @@ export function AdditionModal({
             </label>
           </div>
         )}
-        <CalendarPicker label={cap ? "Starts on" : recurring
+        <CalendarPicker label={recurring
              ? cadence === "YearlyNthWeekday" ? "Start schedule on" : reset ? "First reset on" : "First addition on"
                : reset ? "Reset on" : "Add on"} value={batchAdding ? "" : date} onChange={setDate}
           selectedDates={batchAdding ? selectedDates : undefined}
           onDatesChange={batchAdding ? setSelectedDates : undefined} />
-        {(cap || recurring) && (
+        {recurring && (
             <CalendarPicker label="End date (inclusive, optional)" optional
               min={date}
               value={endDate}
@@ -689,10 +735,10 @@ export function AdditionModal({
         )}
         {error && <p className="form-error" role="alert">{error}</p>}
         <div className="modal-actions">
-          {!adding && onDelete && <DeleteButton label={cap ? "Delete balance cap" : reset ? "Delete balance reset" : recurring ? "Delete recurring addition" : "Delete one-time addition"} onDelete={onDelete} />}
+          {!adding && onDelete && <DeleteButton label={reset ? "Delete balance reset" : recurring ? "Delete recurring addition" : "Delete one-time addition"} onDelete={onDelete} />}
           <button className="button button-quiet" type="button" onClick={onClose}>Cancel</button>
           <button className="button button-primary" type="submit">
-            {cap ? "Save balance cap" : reset ? "Save balance reset" : batchAdding && selectedDates.length > 1 ? "Save additions" : "Save addition"}
+            {reset ? "Save balance reset" : batchAdding && selectedDates.length > 1 ? "Save additions" : "Save addition"}
           </button>
         </div>
       </form>
