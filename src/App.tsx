@@ -31,7 +31,6 @@ import {
   eventDateRangeLabel,
   eventTotalHours,
   formatHours,
-  freshEventDays,
   monthLabel,
   poolTotalsOn,
   prettyDate,
@@ -125,12 +124,11 @@ function App() {
   const visibleUsedHours = usesFilterPool
     ? poolTotalsOn(store, usesFilterPool.id, balanceDate).used
     : balance.used;
-  const selectedModal = modal;
-  const usagePool = selectedModal?.type === "pool-usage"
-    ? store.pools.find((pool) => pool.id === selectedModal.poolId)
+  const usagePool = modal?.type === "pool-usage"
+    ? store.pools.find((pool) => pool.id === modal.poolId)
     : undefined;
-  const informationPool = selectedModal?.type === "pool-info"
-    ? store.pools.find((pool) => pool.id === selectedModal.poolId)
+  const informationPool = modal?.type === "pool-info"
+    ? store.pools.find((pool) => pool.id === modal.poolId)
     : undefined;
 
   useEffect(() => {
@@ -189,7 +187,7 @@ function App() {
 
   function createEvent() {
     if (firstPoolId !== undefined) {
-      setModal({ type: "new-event", initialDays: freshEventDays(firstPoolId) });
+      setModal({ type: "new-event", initialDays: [] });
     }
   }
 
@@ -264,7 +262,7 @@ function App() {
   }
 
   function savePool(form: PoolFormData): string | null {
-    const error = dispatch({ type: "save-pool", poolId: selectedModal?.type === "edit-pool" ? selectedModal.poolId : undefined,
+    const error = dispatch({ type: "save-pool", poolId: modal?.type === "edit-pool" ? modal.poolId : undefined,
       ...form });
     if (error) return error;
     setModal(null);
@@ -272,25 +270,25 @@ function App() {
   }
 
   function saveCap(cap: PoolCapFormData): string | null {
-    if (selectedModal?.type !== "add-time" && selectedModal?.type !== "edit-cap") return "This pool is no longer available.";
-    const capId = selectedModal.type === "edit-cap" ? selectedModal.capId : undefined;
-    const error = dispatch({ type: "save-cap", poolId: selectedModal.poolId, capId, cap });
+    if (modal?.type !== "add-time" && modal?.type !== "edit-cap") return "This pool is no longer available.";
+    const capId = modal.type === "edit-cap" ? modal.capId : undefined;
+    const error = dispatch({ type: "save-cap", poolId: modal.poolId, capId, cap });
     if (error) return error;
-    setModal(capId === undefined ? null : { type: "pool-info", poolId: selectedModal.poolId });
+    setModal(capId === undefined ? null : { type: "pool-info", poolId: modal.poolId });
     return null;
   }
 
   function saveAddition(form: AdditionFormData): string | null {
     if (
-      selectedModal?.type !== "add-time" &&
-      selectedModal?.type !== "edit-addition" &&
-      selectedModal?.type !== "edit-recurring"
+      modal?.type !== "add-time" &&
+      modal?.type !== "edit-addition" &&
+      modal?.type !== "edit-recurring"
     ) {
       return "This addition is no longer available.";
     }
-    const poolId = selectedModal.poolId;
-    const target = selectedModal.type === "edit-addition" ? { type: "one-time" as const, id: selectedModal.additionId }
-      : selectedModal.type === "edit-recurring" ? { type: "recurring" as const, id: selectedModal.ruleId } : undefined;
+    const poolId = modal.poolId;
+    const target = modal.type === "edit-addition" ? { type: "one-time" as const, id: modal.additionId }
+      : modal.type === "edit-recurring" ? { type: "recurring" as const, id: modal.ruleId } : undefined;
     const error = dispatch({ type: "save-addition", poolId, target, form });
     if (error) return error;
     setModal(null);
@@ -298,7 +296,7 @@ function App() {
   }
 
   function saveEvent(name: string, days: LeaveDay[]): string | null {
-    const error = dispatch({ type: "save-event", eventId: selectedModal?.type === "edit-event" ? selectedModal.eventId : undefined, name, days });
+    const error = dispatch({ type: "save-event", eventId: modal?.type === "edit-event" ? modal.eventId : undefined, name, days });
     if (error) return error;
     setModal(null);
     return null;
@@ -610,14 +608,14 @@ function App() {
         </footer>
       </main>
 
-      {selectedModal?.type === "settings" && <SettingsModal firstDayOfWeek={firstDayOfWeek} onChange={setFirstDayOfWeek} ignoreWeekends={ignoreWeekends} onIgnoreWeekendsChange={setIgnoreWeekends} defaultTimeline={defaultTimeline} onDefaultTimelineChange={setDefaultTimeline} onExport={exportData} onImport={(importSettings) => {
+      {modal?.type === "settings" && <SettingsModal firstDayOfWeek={firstDayOfWeek} onChange={setFirstDayOfWeek} ignoreWeekends={ignoreWeekends} onIgnoreWeekendsChange={setIgnoreWeekends} defaultTimeline={defaultTimeline} onDefaultTimelineChange={setDefaultTimeline} onExport={exportData} onImport={(importSettings) => {
         importSettingsRef.current = importSettings;
         importInputRef.current?.click();
       }} onClose={closeSettings} />}
       {informationPool && (
         <PoolInformationModal {...poolCardProps(informationPool)} onEditCap={(capId) => setModal({ type: "edit-cap", poolId: informationPool.id, capId })} onClose={() => setModal(null)} />
       )}
-      {selectedModal?.type === "new-pool" && (
+      {modal?.type === "new-pool" && (
         <PoolModal
           key="new-pool"
           editing={false}
@@ -625,16 +623,16 @@ function App() {
           onSave={savePool}
         />
       )}
-      {selectedModal?.type === "edit-pool" && (
+      {modal?.type === "edit-pool" && (
         <PoolModal
-          key={`edit-pool-${selectedModal.poolId}`}
+          key={`edit-pool-${modal.poolId}`}
           editing
-          initialName={store.pools.find((pool) => pool.id === selectedModal.poolId)?.name ?? ""}
-          initialColor={poolColor(selectedModal.poolId, store.pools.find((pool) => pool.id === selectedModal.poolId)?.color)}
-          initialHiddenFromGraph={store.pools.find((pool) => pool.id === selectedModal.poolId)?.hidden_from_graph}
-          initialHiddenFromTotal={store.pools.find((pool) => pool.id === selectedModal.poolId)?.hidden_from_total}
-          initialNewAdditionsExpireSameDay={store.pools.find((pool) => pool.id === selectedModal.poolId)?.new_additions_expire_same_day}
-          onDelete={() => removePool(selectedModal.poolId, store.pools.find((pool) => pool.id === selectedModal.poolId)?.name ?? "")}
+          initialName={store.pools.find((pool) => pool.id === modal.poolId)?.name ?? ""}
+          initialColor={poolColor(modal.poolId, store.pools.find((pool) => pool.id === modal.poolId)?.color)}
+          initialHiddenFromGraph={store.pools.find((pool) => pool.id === modal.poolId)?.hidden_from_graph}
+          initialHiddenFromTotal={store.pools.find((pool) => pool.id === modal.poolId)?.hidden_from_total}
+          initialNewAdditionsExpireSameDay={store.pools.find((pool) => pool.id === modal.poolId)?.new_additions_expire_same_day}
+          onDelete={() => removePool(modal.poolId, store.pools.find((pool) => pool.id === modal.poolId)?.name ?? "")}
           onClose={() => setModal(null)}
           onSave={savePool}
         />
@@ -647,9 +645,9 @@ function App() {
           onClose={() => setModal(null)}
         />
       )}
-      {selectedModal?.type === "edit-cap" && (() => {
-        const pool = store.pools.find((candidate) => candidate.id === selectedModal.poolId);
-        const cap = pool?.caps.find((candidate) => candidate.id === selectedModal.capId);
+      {modal?.type === "edit-cap" && (() => {
+        const pool = store.pools.find((candidate) => candidate.id === modal.poolId);
+        const cap = pool?.caps.find((candidate) => candidate.id === modal.capId);
         return pool && cap ? <PoolCapModal
           key={`edit-cap-${cap.id}`}
           poolName={pool.name}
@@ -666,35 +664,35 @@ function App() {
           onSave={saveCap}
         /> : null;
       })()}
-      {(selectedModal?.type === "add-time" ||
-        selectedModal?.type === "edit-addition" ||
-        selectedModal?.type === "edit-recurring") && (
+      {(modal?.type === "add-time" ||
+        modal?.type === "edit-addition" ||
+        modal?.type === "edit-recurring") && (
         <AdditionModalForState
-          key={`${selectedModal.type}-${selectedModal.poolId}-${"additionId" in selectedModal ? selectedModal.additionId : "ruleId" in selectedModal ? selectedModal.ruleId : "new"}`}
-          modal={selectedModal}
-          onDelete={(id, recurring) => removeAddition(selectedModal.poolId, id, recurring)}
+          key={`${modal.type}-${modal.poolId}-${"additionId" in modal ? modal.additionId : "ruleId" in modal ? modal.ruleId : "new"}`}
+          modal={modal}
+          onDelete={(id, recurring) => removeAddition(modal.poolId, id, recurring)}
           pools={store.pools}
-          onClose={() => setModal(selectedModal.type === "add-time"
+          onClose={() => setModal(modal.type === "add-time"
             ? null
-            : { type: "pool-info", poolId: selectedModal.poolId })}
+            : { type: "pool-info", poolId: modal.poolId })}
           onSave={saveAddition}
           onSaveCap={saveCap}
         />
       )}
-      {(selectedModal?.type === "new-event" || selectedModal?.type === "edit-event") && (
+      {(modal?.type === "new-event" || modal?.type === "edit-event") && (
         <EventModal
           store={store}
-          key={selectedModal.type === "new-event" ? "new-event" : `edit-event-${selectedModal.eventId}`}
+          key={modal.type === "new-event" ? "new-event" : `edit-event-${modal.eventId}`}
           pools={store.pools}
-          editing={selectedModal.type === "edit-event"}
-          eventId={selectedModal.type === "edit-event" ? selectedModal.eventId : undefined}
-          onDelete={selectedModal.type === "edit-event" ? () => {
+          editing={modal.type === "edit-event"}
+          eventId={modal.type === "edit-event" ? modal.eventId : undefined}
+          onDelete={modal.type === "edit-event" ? () => {
             if (!window.confirm("Remove this event?")) return;
-            dispatch({ type: "remove-event", eventId: selectedModal.eventId });
+            dispatch({ type: "remove-event", eventId: modal.eventId });
             setModal(null);
           } : undefined}
-          initialName={selectedModal.type === "edit-event" ? selectedModal.name : ""}
-          initialDays={selectedModal.type === "new-event" ? selectedModal.initialDays : selectedModal.days}
+          initialName={modal.type === "edit-event" ? modal.name : ""}
+          initialDays={modal.type === "new-event" ? modal.initialDays : modal.days}
           onClose={() => setModal(null)}
           onSave={saveEvent}
         />

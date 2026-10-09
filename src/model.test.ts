@@ -14,7 +14,6 @@ import {
   normalizeStore,
   parseStoreJson,
   parseHours,
-  poolAccruedOn,
   poolBalanceOn,
   poolTotalsOn,
   recurringOccurrencesThrough,
@@ -347,7 +346,8 @@ describe("recurring accruals", () => {
     expect(recurringOccurrencesThrough(rule, "2026-01-15")).toBe(2);
     expect(recurringOccurrencesThrough(rule, "2026-01-16")).toBe(3);
     expect(recurringOccurrencesThrough(rule, "2026-02-01")).toBe(3);
-    expect(poolAccruedOn({ id: 1, name: "Leave", additions: [], recurring: [rule], caps: [] }, "2026-02-01")).toBe(10.5);
+    const store = normalizeStore({ pools: [{ id: 1, name: "Leave", additions: [], recurring: [rule], caps: [] }] });
+    expect(poolTotalsOn(store, 1, "2026-02-01").accrued).toBe(10.5);
   });
 
   it("does not accrue when the end date is before the start date", () => {
@@ -374,7 +374,6 @@ describe("recurring accruals", () => {
     }];
     const store = normalizeStore({ pools: [pool], events });
 
-    expect(poolAccruedOn(pool, "2026-02-06", events)).toBe(23);
     expect(poolBalanceOn(store, 1, "2026-02-06")).toBe(15);
     expect(poolTotalsOn(store, 1, "2026-02-06")).toEqual({ accrued: 23, used: 8, balance: 15 });
     expect(totalsOn(store, "2026-02-06")).toEqual({ accrued: 23, used: 8, balance: 15 });
@@ -394,7 +393,7 @@ describe("recurring accruals", () => {
       days: [{ date: "2026-01-09", allocations: [{ pool_id: 1, hours: 4 }] }],
     }];
 
-    expect(poolAccruedOn(pool, "2026-01-02", events)).toBe(8);
+    expect(poolTotalsOn(normalizeStore({ pools: [pool], events }), 1, "2026-01-02").accrued).toBe(8);
     expect(poolBalanceOn(normalizeStore({ pools: [pool], events }), 1, "2026-01-16")).toBe(5);
   });
 

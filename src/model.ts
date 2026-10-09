@@ -742,24 +742,11 @@ export function recurringOccurrencesThrough(rule: RecurringAddition, date: strin
   return 0;
 }
 
-export function poolAccruedOn(pool: Pool, date: string, events: LeaveEvent[] = []): number {
-  return poolLedgerForDates(pool, events, [date])[0]?.accrued ?? 0;
-}
-
 export function eventTotalHours(event: LeaveEvent): number {
   return event.days.reduce(
     (total, day) => total + day.allocations.reduce((dayTotal, allocation) => dayTotal + allocation.hours, 0),
     0,
   );
-}
-
-export function eventHoursThrough(event: LeaveEvent, date: string): number {
-  return event.days
-    .filter((day) => day.date <= date)
-    .reduce(
-      (total, day) => total + day.allocations.reduce((dayTotal, allocation) => dayTotal + allocation.hours, 0),
-      0,
-    );
 }
 
 export function eventHoursFromPoolThrough(event: LeaveEvent, poolId: number, date: string): number {
@@ -812,42 +799,11 @@ export function eventBalanceWarnings(store: Store, days: LeaveDay[], replacingEv
   });
 }
 
-export function freshEventDays(_poolId: number): EventDayInput[] {
-  return [];
-}
-
 export function eventDateRangeLabel(event: LeaveEvent): string {
   const dates = event.days.map((day) => day.date).sort();
   const first = prettyDate(dates[0] ?? "");
   const last = prettyDate(dates.at(-1) ?? "");
   return first === last ? first : `${first} – ${last}`;
-}
-
-export function eventDaySummary(event: LeaveEvent, pools: Pool[]): string {
-  return event.days
-    .map((day) => {
-      const allocations = day.allocations
-        .map((allocation) => {
-          const name = pools.find((pool) => pool.id === allocation.pool_id)?.name ?? "Removed pool";
-          return `${formatHours(allocation.hours)} h from ${name}`;
-        })
-        .join(" + ");
-      return `${prettyDate(day.date)}: ${allocations}`;
-    })
-    .join(" · ");
-}
-
-export function eventPoolSummary(event: LeaveEvent, pools: Pool[]): string {
-  const names = new Set(
-    event.days.flatMap((day) =>
-      day.allocations.map(
-        (allocation) => pools.find((pool) => pool.id === allocation.pool_id)?.name ?? "Removed pool",
-      ),
-    ),
-  );
-  if (names.size === 0) return "No pool";
-  if (names.size === 1) return [...names][0] ?? "No pool";
-  return `Pools: ${[...names].join(", ")}`;
 }
 
 export function balanceHistory(store: Store, today: string, poolId?: number): BalancePoint[] {
