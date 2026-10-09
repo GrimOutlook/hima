@@ -948,24 +948,13 @@ function PoolCardContent({
   return (
     <article
       ref={sortable?.setNodeRef}
-      {...sortable?.attributes}
-      {...sortable?.listeners}
-      aria-label={sortable ? `Reorder ${pool.name}` : undefined}
-      onPointerDown={(event) => {
-        if (event.target instanceof Element && event.target.closest("button")) return;
-        sortable?.listeners?.onPointerDown?.(event);
-      }}
-      onKeyDown={(event) => {
-        if (event.target !== event.currentTarget) return;
-        sortable?.listeners?.onKeyDown?.(event);
-      }}
       style={{
         transform: CSS.Translate.toString(sortable?.transform ?? null),
         transition: sortable?.transition,
         opacity: sortable?.isDragging ? 0 : undefined,
         height: overlay ? "100%" : undefined,
       }}
-      className={`pool-card${sortable && store.pools.length > 1 ? " pool-card-draggable" : ""}${isSelected ? " pool-card-selected" : ""}${overlay ? " pool-card-dragging" : ""}`}
+      className={`pool-card${isSelected ? " pool-card-selected" : ""}${overlay ? " pool-card-dragging" : ""}`}
       onClick={(event) => {
         if (event.target instanceof Element && event.target.closest("button, summary")) return;
         onSelect();
@@ -990,6 +979,19 @@ function PoolCardContent({
           </div>
         </div>
         <div className="pool-actions">
+          {sortable && store.pools.length > 1 && (
+            <button
+              ref={sortable.setActivatorNodeRef}
+              {...sortable.attributes}
+              {...sortable.listeners}
+              className="icon-button pool-drag-handle"
+              type="button"
+              title="Reorder pool"
+              aria-label={`Reorder ${pool.name}`}
+            >
+              <span aria-hidden="true">⠿</span>
+            </button>
+          )}
           <button className="icon-button" type="button" title="Add time / use-by" aria-label={`Add time or use-by date to ${pool.name}`} onClick={onAddTime}>+</button>
           <button className="icon-button" type="button" title="View pool usage" aria-label={`View usage ledger for ${pool.name}`} onClick={onViewUsage}>
             <svg className="ledger-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
