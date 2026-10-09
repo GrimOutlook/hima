@@ -33,7 +33,7 @@ The generated site is written to `dist/`. Run `pnpm run preview` to serve the pr
 
 With Nix flakes enabled, run `nix build` to build the production site using the pinned Node.js and pnpm dependencies. The static site is available in `result/dist/`, ready to serve with a static web server. Package outputs support `x86_64-linux` and `aarch64-linux`.
 
-Run `nix develop` for the Node.js and pnpm development shell, or `nix run` to start the development server after installing dependencies with `pnpm install --frozen-lockfile`.
+Run `nix develop` for the Node.js, pnpm, and Rust development shell, or `nix run` to start the development server after installing dependencies with `pnpm install --frozen-lockfile`.
 
 When updating `pnpm-lock.yaml`, also update the `pnpmDeps` hash in `flake.nix`: temporarily set it to `pkgs.lib.fakeHash`, run `nix build`, then replace it with the actual hash printed in the hash-mismatch error. New files must be tracked by Git to be included in a local Git-based flake build.
 
@@ -42,6 +42,45 @@ Tests use Node for pure model, settings, and store mutation checks. Component an
 The app does not need an account or a server. Pools and events are stored in this browser's local storage; existing `hima.store.v1` data is retained and older event formats are migrated when loaded.
 
 Saved planner data and JSON backups carry a numeric `version` (currently `1`). Unversioned data is treated as the legacy schema and migrated to version 1, including older event formats. Unsupported versions are rejected on import; unreadable saved data follows the browser-storage recovery path described by the app.
+
+### Rust API service
+
+The independent Axum/Tokio service lives in `backend/`. Install stable Rust (edition 2024 support required), or enter `nix develop`, then run in a second terminal alongside `pnpm run dev`:
+
+```sh
+cargo run --locked --manifest-path backend/Cargo.toml
+curl http://127.0.0.1:3000/health
+```
+
+The health response is HTTP 200 with `Content-Type: application/json` and `{"status":"ok"}`. This is a liveness check; no database is required. The frontend still uses browser storage. Authentication, PostgreSQL persistence, planner routes, and frontend integration are follow-up work; `auth`, `db`, and `planner` modules establish their boundaries.
+
+Configuration is read from the process environment (no automatic `.env` loading):
+
+| Variable | Default | Description |
+| --- | --- | --- |
+| `HIMA_BIND_ADDR` | `127.0.0.1:3000` | IP address and port, including bracketed IPv6 such as `[::1]:3000`. |
+| `RUST_LOG` | `info` | Tracing filter directives, for example `info,hima_api=debug`. |
+
+For example, `HIMA_BIND_ADDR=127.0.0.1:4000 cargo run --locked --manifest-path backend/Cargo.toml` changes the port. Invalid configuration exits nonzero with the variable name and expected format, without echoing its value. Bind failures explain how to check the address and port. Logs are structured JSON and include request method, status, and duration; request URLs, headers, bodies, and environment values are not logged. Ctrl-C or SIGTERM initiates graceful shutdown.
+
+API errors use an HTTP error status and a JSON envelope:
+
+```json
+{"error":{"code":"not_found","message":"The requested endpoint does not exist."}}
+```
+
+Unknown routes return 404 (`not_found`); unsupported methods on registered routes return 405 (`method_not_allowed`). `code` is machine-readable and `message` is a safe human-readable description. HEAD requests follow HTTP semantics and omit the response body.
+
+Run backend checks independently of Vite:
+
+```sh
+cargo fmt --manifest-path backend/Cargo.toml --check
+cargo clippy --manifest-path backend/Cargo.toml --locked --all-targets -- -D warnings
+cargo test --manifest-path backend/Cargo.toml --locked
+cargo build --manifest-path backend/Cargo.toml --locked
+```
+
+Commit `backend/Cargo.lock` when changing Rust dependencies. CI runs these checks alongside the frontend checks.
 
 ## License
 
