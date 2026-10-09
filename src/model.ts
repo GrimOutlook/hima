@@ -95,6 +95,16 @@ export function emptyStore(): Store {
   return { version: STORE_VERSION, pools: [], events: [], next_id: 1 };
 }
 
+export interface PoolFormData {
+  name: string;
+  openingAmount: string;
+  openingDate: string;
+  hiddenFromGraph: boolean;
+  hiddenFromTotal: boolean;
+  color?: string;
+  newAdditionsExpireSameDay?: boolean;
+}
+
 export interface AdditionFormData {
   additionalEntries?: { amount: number; date: string }[];
   reset: boolean;
@@ -112,7 +122,7 @@ export interface AdditionFormData {
 export type PoolCapFormData = Omit<PoolCap, "id"> & { id?: number };
 
 export type StoreAction =
-  | { type: "save-pool"; poolId?: number; name: string; openingAmount: string; openingDate: string; hiddenFromGraph: boolean; hiddenFromTotal: boolean; color?: string; newAdditionsExpireSameDay: boolean }
+  | (PoolFormData & { type: "save-pool"; poolId?: number })
   | { type: "save-cap"; poolId: number; capId?: number; cap: PoolCapFormData }
   | { type: "save-addition"; poolId: number; target?: { type: "one-time" | "recurring"; id: number }; form: AdditionFormData }
   | { type: "save-event"; eventId?: number; name: string; days: LeaveDay[] }

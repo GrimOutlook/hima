@@ -19,6 +19,7 @@ import {
   eventInputDays,
   type AdditionFormData,
   type PoolCapFormData,
+  type PoolFormData,
 } from "./Modals";
 import {
   reduceStore,
@@ -262,17 +263,9 @@ function App() {
     setModal({ type: "pool-info", poolId });
   }
 
-  function savePool(
-    name: string,
-    openingAmount: string,
-    openingDate: string,
-    hiddenFromGraph: boolean,
-    hiddenFromTotal: boolean,
-    color?: string,
-    newAdditionsExpireSameDay = false,
-  ): string | null {
+  function savePool(form: PoolFormData): string | null {
     const error = dispatch({ type: "save-pool", poolId: selectedModal?.type === "edit-pool" ? selectedModal.poolId : undefined,
-      name, openingAmount, openingDate, hiddenFromGraph, hiddenFromTotal, color, newAdditionsExpireSameDay });
+      ...form });
     if (error) return error;
     setModal(null);
     return null;
