@@ -253,7 +253,7 @@ export function CalendarPicker({ value, onChange, label = "BALANCE ON", variant 
         aria-expanded={isOpen}
         onClick={() => isOpen ? closeCalendar() : openCalendar()}
       >
-        <span className="date-picker-value" id={`${id}-value`}>{selectedDates ? selectedDates.length === 1 ? prettyDate(selectedDates[0]) : `${selectedDates.length} dates selected` : value ? prettyDate(value) : "Choose date"}</span>
+        <span className="date-picker-value" id={`${id}-value`}>{selectedDates ? selectedDates.length === 1 && selectedDates[0] !== undefined ? prettyDate(selectedDates[0]) : `${selectedDates.length} dates selected` : value ? prettyDate(value) : "Choose date"}</span>
         <svg className="date-picker-icon" viewBox="0 0 20 20" aria-hidden="true">
           <rect x="2.75" y="4.5" width="14.5" height="12" rx="2" />
           <path d="M6.5 2.75v3.5M13.5 2.75v3.5M3 8h14" />

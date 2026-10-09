@@ -221,6 +221,7 @@ export function reduceStore(store: Store, action: StoreAction): Store {
       if (from < 0 || to < 0 || from === to) return store;
       const pools = [...store.pools];
       const [pool] = pools.splice(from, 1);
+      if (!pool) return store;
       pools.splice(to, 0, pool);
       return { ...store, pools };
     }
@@ -637,6 +638,7 @@ export function todayDate(): string {
 function dateFromParts(value: string): Date | null {
   if (!isValidDate(value)) return null;
   const [year, month, day] = value.split("-").map(Number);
+  if (year === undefined || month === undefined || day === undefined) return null;
   return new Date(Date.UTC(year, month - 1, day));
 }
 
@@ -795,7 +797,9 @@ export function eventBalanceWarnings(store: Store, days: LeaveDay[], replacingEv
   return store.pools.filter((pool) => affectedPoolIds.has(pool.id)).flatMap((pool) => {
     const balances = poolLedgerForDates(pool, events, dates);
     const index = balances.findIndex((ledger) => ledger.balance < 0);
-    return index < 0 ? [] : [{ poolId: pool.id, date: dates[index], balance: balances[index].balance }];
+    const date = dates[index];
+    const ledger = balances[index];
+    return date === undefined || !ledger ? [] : [{ poolId: pool.id, date, balance: ledger.balance }];
   });
 }
 
@@ -971,8 +975,10 @@ function poolLedgerForDates(pool: Pool, events: LeaveEvent[], dates: string[]): 
   let used = 0;
   let expiringBalance = 0;
   return dates.map((date) => {
-    while (actionIndex < orderedActions.length && orderedActions[actionIndex]![0] <= date) {
-      const [actionDate, daily] = orderedActions[actionIndex]!;
+    while (true) {
+      const action = orderedActions[actionIndex];
+      if (!action || action[0] > date) break;
+      const [actionDate, daily] = action;
       // Only the unused portion of the previous day's temporary credit expires.
       balance = roundHours(balance - expiringBalance);
       expiringBalance = 0;

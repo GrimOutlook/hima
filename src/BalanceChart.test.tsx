@@ -60,3 +60,23 @@ it("recomputes a widened event range when history dates change without changing 
     vi.unstubAllGlobals();
   }
 });
+
+it("handles an empty timeline and an event outside the available history", async () => {
+  vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
+  const container = document.createElement("div");
+  const root = createRoot(container);
+  try {
+    await act(async () => root.render(<BalanceChart
+      defaultTimeline="all time" historyDates={[]}
+      today="2026-10-09" selectedDate="2026-10-09" onDateChange={vi.fn()} onToday={vi.fn()}
+      pools={[]} poolHistories={{}} onPoolVisibilityChange={vi.fn()}
+      zoomEvent={{ id: 1, name: "Trip", days: [{ date: "2029-01-01", allocations: [] }] }}
+      eventSelectionRequest={1} widenSelectedEvent
+    />));
+    expect(container.querySelector(".history-range")?.textContent).toContain("Oct 09, 2026");
+    expect(container.textContent).not.toContain("NaN");
+  } finally {
+    await act(async () => root.unmount());
+    vi.unstubAllGlobals();
+  }
+});

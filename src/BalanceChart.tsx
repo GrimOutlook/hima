@@ -257,8 +257,11 @@ export function BalanceChart({
       return;
     }
     if (widenSelectedEvent) {
-      const startDate = addMonths(history[eventStart].date, -6);
-      const endDate = addMonths(history[eventEnd].date, 6);
+      const startPoint = history[eventStart];
+      const endPoint = history[eventEnd];
+      if (!startPoint || !endPoint) return;
+      const startDate = addMonths(startPoint.date, -6);
+      const endDate = addMonths(endPoint.date, 6);
       const startIndex = history.findIndex((point) => point.date >= startDate);
       const endIndex = history.findIndex((point) => point.date >= endDate);
       setBrushRange({ startIndex: Math.max(0, startIndex), endIndex: endIndex < 0 ? lastIndex : endIndex });
@@ -279,7 +282,7 @@ export function BalanceChart({
       projectedBalance: point.projected || index === todayIndex || (!todayIsVisible && index === todayIndex - 1) ? point.balance : null,
       ...Object.fromEntries(series.flatMap((item) => {
         const pool = selectedPools.find((pool) => item.key === `pool_${pool.id}`);
-        const balance = pool ? balances[pool.id].get(point.date) ?? 0 : point.balance;
+        const balance = pool ? balances[pool.id]?.get(point.date) ?? 0 : point.balance;
         return [[`${item.key}_actual`, point.projected ? null : balance],
           [`${item.key}_projected`, point.projected || index === todayIndex || (!todayIsVisible && index === todayIndex - 1) ? balance : null]];
       })),

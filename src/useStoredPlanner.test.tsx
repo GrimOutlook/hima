@@ -173,7 +173,8 @@ describe("saved planner recovery", () => {
     const exportButton = [...container.querySelectorAll("header button")].find((button) => button.textContent === "Export backup") as HTMLButtonElement;
     await act(async () => exportButton.click());
     expect(click).toHaveBeenCalledOnce();
-    const blob = createObjectURL.mock.calls[0][0] as Blob;
+    const blob = createObjectURL.mock.calls[0]?.[0];
+    if (!blob) throw new Error("Missing exported backup");
     const json = await new Promise<string>((resolve) => {
       const reader = new FileReader();
       reader.onload = () => resolve(reader.result as string);
