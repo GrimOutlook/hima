@@ -6,6 +6,43 @@ pub struct Config {
     pub log_filter: EnvFilter,
 }
 
+pub struct OidcConfig {
+    pub issuer: String,
+    pub client_id: String,
+    pub client_secret: Option<String>,
+    pub public_origin: String,
+    pub database_url: String,
+}
+
+impl OidcConfig {
+    pub fn from_env() -> Result<Option<Self>, String> {
+        let issuer = read("HIMA_OIDC_ISSUER")?;
+        let id = read("HIMA_OIDC_CLIENT_ID")?;
+        let secret = read("HIMA_OIDC_CLIENT_SECRET")?;
+        let origin = read("HIMA_PUBLIC_ORIGIN")?;
+        let Some(issuer) = issuer else {
+            if id.is_some() || secret.is_some() || origin.is_some() {
+                return Err(
+                    "HIMA_OIDC_ISSUER is required when OIDC configuration is supplied".into(),
+                );
+            }
+            return Ok(None);
+        };
+        let required = |value: Option<String>, name| {
+            value
+                .filter(|v| !v.is_empty())
+                .ok_or_else(|| format!("{name} is required for OIDC"))
+        };
+        Ok(Some(Self {
+            issuer,
+            client_id: required(id, "HIMA_OIDC_CLIENT_ID")?,
+            client_secret: secret,
+            public_origin: required(origin, "HIMA_PUBLIC_ORIGIN")?,
+            database_url: required(read("DATABASE_URL")?, "DATABASE_URL")?,
+        }))
+    }
+}
+
 impl Config {
     pub fn from_env() -> Result<Self, String> {
         Self::parse(read("HIMA_BIND_ADDR")?, read("RUST_LOG")?)

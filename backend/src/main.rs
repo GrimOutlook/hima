@@ -1,4 +1,7 @@
-use hima_api::{config::Config, server};
+use hima_api::{
+    config::{Config, OidcConfig},
+    server,
+};
 use std::process::ExitCode;
 
 #[tokio::main]
@@ -14,6 +17,23 @@ async fn main() -> ExitCode {
 
 async fn run() -> Result<(), String> {
     let config = Config::from_env()?;
+    let app = match OidcConfig::from_env()? {
+        Some(oidc) => {
+            let db = hima_api::db::Database::connect(&oidc.database_url)
+                .await
+                .map_err(|_| "could not connect to authentication database")?;
+            let auth = hima_api::auth::Auth::new(
+                db,
+                &oidc.issuer,
+                oidc.client_id,
+                oidc.client_secret,
+                &oidc.public_origin,
+            )
+            .await?;
+            server::with_auth(auth)
+        }
+        None => server::router(),
+    };
     tracing_subscriber::fmt()
         .with_env_filter(config.log_filter)
         .json()
@@ -28,7 +48,7 @@ async fn run() -> Result<(), String> {
             )
         })?;
     tracing::info!(address = %listener.local_addr().map_err(|_| "could not read listening address")?, "server listening");
-    axum::serve(listener, server::router())
+    axum::serve(listener, app)
         .with_graceful_shutdown(server::shutdown_signal())
         .await
         .map_err(|_| "HTTP server failed".to_owned())

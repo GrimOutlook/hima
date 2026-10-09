@@ -52,7 +52,7 @@ cargo run --locked --manifest-path backend/Cargo.toml
 curl http://127.0.0.1:3000/health
 ```
 
-The health response is HTTP 200 with `Content-Type: application/json` and `{"status":"ok"}`. This is a liveness check; no database is required. The frontend still uses browser storage. The SQLx `db` module provides PostgreSQL persistence and the `planner` module validates documents; authentication, planner HTTP routes, and frontend integration are follow-up work.
+The health response is HTTP 200 with `Content-Type: application/json` and `{"status":"ok"}`. This is a liveness check; no database is required in the unconfigured service. The frontend still uses browser storage. The SQLx `db` module provides PostgreSQL persistence and the `planner` module validates documents. The backend supports OIDC authentication; planner HTTP routes and frontend integration are follow-up work.
 
 Configuration is read from the process environment (no automatic `.env` loading):
 
@@ -96,7 +96,7 @@ The migration command connects using `DATABASE_URL` and applies embedded SQLx
 migrations from `backend/migrations/`; rerunning is safe. The database must exist,
 and the migration role needs schema/table creation privileges. Deployment should
 run migrations before starting services that use storage. The HTTP liveness service
-does not read `DATABASE_URL` or automatically migrate. Production connection URLs
+does not automatically migrate; it reads `DATABASE_URL` when OIDC is enabled. Production connection URLs
 should use the deployment's database credentials and TLS configuration.
 
 Storage callers use `Database::connect`, then the per-user `ensure_user`, `load`,
@@ -114,6 +114,90 @@ DATABASE_URL=postgres://postgres:hima-dev@127.0.0.1:5432/hima cargo test --locke
 Regular `cargo test` runs offline validation and HTTP tests; the explicitly ignored
 PostgreSQL suite runs separately in CI, covering fresh migrations, constraints,
 per-user isolation, atomic revisions, invalid-write preservation, and reconnect persistence.
+
+### OIDC login and browser sessions
+
+Register an OIDC **Authorization Code** client with **S256 PKCE** at your provider.
+Enable discovery and signed ID tokens (normally RS256). Register the exact callback
+URL `https://hima.example/auth/callback`; use the actual public origin of your site.
+For a confidential client, use client-secret-basic authentication. Public clients
+can omit the secret. The service requests only the `openid` scope and identifies
+accounts by the verified `(issuer, subject)` pair, never by email.
+
+Run the database migrations above before starting the configured service:
+
+| Variable | Description |
+| --- | --- |
+| `HIMA_OIDC_ISSUER` | Exact provider issuer, for example `https://id.example/realms/hima`. Enables OIDC; discovery must succeed at startup. |
+| `HIMA_OIDC_CLIENT_ID` | Registered client ID; required when OIDC is enabled. |
+| `HIMA_OIDC_CLIENT_SECRET` | Optional confidential-client secret, supplied only to the backend process. |
+| `HIMA_PUBLIC_ORIGIN` | Public site origin, for example `https://hima.example`, with no path/query/fragment or credentials. Required when OIDC is enabled. |
+| `DATABASE_URL` | PostgreSQL connection URL; required when OIDC is enabled. |
+
+These settings are process environment variables; do not prefix them with `VITE_`
+or put them into frontend build configuration. Partial OIDC configuration fails
+startup. With OIDC unconfigured, `/auth/login` and `/auth/callback` return 503
+`auth_unavailable`; `/api/me` and `/auth/logout` return 401 `unauthenticated`.
+Discovery/signing keys are loaded at startup; restart the service after provider
+signing-key rotation if the provider introduces a key absent from the discovered JWKS.
+
+Serve the static frontend and proxy `/auth/*` and `/api/*` to the backend under
+the **same public HTTPS origin**. The proxy must preserve Cookie, Set-Cookie,
+Origin, and `X-CSRF-Token` headers and query parameters, and must not cache auth/API
+responses or log callback query strings. Keep the backend listening on a private
+interface. Cookie security and callback URLs use `HIMA_PUBLIC_ORIGIN`, not Host or
+forwarded headers, so TLS termination at the proxy still produces Secure cookies.
+HTTP is accepted only for loopback origins/provider endpoints in local development
+(for example `http://localhost:3000/auth/callback`); these use unprefixed development
+cookies without Secure. Use a same-origin development proxy for browser access.
+
+Endpoints:
+
+- **GET `/auth/login`** creates a ten-minute, server-side login transaction and
+  redirects to the provider with random state/nonce and S256 PKCE. The transaction
+  is bound to an HTTP-only browser cookie. Starting another login in the same browser
+  replaces that cookie; only the latest flow can complete.
+- **GET `/auth/callback`** atomically consumes the matching transaction, exchanges
+  the code on the backend, verifies signature/algorithm, issuer, audience, authorized
+  party, nonce, expiry, issue time, and token/code hashes when supplied, then creates
+  a session and redirects to `/`. Malformed, expired, replayed, provider-error,
+  or otherwise invalid callbacks return 400 `invalid_callback` without a session.
+  Issue time allows at most 60 seconds ahead or 11 minutes behind the service clock.
+- **GET `/api/me`** returns `{"user_id":123,"csrf_token":"..."}` for a valid
+  session, or 401 `unauthenticated`. Restore login by calling this endpoint on page
+  load. The CSRF token is an application token, not a provider token.
+- **POST `/auth/logout`** requires the session, an exact `Origin` matching
+  `HIMA_PUBLIC_ORIGIN`, and `X-CSRF-Token` from `/api/me`. It deletes the current
+  session, expires browser cookies, and redirects to `/`. Missing/mismatched CSRF
+  data returns 403 `csrf_failed`; an absent/expired session returns 401. GET logout
+  is unsupported. Application logout does not end the provider's SSO session;
+  a later login may authenticate without prompting at the provider.
+
+Unsafe `/api/*` requests use the same session/Origin/CSRF middleware. Browser clients
+must send the CSRF header for mutations; no cross-origin CORS access is enabled.
+Auth/API responses have `Cache-Control: no-store` and `Referrer-Policy: no-referrer`.
+Production cookies are `__Host-hima-session` and `__Host-hima-login`, with Secure,
+HttpOnly, SameSite=Lax, Path=/, and no Domain attribute. The callback must use a
+top-level GET redirect (`response_mode=query`), so Lax permits the login cookie.
+
+Sessions have 256-bit opaque random tokens; PostgreSQL stores only their SHA-256
+hashes, user IDs, CSRF tokens, and expiration. Sessions survive backend restarts and
+expire **seven days after login**, without sliding renewal. Login rotates and revokes
+the session previously presented by that browser. Other devices retain their own
+sessions. Expired rows are pruned when a login starts; expiration is checked on every
+access independently of cleanup. Login transactions store PKCE verifiers and nonces
+only on the server. Provider access/ID tokens are verified in memory and discarded;
+no provider token or client secret is returned to the browser or saved in localStorage.
+
+The controlled-provider integration test uses real RSA-signed tokens, checks the
+code exchange and PKCE, and exercises PostgreSQL session restoration, rotation,
+expiration, logout, CSRF, HTTPS cookie controls, and invalid OIDC responses:
+
+```sh
+DATABASE_URL=postgres://postgres:hima-dev@127.0.0.1:5432/hima cargo test --locked --manifest-path backend/Cargo.toml --test auth -- --ignored
+```
+
+Both database integration suites run in CI against PostgreSQL 17.
 
 ## License
 
