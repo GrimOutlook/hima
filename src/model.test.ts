@@ -32,6 +32,36 @@ function recurring(
   return { id: 1, amount, cadence, start_date, ...(end_date ? { end_date } : {}) };
 }
 
+describe("fractional hour balances", () => {
+  it.each([false, true])("does not warn for fully used weekly accruals (capped: %s)", (capped) => {
+    const pool: Pool = {
+      id: 1, name: "Leave", additions: [],
+      recurring: [recurring("Weekly", "2026-01-01", 7.6, "2026-01-15")],
+      caps: capped ? [{ id: 3, max_balance: 100, start_date: "2026-01-01" }] : [],
+    };
+    const days = [{ date: "2026-01-15", allocations: [{ pool_id: 1, hours: 22.8 }] }];
+    const store = { ...emptyStore(), pools: [pool] };
+    expect(eventBalanceWarnings(store, days)).toEqual([]);
+    store.events = [{ id: 4, name: "Leave", days }];
+    expect(poolTotalsOn(store, 1, "2026-01-15")).toEqual({ accrued: 22.8, used: 22.8, balance: 0 });
+    expect(totalsOn(store, "2026-01-15").balance).toBe(0);
+    expect(balanceHistory(store, "2026-01-15", 1).find((point) => point.date === "2026-01-15")?.balance).toBe(0);
+
+    store.events = [];
+    expect(eventBalanceWarnings(store, [{ ...days[0], allocations: [{ pool_id: 1, hours: 22.81 }] }]))
+      .toEqual([{ poolId: 1, date: "2026-01-15", balance: -0.01 }]);
+  });
+
+  it("normalizes combined totals and history across pools", () => {
+    const store = { ...emptyStore(), pools: [0.1, 0.2].map((amount, index): Pool => ({
+      id: index + 1, name: "Leave", caps: [], recurring: [],
+      additions: [{ id: index + 3, date: "2026-01-01", amount }],
+    })) };
+    expect(totalsOn(store, "2026-01-01")).toEqual({ accrued: 0.3, used: 0, balance: 0.3 });
+    expect(balanceHistory(store, "2026-01-01").find((point) => point.date === "2026-01-01")?.balance).toBe(0.3);
+  });
+});
+
 describe("holiday hours", () => {
   const pool: Pool = {
     id: 1, name: "Holidays", caps: [], recurring: [],
