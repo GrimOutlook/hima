@@ -10,34 +10,34 @@ For holidays, create a pool (for example, **Holidays**) and enable **Holiday Mod
 
 ## Run locally
 
-Install Node.js 20.19+ or 22.12+ and npm 10.9.4 (the version declared in `package.json`), then install the dependencies and start the development server. This project uses npm; `package-lock.json` is the dependency lockfile to keep committed when updating dependencies.
+Install Node.js 22.13+ and pnpm 12.10.1 (the version declared in `package.json`), then install the dependencies and start the development server. This project uses pnpm; `pnpm-lock.yaml` is the dependency lockfile to keep committed when updating dependencies. The Nix development shell includes both Node.js and pnpm.
 
 TypeScript stays on the latest 6.0 release because `typescript-eslint` does not yet support TypeScript 7.
 
 ```sh
-npm ci
-npm run dev
+pnpm install --frozen-lockfile
+pnpm run dev
 ```
 
 Check TypeScript code, React hook dependencies, and JSX accessibility, run the tests, and create a production build with:
 
 ```sh
-npm run lint
-npm test
-npm run build
+pnpm run lint
+pnpm test
+pnpm run build
 ```
 
-The generated site is written to `dist/`. Run `npm run preview` to serve the production build locally.
+The generated site is written to `dist/`. Run `pnpm run preview` to serve the production build locally.
 
 ### Build with Nix
 
-With Nix flakes enabled, run `nix build` to build the production site using the pinned Node.js and npm dependencies. The static site is available in `result/dist/`, ready to serve with a static web server. Package outputs support `x86_64-linux` and `aarch64-linux`.
+With Nix flakes enabled, run `nix build` to build the production site using the pinned Node.js and pnpm dependencies. The static site is available in `result/dist/`, ready to serve with a static web server. Package outputs support `x86_64-linux` and `aarch64-linux`.
 
-Run `nix develop` for the Node.js development shell, or `nix run` to start the development server after installing dependencies with `npm ci`.
+Run `nix develop` for the Node.js and pnpm development shell, or `nix run` to start the development server after installing dependencies with `pnpm install --frozen-lockfile`.
 
-When updating `package-lock.json`, also update `npmDepsHash` in `flake.nix` using the hash printed by `nix shell nixpkgs#prefetch-npm-deps --command prefetch-npm-deps package-lock.json`.
+When updating `pnpm-lock.yaml`, also update the `pnpmDeps` hash in `flake.nix`: temporarily set it to `pkgs.lib.fakeHash`, run `nix build`, then replace it with the actual hash printed in the hash-mismatch error. New files must be tracked by Git to be included in a local Git-based flake build.
 
-Tests use Node for pure model, settings, and store mutation checks. Component and hook test files opt into jsdom with `@vitest-environment jsdom`. Regression coverage includes fractional-hour balances, shared per-pool history dates, independent graph visibility and total exclusion, modal validation and focus, and calendar selection and keyboard navigation. Run a focused suite with, for example, `npm test -- src/App.test.tsx src/CalendarPicker.test.tsx`.
+Tests use Node for pure model, settings, and store mutation checks. Component and hook test files opt into jsdom with `@vitest-environment jsdom`. Regression coverage includes fractional-hour balances, shared per-pool history dates, independent graph visibility and total exclusion, modal validation and focus, and calendar selection and keyboard navigation. Run a focused suite with, for example, `pnpm test src/App.test.tsx src/CalendarPicker.test.tsx`.
 
 The app does not need an account or a server. Pools and events are stored in this browser's local storage; existing `hima.store.v1` data is retained and older event formats are migrated when loaded.
 
