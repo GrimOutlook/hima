@@ -11,8 +11,8 @@ export function serializeBackupJson(store: Store, settings: BackupSettings): str
   return JSON.stringify({ ...store, settings }, null, 2);
 }
 
-export function parseBackupJson(json: string): { store: Store; settings?: BackupSettings } {
-  const store = parseStoreJson(json);
+export function parseBackupJson(json: string, warnings: string[] = []): { store: Store; settings?: BackupSettings } {
+  const store = parseStoreJson(json, warnings);
   const source = JSON.parse(json) as Record<string, unknown>;
   if (!("settings" in source)) return { store };
 

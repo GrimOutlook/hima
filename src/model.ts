@@ -106,7 +106,7 @@ function numberValue(value: unknown, fallback = 0): number {
 
 function amountValue(value: unknown): number {
   const parsed = typeof value === "number" ? value : Number(value);
-  return Number.isFinite(parsed) ? parsed : 0;
+  return Number.isFinite(parsed) && Number.isFinite(parsed * 100) ? roundHours(parsed) : 0;
 }
 
 function stringValue(value: unknown, fallback = ""): string {
@@ -157,7 +157,7 @@ function normalizeAllocation(value: unknown, fallbackPoolId: number): PoolAlloca
   return poolId > 0 && hours > 0 ? { pool_id: poolId, hours } : null;
 }
 
-function normalizeDay(value: unknown, legacyPoolId: number): LeaveDay | null {
+function normalizeDay(value: unknown, legacyPoolId: number, poolIds: Set<number>, warnings: string[]): LeaveDay | null {
   const day = record(value);
   const date = stringValue(day.date);
   if (!isValidDate(date)) return null;
@@ -165,17 +165,18 @@ function normalizeDay(value: unknown, legacyPoolId: number): LeaveDay | null {
   const dayPoolId = numberValue(day.pool_id, legacyPoolId) || legacyPoolId;
   const rawAllocations = Array.isArray(day.allocations) ? day.allocations : [];
   const allocations = rawAllocations.length
-    ? rawAllocations
-        .map((allocation) => normalizeAllocation(allocation, dayPoolId))
-        .filter((allocation): allocation is PoolAllocation => allocation !== null)
-    : amountValue(day.hours) > 0 && dayPoolId > 0
+    ? normalizeEntries(rawAllocations, (value) => {
+        const allocation = normalizeAllocation(value, dayPoolId);
+        return allocation && poolIds.has(allocation.pool_id) ? [allocation] : [];
+      }, "allocations (invalid or missing pool)", warnings)
+    : amountValue(day.hours) > 0 && poolIds.has(dayPoolId)
       ? [{ pool_id: dayPoolId, hours: amountValue(day.hours) }]
       : [];
 
   return allocations.length ? { date, allocations } : null;
 }
 
-function normalizeEvent(value: unknown): LeaveEvent | null {
+function normalizeEvent(value: unknown, poolIds: Set<number>, warnings: string[]): LeaveEvent | null {
   const event = record(value);
   const id = numberValue(event.id);
   const name = stringValue(event.name).trim();
@@ -183,12 +184,13 @@ function normalizeEvent(value: unknown): LeaveEvent | null {
 
   const legacyPoolId = numberValue(event.pool_id);
   let days = Array.isArray(event.days)
-    ? event.days
-        .map((day) => normalizeDay(day, legacyPoolId))
-        .filter((day): day is LeaveDay => day !== null)
+    ? normalizeEntries(event.days, (value) => {
+        const day = normalizeDay(value, legacyPoolId, poolIds, warnings);
+        return day ? [day] : [];
+      }, "event days", warnings)
     : [];
 
-  if (!days.length && isValidDate(stringValue(event.date)) && amountValue(event.amount) > 0 && legacyPoolId > 0) {
+  if (!Array.isArray(event.days) && isValidDate(stringValue(event.date)) && amountValue(event.amount) > 0 && poolIds.has(legacyPoolId)) {
     days = [
       {
         date: stringValue(event.date),
@@ -200,17 +202,36 @@ function normalizeEvent(value: unknown): LeaveEvent | null {
   return days.length ? { id, name, days: sortDays(days) } : null;
 }
 
-export function normalizeStore(value: unknown): Store {
+// Keep the first valid entry for each ID within a collection. Report every
+// ignored entry, including nested entries, before the import is confirmed.
+function normalizeEntries<T>(values: unknown[], normalize: (value: unknown) => T[], label: string, warnings: string[]): T[] {
+  const ids = new Set<number>();
+  let dropped = 0;
+  const entries = values.flatMap((value) => {
+    const normalized = normalize(value);
+    const id = (normalized[0] as { id?: number } | undefined)?.id;
+    if (!normalized.length || (id !== undefined && ids.has(id))) {
+      dropped += 1;
+      return [];
+    }
+    if (id !== undefined) ids.add(id);
+    return normalized;
+  });
+  if (dropped) warnings.push(`Ignored ${dropped} ${label} (invalid or duplicate).`);
+  return entries;
+}
+
+export function normalizeStore(value: unknown, warnings: string[] = []): Store {
   const source = record(value);
   const pools = Array.isArray(source.pools)
-    ? source.pools.flatMap((value): Pool[] => {
+    ? normalizeEntries(source.pools, (value): Pool[] => {
         const pool = record(value);
         const id = numberValue(pool.id);
         const name = stringValue(pool.name).trim();
         if (!id || !name) return [];
 
         const additions = Array.isArray(pool.additions)
-          ? pool.additions.flatMap((value): OneTimeAddition[] => {
+          ? normalizeEntries(pool.additions, (value): OneTimeAddition[] => {
               const addition = record(value);
               const additionId = numberValue(addition.id);
               const date = stringValue(addition.date);
@@ -219,10 +240,10 @@ export function normalizeStore(value: unknown): Store {
               return additionId && isValidDate(date) && (reset || amount > 0)
                 ? [{ id: additionId, date, amount: reset ? Math.max(0, amount) : amount, ...(reset ? { reset: true } : {}), ...(!reset && addition.expires_same_day === true ? { expires_same_day: true } : {}) }]
                 : [];
-            })
+            }, "one-time additions", warnings)
           : [];
         const recurring = Array.isArray(pool.recurring)
-          ? pool.recurring.flatMap((value): RecurringAddition[] => {
+          ? normalizeEntries(pool.recurring, (value): RecurringAddition[] => {
               const rule = record(value);
               const ruleId = numberValue(rule.id);
               const startDate = stringValue(rule.start_date);
@@ -250,10 +271,10 @@ export function normalizeStore(value: unknown): Store {
                       : {}),
                   }]
                 : [];
-            })
+            }, "recurring additions", warnings)
           : [];
         const capCandidates = Array.isArray(pool.caps)
-          ? pool.caps.flatMap((value): PoolCap[] => {
+          ? normalizeEntries(pool.caps, (value): PoolCap[] => {
               const cap = record(value);
               const capId = numberValue(cap.id);
               const rawMaxBalance = cap.max_balance;
@@ -267,12 +288,13 @@ export function normalizeStore(value: unknown): Store {
               return capId && hasValidMaxBalance && maxBalance >= 0 && isValidDate(startDate) && (!endDate || (isValidDate(endDate) && startDate <= endDate))
                 ? [{ id: capId, max_balance: maxBalance, start_date: startDate, ...(endDate ? { end_date: endDate } : {}) }]
                 : [];
-            })
+            }, "caps", warnings)
           : [];
         const caps: PoolCap[] = [];
         for (const cap of capCandidates.sort((left, right) => left.start_date.localeCompare(right.start_date))) {
           const previous = caps.at(-1);
           if (!previous || (previous.end_date && previous.end_date < cap.start_date)) caps.push(cap);
+          else warnings.push("Ignored 1 overlapping cap.");
         }
         return [{ id, name, additions, recurring, caps,
           ...(pool.new_additions_expire_same_day === true ? { new_additions_expire_same_day: true } : {}),
@@ -280,12 +302,14 @@ export function normalizeStore(value: unknown): Store {
           ...(pool.hidden_from_graph === true ? { hidden_from_graph: true } : {}),
           ...(pool.hidden_from_total === true ? { hidden_from_total: true } : {}),
         }];
-      })
+      }, "pools", warnings)
     : [];
+  const poolIds = new Set(pools.map((pool) => pool.id));
   const events = Array.isArray(source.events)
-    ? source.events
-        .map(normalizeEvent)
-        .filter((event): event is LeaveEvent => event !== null)
+    ? normalizeEntries(source.events, (value) => {
+        const event = normalizeEvent(value, poolIds, warnings);
+        return event ? [event] : [];
+      }, "events", warnings)
     : [];
 
   const largestId = [
@@ -306,7 +330,7 @@ export function serializeStoreJson(store: Store): string {
   return JSON.stringify(store, null, 2);
 }
 
-export function parseStoreJson(json: string): Store {
+export function parseStoreJson(json: string, warnings: string[] = []): Store {
   let value: unknown;
   try {
     value = JSON.parse(json) as unknown;
@@ -322,7 +346,7 @@ export function parseStoreJson(json: string): Store {
     throw new Error("This file does not contain a hima data export.");
   }
 
-  return normalizeStore(source);
+  return normalizeStore(source, warnings);
 }
 
 export interface StoreLoadResult {
