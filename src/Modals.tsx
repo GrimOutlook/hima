@@ -48,9 +48,57 @@ export function ModalFrame({
   className = "",
   children,
 }: ModalFrameProps) {
+  const cardRef = useRef<HTMLElement>(null);
+  // Capture before React commits any autoFocus controls inside the dialog.
+  const openerRef = useRef(document.activeElement instanceof HTMLElement ? document.activeElement : null);
+  const onCloseRef = useRef(onClose);
+  onCloseRef.current = onClose;
+
+  useEffect(() => {
+    const card = cardRef.current;
+    if (!card) return;
+    function controls() {
+      return Array.from(card!.querySelectorAll<HTMLElement>(
+        'button, select, input:not([type="hidden"]), textarea, a[href], [tabindex]',
+      )).filter((element) => element.tabIndex >= 0 && !element.matches(":disabled") &&
+        !element.closest('[hidden], [inert], [aria-hidden="true"]') &&
+        getComputedStyle(element).display !== "none" && getComputedStyle(element).visibility !== "hidden");
+    }
+    function focusInside() {
+      (controls()[0] ?? card)?.focus();
+    }
+    if (!card.contains(document.activeElement)) focusInside();
+    function handleFocus(event: FocusEvent) {
+      if (!card!.contains(event.target as Node)) focusInside();
+    }
+    function handleKeyDown(event: KeyboardEvent) {
+      if (event.defaultPrevented) return;
+      if (event.key === "Escape") {
+        event.preventDefault();
+        onCloseRef.current();
+      }
+      if (event.key !== "Tab") return;
+      const elements = controls();
+      const first = elements[0];
+      const last = elements[elements.length - 1];
+      if (!first || !card!.contains(document.activeElement) || document.activeElement === card ||
+        (event.shiftKey ? document.activeElement === first : document.activeElement === last)) {
+        event.preventDefault();
+        (event.shiftKey ? last ?? card : first ?? card)?.focus();
+      }
+    }
+    document.addEventListener("keydown", handleKeyDown);
+    document.addEventListener("focusin", handleFocus);
+    return () => {
+      document.removeEventListener("keydown", handleKeyDown);
+      document.removeEventListener("focusin", handleFocus);
+      if (openerRef.current?.isConnected) openerRef.current.focus();
+    };
+  }, []);
+
   return (
     <div className="modal-backdrop">
-      <section className={className ? `modal-card ${className}` : "modal-card"} role="dialog" aria-modal="true" aria-labelledby={labelledBy}>
+      <section ref={cardRef} tabIndex={-1} className={className ? `modal-card ${className}` : "modal-card"} role="dialog" aria-modal="true" aria-labelledby={labelledBy}>
         <div className="modal-header">
           <div className={`modal-icon ${iconClass}`}>{icon}</div>
           <div className="modal-heading">
@@ -78,38 +126,12 @@ export function SettingsModal({ firstDayOfWeek, onChange, ignoreWeekends, onIgno
   onImport: (importSettings: boolean) => void;
   onClose: () => void;
 }) {
-  const contentRef = useRef<HTMLDivElement>(null);
   const [importSettings, setImportSettings] = useState(false);
   const [showImportOptions, setShowImportOptions] = useState(false);
   const closeImportOptions = () => setShowImportOptions(false);
-  useEffect(() => {
-    const card = contentRef.current?.closest(".modal-card");
-    function handleKeyDown(event: KeyboardEvent) {
-      if (event.key === "Escape") {
-        event.preventDefault();
-        if (showImportOptions) setShowImportOptions(false);
-        else onClose();
-      }
-      if (event.key !== "Tab" || !card) return;
-      const controls = card.querySelectorAll<HTMLElement>("button, select, input");
-      const first = controls[0];
-      const last = controls[controls.length - 1];
-      if (event.shiftKey && document.activeElement === first) {
-        event.preventDefault();
-        last?.focus();
-      } else if (!event.shiftKey && document.activeElement === last) {
-        event.preventDefault();
-        first?.focus();
-      }
-    }
-    document.addEventListener("keydown", handleKeyDown);
-    return () => {
-      document.removeEventListener("keydown", handleKeyDown);
-    };
-  }, [onClose, showImportOptions]);
 
   if (showImportOptions) return <ModalFrame icon="↥" title="Import backup" description="Choose whether to restore settings, then select your backup file." labelledBy="import-modal-title" onClose={closeImportOptions}>
-    <div className="modal-form" ref={contentRef}>
+    <div className="modal-form">
       <fieldset className="pool-visibility-settings">
         <label><input autoFocus type="checkbox" checked={importSettings} onChange={(event) => setImportSettings(event.currentTarget.checked)} aria-describedby="import-settings-description" />Import settings</label>
       </fieldset>
@@ -122,7 +144,7 @@ export function SettingsModal({ firstDayOfWeek, onChange, ignoreWeekends, onIgno
   </ModalFrame>;
 
   return <ModalFrame icon="⚙" title="Settings" description="Make hima feel at home. Changes are saved on this device." labelledBy="settings-modal-title" onClose={onClose}>
-    <div className="modal-form" ref={contentRef}>
+    <div className="modal-form">
       <label className="field-label">
         First day of the week
         <select autoFocus value={firstDayOfWeek} onChange={(event) => onChange(event.currentTarget.value as Weekday)} aria-describedby="week-start-description">
