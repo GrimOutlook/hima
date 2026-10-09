@@ -2,7 +2,7 @@
 import { StrictMode, act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { emptyStore, loadStore } from "./model";
+import { emptyStore, loadStore, saveStore } from "./model";
 import { useStoredPlanner } from "./useStoredPlanner";
 import App from "./App";
 
@@ -15,11 +15,12 @@ let root: Root;
 let container: HTMLDivElement;
 
 function Planner() {
-  const { store, setStore, storageWarning } = useStoredPlanner();
+  const { store, setStore, storageWarning, saveStatus } = useStoredPlanner();
   return <>
     {storageWarning && <p role="alert">{storageWarning}</p>}
     <span>{store.pools.map((pool) => pool.name).join(", ")}</span>
-    <button onClick={() => setStore(replacement)}>Change planner</button>
+    <span role="status">{saveStatus}</span>
+    <button onClick={() => setStore({ ...replacement })}>Change planner</button>
   </>;
 }
 
@@ -47,6 +48,60 @@ async function changePlanner() {
 }
 
 describe("saved planner recovery", () => {
+  it.each(["QuotaExceededError", "SecurityError"])("reports %s, retains edits and recovers on the next successful save", async (error) => {
+    const original = JSON.stringify(emptyStore());
+    localStorage.setItem(key, original);
+    const setItem = vi.spyOn(Storage.prototype, "setItem").mockImplementation(() => {
+      throw new DOMException("Cannot save", error);
+    });
+    expect(saveStore(replacement)).toBe(false);
+    await mount();
+    expect(container.querySelector('[role="status"]')?.textContent).toBe("failed");
+    await changePlanner();
+    expect(container.textContent).toContain("New leave");
+    expect(container.querySelector('[role="status"]')?.textContent).toBe("failed");
+    expect(localStorage.getItem(key)).toBe(original);
+    setItem.mockRestore();
+    await changePlanner();
+    expect(container.querySelector('[role="status"]')?.textContent).toBe("saved");
+    expect(JSON.parse(localStorage.getItem(key)!)).toEqual(replacement);
+    expect(saveStore(replacement)).toBe(true);
+  });
+
+  it("shows failed saves in the app header and exports the in-memory planner", async () => {
+    localStorage.setItem(key, JSON.stringify(replacement));
+    vi.spyOn(Storage.prototype, "setItem").mockImplementation(() => {
+      throw new DOMException("Storage full", "QuotaExceededError");
+    });
+    const createObjectURL = vi.fn((_blob: Blob) => "blob:backup");
+    vi.stubGlobal("URL", { createObjectURL, revokeObjectURL: vi.fn() });
+    const click = vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(() => {});
+    await act(async () => root.render(<StrictMode><App /></StrictMode>));
+    expect(container.querySelector('header [role="status"]')?.textContent).toBe("Save failed");
+    expect(container.querySelector('[role="alert"]')?.textContent).toContain("Export a backup");
+    expect(container.textContent).not.toContain("Saved on this device");
+    const exportButton = [...container.querySelectorAll("header button")].find((button) => button.textContent === "Export backup") as HTMLButtonElement;
+    await act(async () => exportButton.click());
+    expect(click).toHaveBeenCalledOnce();
+    const blob = createObjectURL.mock.calls[0][0] as Blob;
+    const json = await new Promise<string>((resolve) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(reader.result as string);
+      reader.readAsText(blob);
+    });
+    expect(JSON.parse(json)).toEqual(replacement);
+  });
+
+  it("never claims saving succeeded when storage reads disable saving", async () => {
+    vi.spyOn(Storage.prototype, "getItem").mockImplementation(() => {
+      throw new DOMException("Access denied", "SecurityError");
+    });
+    await act(async () => root.render(<StrictMode><App /></StrictMode>));
+    expect(container.querySelector('header [role="status"]')?.textContent).toBe("Saving disabled");
+    expect(container.textContent).not.toContain("Saved on this device");
+    expect(container.querySelector("header")?.textContent).toContain("Export backup");
+  });
+
   it("shows the recovery warning in the actual app without overwriting saved data", async () => {
     const raw = '{"pools":[{"name":"Recover me"}';
     localStorage.setItem(key, raw);

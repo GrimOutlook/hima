@@ -368,11 +368,13 @@ export function loadStore(): StoreLoadResult {
   }
 }
 
-export function saveStore(store: Store): void {
+export function saveStore(store: Store): boolean {
   try {
     window.localStorage.setItem(STORAGE_KEY, JSON.stringify(store));
+    return true;
   } catch {
     // Keep the planner usable when browser storage is unavailable or full.
+    return false;
   }
 }
 
