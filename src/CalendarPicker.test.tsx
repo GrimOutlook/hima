@@ -5,6 +5,38 @@ import { expect, it, vi } from "vitest";
 import { CalendarPicker } from "./CalendarPicker";
 import { ModalFrame } from "./Modals";
 
+it("uses the variant rather than label text for styling and empty-date fallback", async () => {
+  vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
+  const container = document.createElement("div");
+  document.body.append(container);
+  const root = createRoot(container);
+  const change = vi.fn();
+  try {
+    await act(async () => root.render(<CalendarPicker variant="balance" label="Snapshot date" value="2026-01-31" onChange={change} />));
+    expect(container.firstElementChild?.className).toBe("date-picker");
+    await act(async () => root.render(<CalendarPicker variant="balance" label="Renamed date" value="" onChange={change} />));
+    expect(change).toHaveBeenCalledExactlyOnceWith("2026-01-31");
+    expect(container.firstElementChild?.className).toBe("date-picker");
+
+    change.mockClear();
+    await act(async () => root.render(<CalendarPicker label="BALANCE ON" value="" onChange={change} />));
+    expect(change).not.toHaveBeenCalled();
+    expect(container.firstElementChild?.className).toBe("date-picker date-picker-field");
+    await act(async () => root.render(<CalendarPicker label="Optional date" optional value="" onChange={change} />));
+    expect(change).not.toHaveBeenCalled();
+    await act(async () => root.render(<CalendarPicker label="Event dates" value="" onChange={change} selectedDates={[]} />));
+    expect(change).not.toHaveBeenCalled();
+    await act(async () => root.render(<CalendarPicker label="Date" value="invalid" onChange={change} />));
+    expect(change).toHaveBeenCalledExactlyOnceWith("2026-01-31");
+    await act(async () => root.render(<CalendarPicker variant="balance" label="Snapshot date" display="large-date" value="2026-01-31" onChange={change} />));
+    expect(container.firstElementChild?.className).toBe("date-picker date-picker-large");
+  } finally {
+    await act(async () => root.unmount());
+    container.remove();
+    vi.unstubAllGlobals();
+  }
+});
+
 it("navigates dates across months, traps focus, and closes only the nested calendar", async () => {
   vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
   const container = document.createElement("div");
