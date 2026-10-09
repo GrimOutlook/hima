@@ -866,6 +866,7 @@ function App() {
           key={selectedModal.type === "new-event" ? "new-event" : `edit-event-${selectedModal.eventId}`}
           pools={store.pools}
           editing={selectedModal.type === "edit-event"}
+          eventId={selectedModal.type === "edit-event" ? selectedModal.eventId : undefined}
           onDelete={selectedModal.type === "edit-event" ? () => {
             setStore((current) => ({ ...current, events: current.events.filter((event) => event.id !== selectedModal.eventId) }));
             setModal(null);
