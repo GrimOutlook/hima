@@ -1,8 +1,7 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type ChangeEvent } from "react";
+import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState, type ChangeEvent } from "react";
 import { closestCenter, defaultDropAnimationSideEffects, DndContext, DragOverlay, KeyboardSensor, PointerSensor, useSensor, useSensors } from "@dnd-kit/core";
 import { defaultAnimateLayoutChanges, SortableContext, sortableKeyboardCoordinates, useSortable, verticalListSortingStrategy } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import { BalanceChart } from "./BalanceChart";
 import { CalendarPicker } from "./CalendarPicker";
 import { poolColor } from "./poolColors";
 import { parseBackupJson, serializeBackupJson } from "./backup";
@@ -44,6 +43,8 @@ import {
   type Pool,
   type Store,
 } from "./model";
+
+const BalanceChart = lazy(() => import("./BalanceChart").then((module) => ({ default: module.BalanceChart })));
 
 type ModalState =
   | { type: "settings" }
@@ -566,6 +567,13 @@ function App() {
           </div>
         </section>
 
+        <Suspense fallback={
+          <section className="history-panel history-panel-loading" role="status" aria-label="Loading balance chart">
+            <div className="section-overline">BALANCE TIMELINE</div>
+            <h2>PPL balance history &amp; outlook</h2>
+            <div className="balance-chart-loading">Loading balance chart…</div>
+          </section>
+        }>
         <BalanceChart
           defaultTimeline={defaultTimeline}
           historyDates={historyDates}
@@ -593,6 +601,7 @@ function App() {
           zoomToSelectedEvent={eventSelection?.zoom}
           widenSelectedEvent={eventSelection?.wide}
         />
+        </Suspense>
 
         <div className="section-heading-row">
           <div>
