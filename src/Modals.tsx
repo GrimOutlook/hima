@@ -711,6 +711,17 @@ export function AdditionModal({
   );
 }
 
+type EditorAllocation = EventDayInput["allocations"][number] & { clientId: string };
+type EditorDay = Omit<EventDayInput, "allocations"> & { clientId: string; allocations: EditorAllocation[] };
+
+function editorAllocation(allocation: EventDayInput["allocations"][number]): EditorAllocation {
+  return { ...allocation, clientId: crypto.randomUUID() };
+}
+
+function editorDay(day: EventDayInput): EditorDay {
+  return { ...day, clientId: crypto.randomUUID(), allocations: day.allocations.map(editorAllocation) };
+}
+
 interface EventModalProps {
   eventId?: number;
   onDelete?: () => void;
@@ -737,16 +748,16 @@ export function EventModal({
   const [defaultPoolId, setDefaultPoolId] = useState(pools[0]?.id ?? 0);
   const [defaultHours, setDefaultHours] = useState("");
   const [name, setName] = useState(initialName);
-  const [days, setDays] = useState<EventDayInput[]>(initialDays ?? freshEventDays(defaultPoolId));
+  const [days, setDays] = useState<EditorDay[]>(() => (initialDays ?? freshEventDays(defaultPoolId)).map(editorDay));
   const [error, setError] = useState("");
 
   const [step, setStep] = useState(1);
   const [reviewDays, setReviewDays] = useState<LeaveDay[]>([]);
 
   function selectDates(dates: string[]) {
-    setDays((current) => dates.map((date) => current.find((day) => day.date === date) ?? {
+    setDays((current) => dates.map((date) => current.find((day) => day.date === date) ?? editorDay({
       date, allocations: [{ pool_id: defaultPoolId, hours: defaultHours }],
-    }));
+    })));
     setError("");
   }
 
@@ -770,14 +781,14 @@ export function EventModal({
     setError("");
   }
 
-  function updateDay(dayIndex: number, update: (day: EventDayInput) => EventDayInput) {
+  function updateDay(dayIndex: number, update: (day: EditorDay) => EditorDay) {
     setDays((current) => current.map((day, index) => index === dayIndex ? update(day) : day));
   }
 
   function updateAllocation(
     dayIndex: number,
     allocationIndex: number,
-    update: (allocation: EventDayInput["allocations"][number]) => EventDayInput["allocations"][number],
+    update: (allocation: EditorAllocation) => EditorAllocation,
   ) {
     updateDay(dayIndex, (day) => ({
       ...day,
@@ -858,7 +869,7 @@ export function EventModal({
     const poolId = lastDay?.allocations[0]?.pool_id ?? defaultPoolId;
     setDays((current) => [
       ...current,
-      { date, allocations: [{ pool_id: poolId, hours: "" }] },
+      editorDay({ date, allocations: [{ pool_id: poolId, hours: "" }] }),
     ]);
   }
 
@@ -933,7 +944,7 @@ export function EventModal({
             );
             const canAddPool = day.allocations.length < pools.length;
             return (
-              <div className="event-day-card" key={dayIndex}>
+              <div className="event-day-card" key={day.clientId}>
                 <div className="event-day-header">
                   {editing ? (
                     <CalendarPicker label="Date"
@@ -957,7 +968,7 @@ export function EventModal({
                 </div>
                 <div className="event-allocations">
                   {day.allocations.map((allocation, allocationIndex) => (
-                    <div className="event-allocation-row" key={`${dayIndex}-${allocationIndex}`}>
+                    <div className="event-allocation-row" key={allocation.clientId}>
                       <label className="field-label">
                         Pool
                         <select
@@ -1006,7 +1017,7 @@ export function EventModal({
                       type="button"
                       onClick={() => updateDay(dayIndex, (current) => ({
                         ...current,
-                        allocations: [...current.allocations, { pool_id: availablePool.id, hours: "" }],
+                        allocations: [...current.allocations, editorAllocation({ pool_id: availablePool.id, hours: "" })],
                       }))}
                     >
                       <span className="button-plus">+</span>
