@@ -317,11 +317,7 @@ export function BalanceChart({
 
   return (
     <section className="history-panel">
-      <button className="history-today-button button button-primary button-small" type="button" title="Select today (or the next weekday when weekends are ignored) and clear the selected event. Double-click to restore the default timeline." onClick={onToday} onDoubleClick={() => {
-        selectedPresetRef.current = defaultTimeline;
-        setSelectedPreset(defaultTimeline);
-        setBrushRange(timelineRange(defaultTimeline, history, today, todayIndex, lastIndex));
-      }}>
+      <button className="history-today-button button button-primary button-small" type="button" title="Select today (or the next weekday when weekends are ignored) and clear the selected event." onClick={onToday}>
         Today
       </button>
       <div className="history-panel-header">
@@ -382,6 +378,7 @@ export function BalanceChart({
         </div>
       </div>
       {selectedPools.length === 0 && <p className="history-pool-visibility">Select a pool to show its balance in the graph.</p>}
+      <div className="history-timeline-actions">
       <div className={`history-timeline-dropdown${timelineMenuOpen ? " is-open" : ""}`}
         onBlur={(event) => {
           if (!event.currentTarget.contains(event.relatedTarget)) setTimelineMenuOpen(false);
@@ -422,6 +419,13 @@ export function BalanceChart({
           </div>
         ))}
         </div>
+      </div>
+      <button className="text-button" type="button" onClick={() => {
+        onToday();
+        selectedPresetRef.current = defaultTimeline;
+        setSelectedPreset(defaultTimeline);
+        setBrushRange(timelineRange(defaultTimeline, history, today, todayIndex, lastIndex));
+      }}>Reset timeline</button>
       </div>
       <div className="balance-chart-wrap">
         <div

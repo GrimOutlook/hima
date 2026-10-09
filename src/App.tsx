@@ -79,7 +79,6 @@ function App() {
       .some((allocation) => allocation.pool_id === pool.id && allocation.hours > 0)))
     : store.pools;
   const zoomEvent = store.events.find((event) => event.id === eventSelection?.id);
-  const eventClickTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [selectedUsesPoolId, setSelectedUsesPoolId] = useState<number | null>(null);
   const [modal, setModal] = useState<ModalState | null>(null);
   const settingsButtonRef = useRef<HTMLButtonElement>(null);
@@ -130,10 +129,6 @@ function App() {
   useEffect(() => {
     saveSettings(firstDayOfWeek, ignoreWeekends, defaultTimeline);
   }, [firstDayOfWeek, ignoreWeekends, defaultTimeline]);
-
-  useEffect(() => () => {
-    if (eventClickTimer.current !== null) clearTimeout(eventClickTimer.current);
-  }, []);
 
   useEffect(() => {
     scrollToClosestEvent(balanceDate);
@@ -203,16 +198,10 @@ function App() {
     const startDate = store.events.find((event) => event.id === id)?.days
       .map((day) => day.date).sort()[0];
     if (startDate) setBalanceDate(startDate);
-    if (eventClickTimer.current !== null) clearTimeout(eventClickTimer.current);
-    eventClickTimer.current = setTimeout(() => {
-      setHighlightedEventId((current) => current === id ? null : id);
-      eventClickTimer.current = null;
-    }, 300);
+    setHighlightedEventId((current) => current === id ? null : id);
   }
 
   function zoomToEvent(id: number) {
-    if (eventClickTimer.current !== null) clearTimeout(eventClickTimer.current);
-    eventClickTimer.current = null;
     setHighlightedEventId(id);
     setEventSelection((current) => ({
       id,
@@ -581,8 +570,6 @@ function App() {
           selectedDate={balanceDate}
           onDateChange={setBalanceDate}
           onToday={() => {
-            if (eventClickTimer.current !== null) clearTimeout(eventClickTimer.current);
-            eventClickTimer.current = null;
             setHighlightedEventId(null);
             setEventSelection(null);
             setBalanceDate(ignoreWeekends ? nextWeekday(chartHistoryEnd) : chartHistoryEnd);
@@ -626,8 +613,6 @@ function App() {
                 type="button"
                 disabled={highlightedEventId === null && selectedUsesPoolId === null}
                 onClick={() => {
-                  if (eventClickTimer.current !== null) clearTimeout(eventClickTimer.current);
-                  eventClickTimer.current = null;
                   setHighlightedEventId(null);
                   setSelectedUsesPoolId(null);
                 }}
@@ -737,10 +722,6 @@ function App() {
                         onClick={(click) => {
                           if (click.target instanceof Element && click.target.closest("button")) return;
                           selectEvent(event.id);
-                        }}
-                        onDoubleClick={(click) => {
-                          if (click.target instanceof Element && click.target.closest("button")) return;
-                          zoomToEvent(event.id);
                         }}>
                         <div className="event-date-block">
                           <span className="event-month">{monthLabel(firstDate)}</span>
@@ -750,15 +731,21 @@ function App() {
                           <strong><button className="pool-select-button" type="button"
                             aria-label={`Highlight ${event.name} in graph`}
                             aria-pressed={selectedEvent?.id === event.id}
-                            title="Click to toggle highlight; double-click to switch zoom modes"
                             onClick={() => selectEvent(event.id)}
-                            onDoubleClick={() => zoomToEvent(event.id)}
                           >{event.name}</button></strong>
                           <span>{eventDateRangeLabel(event)}</span>
                           <span className={statusClass}>{status}</span>
                         </div>
                         <div className="event-amount">−{formatHours(eventTotalHours(event))} h</div>
                         <div className="event-actions">
+                          <button
+                            className="text-button event-zoom-button"
+                            type="button"
+                            aria-label={`${eventSelection?.id === event.id && eventSelection.zoom ? "Widen timeline around" : "Zoom to"} ${event.name}`}
+                            onClick={() => zoomToEvent(event.id)}
+                          >
+                            {eventSelection?.id === event.id && eventSelection.zoom ? "Widen" : "Zoom"}
+                          </button>
                           <button
                             className="icon-button"
                             type="button"

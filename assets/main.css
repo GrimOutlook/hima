@@ -298,6 +298,7 @@ button:focus-visible, input:focus-visible, select:focus-visible, a:focus-visible
 .event-status-partial { color: #a9854a; }
 .event-amount { color: #7d594a; font-size: 10px; font-weight: 600; white-space: nowrap; }
 .event-actions { display: flex; align-items: center; gap: 1px; }
+.event-zoom-button { padding: 6px; }
 .event-actions .icon-button { width: 24px; height: 24px; font-size: 15px; }
 .event-actions .event-delete { font-size: 17px; }
 .events-panel-footer { display: flex; justify-content: space-between; gap: 10px; margin: 0 -19px; padding: 12px 19px; color: #92988f; background: #fbfbf8; font-size: 9px; }
@@ -333,7 +334,8 @@ button:focus-visible, input:focus-visible, select:focus-visible, a:focus-visible
 .history-change .history-change-negative { color: #ad705c; }
 .history-projection strong { color: #ad765f; font: 700 18px 'Manrope', sans-serif; }
 .history-change span, .history-projection span { color: #969b94; font-size: 9px; }
-.history-timeline-dropdown { position: relative; width: fit-content; margin-top: 15px; }
+.history-timeline-actions { display: flex; align-items: center; gap: 16px; margin-top: 15px; flex-wrap: wrap; }
+.history-timeline-dropdown { position: relative; width: fit-content; }
 .history-timeline-trigger { display: flex; align-items: center; gap: 8px; }
 .history-timeline-dropdown > .history-timeline-controls { display: none; }
 .history-timeline-dropdown.is-open > .history-timeline-controls { display: flex; }
