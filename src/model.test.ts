@@ -668,14 +668,15 @@ describe("balance chart", () => {
     expect(restored.pools[1]?.hidden_from_graph).toBe(true);
     expect(balanceHistory(restored, "2026-01-02").at(-1)?.balance).toBe(8);
     expect(balanceHistory(restored, "2026-01-02", 2).at(-1)?.balance).toBe(17);
-    expect(totalsOn(restored, "2026-01-02").balance).toBe(25);
+    expect(totalsOn(restored, "2026-01-02")).toEqual({ accrued: 30, used: 5, balance: 25 });
     restored.pools[1].hidden_from_total = true;
     const hiddenTotalStore = normalizeStore(JSON.parse(JSON.stringify(restored)));
     expect(hiddenTotalStore.pools[1].hidden_from_total).toBe(true);
-    expect(totalsOn(hiddenTotalStore, "2026-01-02")).toEqual({ accrued: 30, used: 5, balance: 8 });
+    expect(totalsOn(hiddenTotalStore, "2026-01-02")).toEqual({ accrued: 10, used: 2, balance: 8 });
+    expect(poolTotalsOn(hiddenTotalStore, 2, "2026-01-02")).toEqual({ accrued: 20, used: 3, balance: 17 });
     expect(balanceHistory(hiddenTotalStore, "2026-01-02", 2).at(-1)?.balance).toBe(17);
     hiddenTotalStore.pools[0].hidden_from_total = true;
-    expect(totalsOn(hiddenTotalStore, "2026-01-02").balance).toBe(0);
+    expect(totalsOn(hiddenTotalStore, "2026-01-02")).toEqual({ accrued: 0, used: 0, balance: 0 });
 
     restored.pools[0].hidden_from_graph = true;
     const emptyHistory = balanceHistory(restored, "2026-01-02");
