@@ -1,0 +1,22 @@
+[Unit]
+Description=hima account and planner API
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=simple
+User=hima
+Group=hima
+EnvironmentFile=/etc/hima/api.env
+ExecStartPre=/opt/hima/current/backend/bin/migrate
+ExecStart=/opt/hima/current/backend/bin/hima-api
+Restart=on-failure
+RestartSec=5
+TimeoutStopSec=30
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+
+[Install]
+WantedBy=multi-user.target

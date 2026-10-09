@@ -70,7 +70,22 @@ jobs:
             exit 1
           fi
           HIMA_TEST_VITE_PROXY=1 cargo test --locked --manifest-path backend/Cargo.toml --test auth -- --ignored
-      - run: cargo build --locked
+      - name: Test production HTTPS reverse proxy and restart persistence
+        working-directory: .
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y nginx
+          pnpm run build
+          python3 deploy/test_https_proxy.py
+      - run: cargo build --release --locked --bins
+  packages:
+    name: Nix frontend and backend release packages
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: cachix/install-nix-action@v31
+      - run: nix build .#frontend .#backend
   checks:
     name: Lint, typecheck, test, and build
     runs-on: ubuntu-latest

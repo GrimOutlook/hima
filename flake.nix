@@ -47,8 +47,18 @@
     in
     {
       packages = forAllSystems (pkgs:
-        {
-          default = pkgs.stdenv.mkDerivation (finalAttrs: {
+        rec {
+          default = frontend;
+          backend = pkgs.rustPlatform.buildRustPackage {
+            pname = "hima-api";
+            version = "0.1.0";
+            src = pkgs.lib.cleanSource ./backend;
+            cargoLock.lockFile = ./backend/Cargo.lock;
+            nativeBuildInputs = [ pkgs.pkg-config ];
+            buildInputs = [ pkgs.openssl ];
+            meta.description = "hima API and embedded PostgreSQL migration executable";
+          };
+          frontend = pkgs.stdenv.mkDerivation (finalAttrs: {
             pname = "hima";
             version = "1.0.0";
             src = pkgs.lib.cleanSourceWith {
