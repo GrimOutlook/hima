@@ -10,7 +10,9 @@ For holidays, create a pool (for example, **Holidays**) and enable **Holiday Mod
 
 ## Run locally
 
-Install Node.js 20 or later and npm 10.9.4 (the version declared in `package.json`), then install the dependencies and start the development server. This project uses npm; `package-lock.json` is the dependency lockfile to keep committed when updating dependencies.
+Install Node.js 20.19+ or 22.12+ and npm 10.9.4 (the version declared in `package.json`), then install the dependencies and start the development server. This project uses npm; `package-lock.json` is the dependency lockfile to keep committed when updating dependencies.
+
+TypeScript stays on the latest 6.0 release because `typescript-eslint` does not yet support TypeScript 7.
 
 ```sh
 npm ci
