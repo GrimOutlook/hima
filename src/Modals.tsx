@@ -19,6 +19,7 @@ import {
   WEEKDAYS,
   type Cadence,
   type AdditionFormData,
+  type PoolFormData,
   type PoolCapFormData,
   type EventDayInput,
   type LeaveDay,
@@ -29,7 +30,7 @@ import {
   type Weekday,
 } from "./model";
 
-export type { AdditionFormData, PoolCapFormData } from "./model";
+export type { AdditionFormData, PoolCapFormData, PoolFormData } from "./model";
 
 interface ModalFrameProps {
   icon: string;
@@ -205,7 +206,7 @@ interface PoolModalProps {
   initialHiddenFromTotal?: boolean;
   initialNewAdditionsExpireSameDay?: boolean;
   onClose: () => void;
-  onSave: (name: string, openingAmount: string, openingDate: string, hiddenFromGraph: boolean, hiddenFromTotal: boolean, color?: string, newAdditionsExpireSameDay?: boolean) => string | null;
+  onSave: (form: PoolFormData) => string | null;
 }
 
 export function PoolModal({
@@ -245,7 +246,15 @@ export function PoolModal({
       setError("Choose a valid starting date.");
       return;
     }
-    const saveError = onSave(trimmedName, openingAmount, openingDate, initialHiddenFromGraph, hiddenFromTotal, editing ? color : undefined, newAdditionsExpireSameDay);
+    const saveError = onSave({
+      name: trimmedName,
+      openingAmount,
+      openingDate,
+      hiddenFromGraph: initialHiddenFromGraph,
+      hiddenFromTotal,
+      color: editing ? color : undefined,
+      newAdditionsExpireSameDay,
+    });
     if (saveError) setError(saveError);
   }
 
