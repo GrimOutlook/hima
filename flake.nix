@@ -12,6 +12,27 @@
       forAllSystems = f: nixpkgs.lib.genAttrs systems (system: f (import nixpkgs { inherit system; }));
     in
     {
+      packages = forAllSystems (pkgs:
+        {
+          default = pkgs.buildNpmPackage {
+            pname = "hima";
+            version = "1.0.0";
+            src = pkgs.lib.cleanSource ./.;
+
+            nodejs = pkgs.nodejs_22;
+            npmDepsHash = "sha256-hlGBrR7BIWAxqQn0jNHQSjeAvPNXj+nB1bCs8TJB1Vo=";
+
+            installPhase = ''
+              runHook preInstall
+              mkdir -p "$out"
+              cp -r dist "$out/dist"
+              runHook postInstall
+            '';
+
+            meta.description = "Built hima static website";
+          };
+        });
+
       devShells = forAllSystems (pkgs:
         {
           default = pkgs.mkShell {
