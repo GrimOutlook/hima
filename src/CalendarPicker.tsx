@@ -1,6 +1,6 @@
 import { createPortal } from "react-dom";
 import { useCallback, useContext, useEffect, useId, useLayoutEffect, useRef, useState } from "react";
-import { addDays, addMonths, isValidDate, prettyDate, todayDate, validDateOrFallback, WEEKDAYS } from "./model";
+import { addDays, addMonths, isValidDate, MONTH_NAMES, prettyDate, todayDate, validDateOrFallback, WEEKDAYS } from "./model";
 import { FirstDayOfWeekContext, IgnoreWeekendsContext, isWeekend, nextWeekday } from "./settings";
 
 interface CalendarPickerProps {
@@ -23,10 +23,6 @@ interface CalendarPosition {
 
 const CALENDAR_WIDTH = 312;
 const CALENDAR_HEIGHT = 430;
-const MONTHS = [
-  "January", "February", "March", "April", "May", "June",
-  "July", "August", "September", "October", "November", "December",
-];
 
 function startOfMonth(value: string): string {
   return `${value.slice(0, 7)}-01`;
@@ -306,7 +302,7 @@ export function CalendarPicker({ value, onChange, label = "BALANCE ON", variant 
                   setViewMonth(`${String(year).padStart(4, "0")}-${String(nextMonth).padStart(2, "0")}-01`);
                 }}
               >
-                {MONTHS.map((monthName, index) => (
+                {MONTH_NAMES.map((monthName, index) => (
                   <option key={monthName} value={index + 1}>{monthName}</option>
                 ))}
               </select>

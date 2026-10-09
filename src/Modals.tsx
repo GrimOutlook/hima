@@ -6,7 +6,6 @@ import { POOL_COLORS } from "./poolColors";
 import { TIMELINE_PRESETS, type TimelinePreset } from "./settings";
 import {
   addDays,
-  freshEventDays,
   formatHours,
   isValidDate,
   MONTH_NAMES,
@@ -792,7 +791,7 @@ export function EventModal({
   const [defaultPoolId, setDefaultPoolId] = useState(pools[0]?.id ?? 0);
   const [defaultHours, setDefaultHours] = useState("");
   const [name, setName] = useState(initialName);
-  const [days, setDays] = useState<EditorDay[]>(() => (initialDays ?? freshEventDays(defaultPoolId)).map(editorDay));
+  const [days, setDays] = useState<EditorDay[]>(() => (initialDays ?? []).map(editorDay));
   const [error, setError] = useState("");
 
   const [step, setStep] = useState(1);
