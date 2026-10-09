@@ -52,7 +52,7 @@ cargo run --locked --manifest-path backend/Cargo.toml
 curl http://127.0.0.1:3000/health
 ```
 
-The health response is HTTP 200 with `Content-Type: application/json` and `{"status":"ok"}`. This is a liveness check; no database is required in the unconfigured service. The frontend still uses browser storage. The SQLx `db` module provides PostgreSQL persistence and the `planner` module validates documents. The backend supports OIDC authentication; planner HTTP routes and frontend integration are follow-up work.
+The health response is HTTP 200 with `Content-Type: application/json` and `{"status":"ok"}`. This is a liveness check; no database is required in the unconfigured service. The frontend still uses browser storage. The SQLx `db` module provides PostgreSQL persistence and the `planner` module validates documents. The backend supports OIDC authentication and authenticated GET/PUT `/api/planner`; see [the HTTP contract](backend/DOCUMENT.md#authenticated-http-contract). Frontend integration is follow-up work.
 
 Configuration is read from the process environment (no automatic `.env` loading):
 
@@ -100,7 +100,7 @@ does not automatically migrate; it reads `DATABASE_URL` when OIDC is enabled. Pr
 should use the deployment's database credentials and TLS configuration.
 
 Storage callers use `Database::connect`, then the per-user `ensure_user`, `load`,
-and validated `save` methods. Data lives in PostgreSQL, so restarting backend
+and validated `save(user_id, document, expected_revision)` methods. Data lives in PostgreSQL, so restarting backend
 processes does not discard planners. See [the document contract](backend/DOCUMENT.md)
 for version-1 compatibility, synchronized preferences, validation, and revision semantics.
 
@@ -197,7 +197,10 @@ expiration, logout, CSRF, HTTPS cookie controls, and invalid OIDC responses:
 DATABASE_URL=postgres://postgres:hima-dev@127.0.0.1:5432/hima cargo test --locked --manifest-path backend/Cargo.toml --test auth -- --ignored
 ```
 
-Both database integration suites run in CI against PostgreSQL 17.
+Both database integration suites run in CI against PostgreSQL 17. The auth suite
+also exercises the planner over actual TCP HTTP, including concurrent first saves
+and updates, cross-user isolation, invalid-write preservation, session expiry,
+and CSRF enforcement.
 
 ## License
 

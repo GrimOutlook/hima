@@ -22,12 +22,14 @@ pub struct StoredPlanner {
 #[derive(Debug)]
 pub enum SaveError {
     Invalid(ValidationError),
+    Conflict,
     Database(sqlx::Error),
 }
 impl std::fmt::Display for SaveError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Self::Invalid(e) => write!(f, "{e}"),
+            Self::Conflict => f.write_str("Planner revision conflict"),
             Self::Database(_) => f.write_str("Planner database operation failed"),
         }
     }
@@ -64,10 +66,27 @@ impl Database {
             .fetch_optional(&self.pool)
             .await
     }
-    /// Validate before any write; a single atomic upsert advances server revision.
-    pub async fn save(&self, user_id: i64, document: &Value) -> Result<StoredPlanner, SaveError> {
+    /// Zero creates a planner; positive revisions conditionally replace one.
+    /// PostgreSQL serializes conflicting inserts/updates and rechecks the predicate.
+    pub async fn save(
+        &self,
+        user_id: i64,
+        document: &Value,
+        expected_revision: i64,
+    ) -> Result<StoredPlanner, SaveError> {
         validate_document(document).map_err(SaveError::Invalid)?;
-        Ok(sqlx::query_as("INSERT INTO planners (user_id, document) VALUES ($1, $2) ON CONFLICT (user_id) DO UPDATE SET document = EXCLUDED.document, revision = planners.revision + 1, updated_at = clock_timestamp() RETURNING document, revision, updated_at")
-            .bind(user_id).bind(document).fetch_one(&self.pool).await?)
+        if expected_revision < 0 {
+            return Err(SaveError::Invalid(ValidationError(
+                "Expected revision must be nonnegative".into(),
+            )));
+        }
+        let saved = if expected_revision == 0 {
+            sqlx::query_as("INSERT INTO planners (user_id, document) VALUES ($1, $2) ON CONFLICT (user_id) DO NOTHING RETURNING document, revision, updated_at")
+                .bind(user_id).bind(document).fetch_optional(&self.pool).await?
+        } else {
+            sqlx::query_as("UPDATE planners SET document = $2, revision = revision + 1, updated_at = clock_timestamp() WHERE user_id = $1 AND revision = $3 RETURNING document, revision, updated_at")
+                .bind(user_id).bind(document).bind(expected_revision).fetch_optional(&self.pool).await?
+        };
+        saved.ok_or(SaveError::Conflict)
     }
 }

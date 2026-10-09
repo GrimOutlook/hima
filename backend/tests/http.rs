@@ -12,6 +12,18 @@ async fn health_and_api_error_contract() {
         ("GET", "/health", StatusCode::OK, json!({"status":"ok"})),
         (
             "GET",
+            "/api/planner",
+            StatusCode::UNAUTHORIZED,
+            json!({"error":{"code":"unauthenticated","message":"Sign in to access this endpoint."}}),
+        ),
+        (
+            "PUT",
+            "/api/planner",
+            StatusCode::UNAUTHORIZED,
+            json!({"error":{"code":"unauthenticated","message":"Sign in to access this endpoint."}}),
+        ),
+        (
+            "GET",
             "/api/me",
             StatusCode::UNAUTHORIZED,
             json!({"error":{"code":"unauthenticated","message":"Sign in to access this endpoint."}}),
