@@ -5,6 +5,7 @@ import { CSS } from "@dnd-kit/utilities";
 import { BalanceChart } from "./BalanceChart";
 import { CalendarPicker } from "./CalendarPicker";
 import { poolColor } from "./poolColors";
+import { parseBackupJson, serializeBackupJson } from "./backup";
 import { FirstDayOfWeekContext, IgnoreWeekendsContext, loadDefaultTimeline, loadFirstDayOfWeek, loadIgnoreWeekends, nextWeekday, saveSettings } from "./settings";
 import {
   AdditionModal,
@@ -30,13 +31,11 @@ import {
   loadStore,
   monthLabel,
   parseHours,
-  parseStoreJson,
   poolBalanceOn,
   poolTotalsOn,
   prettyDate,
   recurringScheduleDescription,
   saveStore,
-  serializeStoreJson,
   todayDate,
   totalsOn,
   type EventDayInput,
@@ -89,6 +88,7 @@ function App() {
     settingsButtonRef.current?.focus();
   }, []);
   const importInputRef = useRef<HTMLInputElement>(null);
+  const importSettingsRef = useRef(false);
   const timelineListRef = useRef<HTMLDivElement>(null);
   const chartHistoryEnd = todayDate();
   const balance = totalsOn(store, balanceDate);
@@ -225,7 +225,7 @@ function App() {
   }
 
   function exportData() {
-    const blob = new Blob([serializeStoreJson(store)], { type: "application/json" });
+    const blob = new Blob([serializeBackupJson(store, { firstDayOfWeek, ignoreWeekends, defaultTimeline })], { type: "application/json" });
     const url = URL.createObjectURL(blob);
     const link = document.createElement("a");
     link.href = url;
@@ -243,12 +243,19 @@ function App() {
     if (!file) return;
 
     try {
-      const imported = parseStoreJson(await file.text());
+      const shouldImportSettings = importSettingsRef.current;
+      const { store: imported, settings } = parseBackupJson(await file.text());
+      const restoreSettings = shouldImportSettings && settings !== undefined;
       const confirmed = window.confirm(
-        `Replace the data saved in this browser with ${imported.pools.length} ${imported.pools.length === 1 ? "pool" : "pools"} and ${imported.events.length} ${imported.events.length === 1 ? "event" : "events"}?`,
+        `Replace the data saved in this browser with ${imported.pools.length} ${imported.pools.length === 1 ? "pool" : "pools"} and ${imported.events.length} ${imported.events.length === 1 ? "event" : "events"}${restoreSettings ? " and restore the backup settings" : ""}?`,
       );
       if (!confirmed) return;
       setStore(imported);
+      if (restoreSettings && settings) {
+        setFirstDayOfWeek(settings.firstDayOfWeek);
+        setIgnoreWeekends(settings.ignoreWeekends);
+        setDefaultTimeline(settings.defaultTimeline);
+      }
       setBalanceDate(todayDate());
       setModal(null);
     } catch (error) {
@@ -780,7 +787,10 @@ function App() {
         </footer>
       </main>
 
-      {selectedModal?.type === "settings" && <SettingsModal firstDayOfWeek={firstDayOfWeek} onChange={setFirstDayOfWeek} ignoreWeekends={ignoreWeekends} onIgnoreWeekendsChange={setIgnoreWeekends} defaultTimeline={defaultTimeline} onDefaultTimelineChange={setDefaultTimeline} onExport={exportData} onImport={() => importInputRef.current?.click()} onClose={closeSettings} />}
+      {selectedModal?.type === "settings" && <SettingsModal firstDayOfWeek={firstDayOfWeek} onChange={setFirstDayOfWeek} ignoreWeekends={ignoreWeekends} onIgnoreWeekendsChange={setIgnoreWeekends} defaultTimeline={defaultTimeline} onDefaultTimelineChange={setDefaultTimeline} onExport={exportData} onImport={(importSettings) => {
+        importSettingsRef.current = importSettings;
+        importInputRef.current?.click();
+      }} onClose={closeSettings} />}
       {informationPool && (
         <PoolInformationModal {...poolCardProps(informationPool)} onEditCap={(capId) => setModal({ type: "edit-cap", poolId: informationPool.id, capId })} onClose={() => setModal(null)} />
       )}

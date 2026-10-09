@@ -75,16 +75,20 @@ export function SettingsModal({ firstDayOfWeek, onChange, ignoreWeekends, onIgno
   defaultTimeline: TimelinePreset;
   onDefaultTimelineChange: (preset: TimelinePreset) => void;
   onExport: () => void;
-  onImport: () => void;
+  onImport: (importSettings: boolean) => void;
   onClose: () => void;
 }) {
   const contentRef = useRef<HTMLDivElement>(null);
+  const [importSettings, setImportSettings] = useState(false);
+  const [showImportOptions, setShowImportOptions] = useState(false);
+  const closeImportOptions = () => setShowImportOptions(false);
   useEffect(() => {
     const card = contentRef.current?.closest(".modal-card");
     function handleKeyDown(event: KeyboardEvent) {
       if (event.key === "Escape") {
         event.preventDefault();
-        onClose();
+        if (showImportOptions) setShowImportOptions(false);
+        else onClose();
       }
       if (event.key !== "Tab" || !card) return;
       const controls = card.querySelectorAll<HTMLElement>("button, select, input");
@@ -102,7 +106,20 @@ export function SettingsModal({ firstDayOfWeek, onChange, ignoreWeekends, onIgno
     return () => {
       document.removeEventListener("keydown", handleKeyDown);
     };
-  }, [onClose]);
+  }, [onClose, showImportOptions]);
+
+  if (showImportOptions) return <ModalFrame icon="↥" title="Import backup" description="Choose whether to restore settings, then select your backup file." labelledBy="import-modal-title" onClose={closeImportOptions}>
+    <div className="modal-form" ref={contentRef}>
+      <fieldset className="pool-visibility-settings">
+        <label><input autoFocus type="checkbox" checked={importSettings} onChange={(event) => setImportSettings(event.currentTarget.checked)} aria-describedby="import-settings-description" />Import settings</label>
+      </fieldset>
+      <p className="wizard-hint" id="import-settings-description">Also restore settings from the imported backup. Leave unchecked to keep this device’s settings.</p>
+      <div className="modal-actions">
+        <button className="button button-outline" type="button" onClick={closeImportOptions}>Cancel</button>
+        <button className="button button-primary" type="button" onClick={() => onImport(importSettings)}>Choose backup file</button>
+      </div>
+    </div>
+  </ModalFrame>;
 
   return <ModalFrame icon="⚙" title="Settings" description="Make hima feel at home. Changes are saved on this device." labelledBy="settings-modal-title" onClose={onClose}>
     <div className="modal-form" ref={contentRef}>
@@ -128,7 +145,10 @@ export function SettingsModal({ firstDayOfWeek, onChange, ignoreWeekends, onIgno
       <p className="wizard-hint">Export your data as a JSON backup or import a saved backup.</p>
       <div className="modal-actions">
         <button className="button button-outline" type="button" onClick={onExport}>Export JSON</button>
-        <button className="button button-outline" type="button" onClick={onImport}>Import JSON</button>
+        <button className="button button-outline" type="button" onClick={() => {
+          setImportSettings(false);
+          setShowImportOptions(true);
+        }}>Import JSON</button>
       </div>
       <div className="modal-actions">
         <button className="button button-primary" type="button" onClick={onClose}>Done</button>
