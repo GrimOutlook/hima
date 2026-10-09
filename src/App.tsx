@@ -23,7 +23,6 @@ import {
   type PoolFormData,
 } from "./Modals";
 import {
-  STORAGE_KEY,
   reduceStore,
   storeActionError,
   type StoreAction,
@@ -63,17 +62,36 @@ type ModalState =
 
 function App() {
   const planner = useStoredPlanner();
-  const [hasLocalData] = useState(() => {
-    try { return localStorage.getItem(STORAGE_KEY) !== null || localStorage.getItem("hima.settings.v1") !== null; }
-    catch { return false; }
-  });
   return <>
     {planner.recoveries.map((recovery, index) => <p role="alert" key={index}>
       Unsaved changes from account {recovery.userId} are retained in this page.
       <button className="button" type="button" onClick={() => downloadBackup(recovery.document)}>Export retained backup</button>
     </p>)}
-    {hasLocalData && <p role="status">Existing browser data is preserved. It has not been uploaded or replaced. Local-data migration will be available separately; account edits save only to the server.</p>}
-    {planner.phase === "ready" ? <Planner key={planner.generation} planner={planner} /> : <main className="page-content">
+    {planner.phase === "ready" && planner.migration ? <main className="page-content">
+      <h1>Choose your planner for account {planner.session?.user_id}</h1>
+      <p>Existing browser data and settings were found. Originals remain intact. {planner.revision === 0 ? "This account has no remote planner." : "This account also has a remote planner. Uploading local data replaces that remote copy."}</p>
+      <button className="button" onClick={() => downloadJson(planner.migration!.raw)}>Export original local backup</button>
+      {planner.migration.document && <><p>Local copy: {planner.migration.document.pools.length} pools; {planner.migration.document.events.length} events.</p><button className="button" onClick={() => downloadBackup(planner.migration!.document!)}>Export migrated local backup</button></>}
+      <button className="button" onClick={() => downloadBackup(planner.document)}>Export remote backup</button>
+      {planner.migration.warnings.map((warning, index) => <p role="alert" key={index}>{warning}</p>)}
+      {(planner.error || planner.migration.error) && <p role="alert">{planner.error || planner.migration.error}</p>}
+      <button className="button" disabled={planner.resolving || !planner.migration.document} onClick={() => { if (window.confirm("Upload the displayed local copy and settings, replacing the remote planner? Export backups first if needed.")) void planner.migrate(); }}>Upload local planner and settings</button>
+      <button className="button" disabled={planner.resolving} onClick={planner.chooseRemote}>Use remote / cancel migration</button>
+      <button className="button" onClick={() => void planner.logout()}>Sign out</button>
+    </main> : planner.phase === "ready" ? <>
+      {planner.saveStatus === "conflict" && <section aria-label="Resolve revision conflict">
+        <p role="alert">Remote data changed. Your unsaved work is retained. Saving is paused until you choose a copy.</p>
+        <button className="button" onClick={() => downloadBackup(planner.document)}>Export unsaved work</button>
+        <button className="button" disabled={planner.resolving} onClick={() => void planner.fetchLatest()}>Fetch latest remote copy</button>
+        {planner.latest && <>
+          <p>Latest remote revision: {planner.latest.revision}. Pools: {planner.latest.document.pools.length}; events: {planner.latest.document.events.length}.</p>
+          <button className="button" onClick={() => downloadBackup(planner.latest!.document)}>Export latest remote backup</button>
+          <button className="button" onClick={() => { if (window.confirm("Load the latest remote copy? Your unsaved work will remain available as a retained backup in this page.")) planner.resolveConflict(false); }}>Load latest remote copy</button>
+          <button className="button" onClick={() => { if (window.confirm("Replace the latest remote copy with your unsaved work? Export both copies first if needed.")) planner.resolveConflict(true); }}>Replace remote with my work</button>
+        </>}
+      </section>}
+      <Planner key={planner.generation} planner={planner} />
+    </> : <main className="page-content">
       <h1>hima</h1>
       {planner.phase === "loading" ? <p role="status">Loading your account and planner…</p> : planner.phase === "logging-out" ? <p role="status">Signing out…</p> : <>
         {planner.phase === "error" ? <><p role="alert">Could not load your planner: {planner.error}</p><button className="button" type="button" onClick={planner.retry}>Retry loading</button></> : <><p>Sign in to load and save your planner.</p><a className="button button-primary" href="/auth/login">Sign in</a></>}
@@ -83,7 +101,11 @@ function App() {
 }
 
 function downloadBackup(document: PlannerDocument) {
-  const blob = new Blob([serializeBackupJson(document, document.settings ?? defaultSettings)], { type: "application/json" });
+  downloadJson(serializeBackupJson(document, document.settings ?? defaultSettings));
+}
+
+function downloadJson(json: string) {
+  const blob = new Blob([json], { type: "application/json" });
   const url = URL.createObjectURL(blob);
   const link = window.document.createElement("a");
   link.href = url;
