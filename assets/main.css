@@ -7,7 +7,11 @@
   text-rendering: optimizeLegibility;
   -webkit-font-smoothing: antialiased;
   --ink: #24302a;
-  --muted: #858a82;
+  --muted: #626b61;
+  --text-warm: #875441;
+  --text-success: #426a4e;
+  --text-warning: #805e26;
+  --text-on-green: #e5eee8;
   --line: #e9e8e1;
   --green: #284d3c;
   --green-dark: #203e31;
@@ -542,3 +546,73 @@ button:focus-visible, input:focus-visible, select:focus-visible, a:focus-visible
   .event-day-card { gap: 8px; padding: 8px; }
   .event-allocation-row { grid-template-columns: minmax(0, 1.15fr) minmax(0, .85fr) 25px; gap: 6px; }
 }
+
+/* Readability floor, including compact controls and mobile overrides. */
+.eyebrow, .section-overline, .button-small, .balance-kicker,
+.date-picker > span, .date-picker-trigger, .date-picker-field > span,
+.calendar-selectors select, .calendar-weekdays, .calendar-day,
+.calendar-footer-button, .calendar-today-button, .calendar-date-error,
+.breakdown-label, .breakdown-item strong, .breakdown-icon, .balance-hint,
+.as-of-label, .pool-subtitle, .pool-balance-caption,
+.pool-event-subtraction-label, .pool-event-subtraction-caption,
+.pool-lifetime-metric span, .pool-lifetime-metric small,
+.pool-rules-disclosure > h3, .rule-row, .no-rules, .more-additions,
+.pool-unit-note, .events-caption, .events-empty-subtitle, .text-button,
+.pool-color-settings legend, .event-month, .event-info > strong,
+.event-info > span:not(.event-status), .event-info > .event-day-details,
+.event-status, .event-amount, .events-panel-footer, .history-panel-header p,
+.history-pool-filter, .history-pool-options, .history-pool-filter select,
+.history-pool-visibility, .history-change span, .history-projection span,
+.history-timeline-controls, .history-timeline-preset, .chart-today-label,
+.chart-selected-date-label, .balance-chart-tooltip, .balance-chart-tooltip-kind,
+.history-footnote, .empty-card p, .page-footer, .pool-usage-modal-empty,
+.pool-usage-modal .pool-usage-table,
+.pool-usage-modal .pool-usage-table thead th, .modal-heading p,
+.pool-caps-heading strong, .pool-caps-heading p, .pool-cap-row .field-label,
+.pool-cap-row .field-label input, .pool-cap-row .input-with-suffix > span,
+.field-label, .event-wizard-steps li, .wizard-hint, .event-selected-dates li,
+.event-review, .event-days-heading, .event-days-heading > span:last-child,
+.event-day-card .field-label input, .event-day-card .field-label select,
+.input-with-suffix > span, .nth-weekday-fields select, .segment, .form-error {
+  font-size: 12px;
+}
+
+/* Shared muted text passes AA on white and the tinted light surfaces. */
+.privacy-note, .eyebrow, .section-overline, .page-intro p, .button-quiet,
+.as-of-label, .pool-subtitle, .icon-button, .pool-balance span,
+.pool-balance-caption, .pool-lifetime-metric span, .pool-lifetime-metric small,
+.rule-date, .no-rules, .more-additions, .pool-unit-note, .events-caption,
+.events-empty-subtitle, .calendar-weekdays,
+.event-info > span:not(.event-status), .event-info > .event-day-details,
+.events-panel-footer, .history-panel-header p, .history-pool-filter,
+.history-pool-options, .history-change span, .history-projection span,
+.history-timeline-controls, .history-timeline-preset, .balance-chart-loading,
+.balance-chart-tooltip-kind, .history-footnote, .empty-card p, .page-footer,
+.pool-usage-modal-empty, .pool-usage-modal .pool-usage-table thead th,
+.modal-heading p, .pool-caps-heading p, .event-wizard-steps li, .wizard-hint,
+.event-days-heading > span:last-child, .input-with-suffix > span, .segment {
+  color: var(--muted);
+}
+.field-label input::placeholder { color: var(--muted); opacity: 1; }
+.balance-kicker, .balance-unit, .date-picker > span,
+.breakdown-label, .balance-hint { color: var(--text-on-green); }
+.date-picker-field > span { color: var(--muted); }
+.pool-event-subtraction-heading, .pool-event-subtraction-caption,
+.event-status, .history-change .history-change-negative,
+.history-projection strong { color: var(--text-warm); }
+.event-status-counted { color: var(--text-success); }
+.event-status-partial { color: var(--text-warning); }
+.pool-time-added { color: #2866ab; }
+.event-wizard-steps li.is-active, .segment.is-active { color: #3e5d45; }
+
+/* Give larger labels room to wrap rather than squeezing the text. */
+.balance-topline, .balance-breakdown, .pool-card-footer,
+.events-caption, .events-panel-footer { flex-wrap: wrap; }
+.event-row { grid-template-columns: 38px minmax(0, 1fr) auto; }
+.event-actions { grid-column: 3; }
+.event-info > strong, .event-info > span:not(.event-status) {
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+.pool-cap-row .input-with-suffix input { padding-right: 51px; }
+.history-timeline-heading { width: 52px; }
