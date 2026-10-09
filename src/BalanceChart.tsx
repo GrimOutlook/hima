@@ -117,7 +117,7 @@ function BalanceTooltip({
   if (!active || !point) return null;
 
   return (
-    <div className="balance-chart-tooltip" role="status">
+    <div className="balance-chart-tooltip">
       <span className="balance-chart-tooltip-date">{prettyDate(point.date)}</span>
       <span className="balance-chart-tooltip-kind">
         <i className={point.projected ? "tooltip-projected-dot" : "tooltip-actual-dot"} />
