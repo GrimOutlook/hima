@@ -43,7 +43,110 @@ The app does not need an account or a server. Pools and events are stored in thi
 
 Saved planner data and JSON backups carry a numeric `version` (currently `1`). Unversioned data is treated as the legacy schema and migrated to version 1, including older event formats. Unsupported versions are rejected on import; unreadable saved data follows the browser-storage recovery path described by the app.
 
-### Rust API service
+### Full local development workflow
+
+Use `nix develop` in each terminal (or install Node.js, pnpm, stable Rust,
+pkg-config, OpenSSL development headers, PostgreSQL 17 tools, and curl yourself).
+The shell includes rustfmt, Clippy, and rust-analyzer as well. Keep the browser
+origin **http://127.0.0.1:5173** throughout; `localhost` is a different cookie/CSRF
+origin. Vite binds loopback on port 5173 and fails if that port is occupied rather
+than silently changing the registered callback. It forwards `/api` and `/auth`
+unchanged to `http://127.0.0.1:3000`, including query strings, cookies, Origin,
+and CSRF headers. Changing either port requires updating the proxy, environment,
+and provider callback together. This proxy applies to `pnpm run dev`, not the
+static production build or `pnpm run preview`.
+
+1. Start PostgreSQL with the Docker command in [PostgreSQL storage](#postgresql-storage).
+   Wait for readiness before migrations:
+
+   ```sh
+   docker exec hima-postgres pg_isready -U postgres -d hima
+   ```
+
+   Repeat until it reports accepting connections. The named volume persists data;
+   on later runs use `docker start hima-postgres`. Stop with
+   `docker stop hima-postgres`. The example password is for loopback development.
+
+2. Start an OIDC provider. For a reproducible local Keycloak instance:
+
+   ```sh
+   docker run -d --name hima-oidc -p 127.0.0.1:8080:8080 \
+     -e KC_BOOTSTRAP_ADMIN_USERNAME=admin \
+     -e KC_BOOTSTRAP_ADMIN_PASSWORD=hima-dev-admin \
+     quay.io/keycloak/keycloak:26.3.3 start-dev
+   ```
+
+   Open `http://127.0.0.1:8080`, sign in to the administration console using
+   these local-only credentials, create realm `hima`, then create an OpenID
+   Connect client `hima-dev`. Turn **Client authentication** off, enable
+   **Standard flow**, disable implicit/direct-access flows, and set the PKCE
+   method to **S256** in advanced settings. Register exactly
+   `http://127.0.0.1:5173/auth/callback` as a valid redirect URI, with web origin
+   `http://127.0.0.1:5173`. Create a realm user with a non-temporary password.
+   Discovery is at
+   `http://127.0.0.1:8080/realms/hima/.well-known/openid-configuration`.
+   Subsequent runs use `docker start hima-oidc`; stop with `docker stop hima-oidc`.
+   Removing this container discards its development realm/users. An existing
+   provider works too: register the same callback, enable Authorization Code,
+   S256 PKCE, `openid`, and query-mode redirects, and use its exact issuer.
+
+3. In the backend terminal, copy the safe example once, edit it for your provider,
+   explicitly export its variables, migrate, then run the service:
+
+   ```sh
+   cp backend/.env.example backend/.env
+   set -a
+   . backend/.env
+   set +a
+   cargo run --locked --manifest-path backend/Cargo.toml --bin migrate
+   cargo run --locked --manifest-path backend/Cargo.toml --bin hima-api
+   ```
+
+   `backend/.env` is ignored by Git. Never use `VITE_` for database credentials
+   or OIDC secrets. A confidential provider client uses client-secret-basic;
+   add its secret only to this backend environment. Discovery must be reachable
+   from the backend, and the authorization endpoint from your browser.
+
+4. In the frontend terminal:
+
+   ```sh
+   pnpm install --frozen-lockfile
+   pnpm run dev
+   ```
+
+   Visit `http://127.0.0.1:5173`. The current planner UI still uses browser storage;
+   to exercise server login now, navigate to `/auth/login` on this origin. After
+   provider login, the callback returns through Vite, sets an HttpOnly session
+   cookie, and redirects to `/`. In the browser console, check:
+
+   ```js
+   const me = await fetch('/api/me').then(r => r.json());
+   console.log(me.user_id);
+   await fetch('/api/planner').then(r => r.json());
+   await fetch('/auth/logout', {
+     method: 'POST', headers: { 'X-CSRF-Token': me.csrf_token },
+   });
+   ```
+
+   Relative URLs use same-origin cookies automatically; mutations also need the
+   CSRF token. `/api/me` returns 401 after logout. Before login, verify routing
+   with `curl -i http://127.0.0.1:5173/api/me` (401 JSON) and
+   `curl -i http://127.0.0.1:5173/auth/login` (303 provider redirect).
+   Ctrl-C stops frontend/backend processes. Restart the backend after editing
+   its environment; rerun the export commands first.
+
+The controlled-provider auth suite can also verify a real Vite proxy without a
+manually configured provider. Start `pnpm run dev`, leave port 3000 free (stop the
+backend), then run against the disposable PostgreSQL instance:
+
+```sh
+DATABASE_URL=postgres://postgres:hima-dev@127.0.0.1:5432/hima HIMA_TEST_VITE_PROXY=1 cargo test --locked --manifest-path backend/Cargo.toml --test auth -- --ignored
+```
+
+This exercises the callback, session, planner request, and CSRF-protected logout
+through Vite with a controlled signing provider and an isolated SQLx database.
+
+### Backend service details
 
 The independent Axum/Tokio service lives in `backend/`. Install stable Rust (edition 2024 support required), or enter `nix develop`, then run in a second terminal alongside `pnpm run dev`:
 
@@ -148,7 +251,7 @@ responses or log callback query strings. Keep the backend listening on a private
 interface. Cookie security and callback URLs use `HIMA_PUBLIC_ORIGIN`, not Host or
 forwarded headers, so TLS termination at the proxy still produces Secure cookies.
 HTTP is accepted only for loopback origins/provider endpoints in local development
-(for example `http://localhost:3000/auth/callback`); these use unprefixed development
+(for example `http://127.0.0.1:5173/auth/callback`); these use unprefixed development
 cookies without Secure. Use a same-origin development proxy for browser access.
 
 Endpoints:

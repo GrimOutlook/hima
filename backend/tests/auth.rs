@@ -288,7 +288,14 @@ async fn token(
     let code = form.get("code").unwrap();
     let (nonce, challenge, mode) = p.codes.lock().unwrap().remove(code).unwrap();
     assert_eq!(form["grant_type"], "authorization_code");
-    assert_eq!(form["redirect_uri"], "https://app.example/auth/callback");
+    assert_eq!(
+        form["redirect_uri"],
+        if mode == "vite" {
+            "http://127.0.0.1:5173/auth/callback"
+        } else {
+            "https://app.example/auth/callback"
+        }
+    );
     if let Some(authorization) = headers.get("authorization") {
         assert_eq!(authorization, "Basic aGltYS10ZXN0OnRlc3Qtc2VjcmV0");
     } else {
@@ -410,6 +417,120 @@ async fn start(app: &Router, provider: &Provider, mode: &str) -> (String, String
         ),
     );
     (format!("/auth/callback?state={code}&code={code}"), browser)
+}
+
+// Opt-in because this uses the contributor's running Vite process and its fixed
+// backend port. The provider still verifies the real code exchange and S256 PKCE.
+async fn vite_proxy_contract(pool: &PgPool, provider: &Provider) {
+    let origin = "http://127.0.0.1:5173";
+    let app = server::with_auth(
+        Auth::new(
+            Database::from_pool(pool.clone()),
+            &provider.issuer,
+            "hima-test".into(),
+            None,
+            origin,
+        )
+        .await
+        .unwrap(),
+    );
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:3000")
+        .await
+        .expect("stop the backend before running the Vite proxy test");
+    let task = tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
+    let client = openidconnect::reqwest::Client::builder()
+        .redirect(openidconnect::reqwest::redirect::Policy::none())
+        .build()
+        .unwrap();
+    let login = client
+        .get(format!("{origin}/auth/login"))
+        .send()
+        .await
+        .expect("start pnpm run dev before running the Vite proxy test");
+    assert_eq!(login.status().as_u16(), 303);
+    assert_eq!(login.headers()["cache-control"], "no-store");
+    let cookie = login.headers()["set-cookie"].to_str().unwrap();
+    assert!(cookie.starts_with("hima-login="));
+    assert!(cookie.contains("HttpOnly"));
+    assert!(!cookie.contains("Secure"));
+    let browser = cookie.split(';').next().unwrap().to_owned();
+    let url =
+        openidconnect::url::Url::parse(login.headers()["location"].to_str().unwrap()).unwrap();
+    let query: HashMap<String, String> = url.query_pairs().into_owned().collect();
+    assert_eq!(query["redirect_uri"], format!("{origin}/auth/callback"));
+    assert_eq!(query["code_challenge_method"], "S256");
+    let code = &query["state"];
+    provider.codes.lock().unwrap().insert(
+        code.clone(),
+        (
+            query["nonce"].clone(),
+            query["code_challenge"].clone(),
+            "vite".into(),
+        ),
+    );
+    let callback = client
+        .get(format!("{origin}/auth/callback?state={code}&code={code}"))
+        .header("cookie", browser)
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(callback.status().as_u16(), 303);
+    assert_eq!(callback.headers()["location"], "/");
+    let session = callback
+        .headers()
+        .get_all("set-cookie")
+        .iter()
+        .map(|v| v.to_str().unwrap())
+        .find(|v| v.starts_with("hima-session="))
+        .unwrap()
+        .split(';')
+        .next()
+        .unwrap()
+        .to_owned();
+    let me = client
+        .get(format!("{origin}/api/me"))
+        .header("cookie", &session)
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(me.status().as_u16(), 200);
+    let me: Value = serde_json::from_str(&me.text().await.unwrap()).unwrap();
+    assert!(me["user_id"].is_number());
+    let planner = client
+        .get(format!("{origin}/api/planner"))
+        .header("cookie", &session)
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(planner.status().as_u16(), 200);
+    let logout = client
+        .post(format!("{origin}/auth/logout"))
+        .header("cookie", &session)
+        .header("origin", origin)
+        .header("x-csrf-token", me["csrf_token"].as_str().unwrap())
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(logout.status().as_u16(), 303);
+    assert!(
+        logout
+            .headers()
+            .get_all("set-cookie")
+            .iter()
+            .any(|v| v.to_str().unwrap().contains("Max-Age=0"))
+    );
+    assert_eq!(
+        client
+            .get(format!("{origin}/api/me"))
+            .header("cookie", session)
+            .send()
+            .await
+            .unwrap()
+            .status()
+            .as_u16(),
+        401
+    );
+    task.abort();
 }
 
 #[sqlx::test(migrations = "./migrations")]
@@ -777,5 +898,8 @@ async fn oidc_and_persistent_browser_sessions(pool: PgPool) {
         .status(),
         StatusCode::BAD_REQUEST
     );
+    if std::env::var_os("HIMA_TEST_VITE_PROXY").is_some() {
+        vite_proxy_contract(&pool, &provider).await;
+    }
     task.abort();
 }

@@ -5,4 +5,7 @@
 /backend/target
 /.env
 /backend/.env
+/.env.*
+/backend/.env.*
+!/backend/.env.example
 !/pnpm-lock.yaml
