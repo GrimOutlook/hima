@@ -87,7 +87,7 @@ export interface BalancePoint {
   projected: boolean;
 }
 
-const STORAGE_KEY = "hima.store.v1";
+export const STORAGE_KEY = "hima.store.v1";
 
 export function emptyStore(): Store {
   return { pools: [], events: [], next_id: 1 };

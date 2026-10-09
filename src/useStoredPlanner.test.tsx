@@ -14,13 +14,13 @@ const replacement = { ...emptyStore(), pools: [{ id: 1, name: "New leave", addit
 let root: Root;
 let container: HTMLDivElement;
 
-function Planner() {
+function Planner({ name = "New leave" }: { name?: string }) {
   const { store, setStore, storageWarning, saveStatus } = useStoredPlanner();
   return <>
     {storageWarning && <p role="alert">{storageWarning}</p>}
     <span>{store.pools.map((pool) => pool.name).join(", ")}</span>
     <span role="status">{saveStatus}</span>
-    <button onClick={() => setStore({ ...replacement })}>Change planner</button>
+    <button onClick={() => setStore({ ...replacement, pools: replacement.pools.map((pool) => ({ ...pool, name })) })}>Change planner</button>
   </>;
 }
 
@@ -48,6 +48,96 @@ async function changePlanner() {
 }
 
 describe("saved planner recovery", () => {
+  it.each([JSON.stringify(replacement), null, "damaged remote data"])("preserves both copies after an external change: %s", async (remote) => {
+    await mount();
+    const setItem = vi.spyOn(Storage.prototype, "setItem");
+    if (remote === null) localStorage.clear();
+    else localStorage.setItem(key, remote);
+    setItem.mockClear();
+    await act(async () => window.dispatchEvent(new StorageEvent("storage", {
+      key: remote === null ? null : key, newValue: remote, storageArea: localStorage,
+    })));
+    await changePlanner();
+    expect(container.textContent).toContain("New leave");
+    expect(container.querySelector('[role="status"]')?.textContent).toBe("disabled");
+    expect(container.querySelector('[role="alert"]')?.textContent).toContain("another tab");
+    expect(localStorage.getItem(key)).toBe(remote);
+    expect(setItem).not.toHaveBeenCalled();
+  });
+
+  it("detects a remote write before its storage notification arrives", async () => {
+    await mount();
+    const remote = JSON.stringify({ ...replacement, next_id: 100 });
+    localStorage.setItem(key, remote);
+    await changePlanner();
+    expect(localStorage.getItem(key)).toBe(remote);
+    expect(container.querySelector('[role="status"]')?.textContent).toBe("disabled");
+    expect(container.textContent).toContain("New leave");
+  });
+
+  it("checks storage inside the cross-tab lock and cancels obsolete queued saves", async () => {
+    const pending: (() => void)[] = [];
+    const request = vi.fn((_name: string, callback: () => void) => new Promise<void>((resolve) => {
+      pending.push(() => { callback(); resolve(); });
+    }));
+    Object.defineProperty(navigator, "locks", { configurable: true, value: { request } });
+    try {
+      await mount();
+      await changePlanner();
+      const remote = JSON.stringify({ ...replacement, next_id: 100 });
+      localStorage.setItem(key, remote);
+      await act(async () => { pending.forEach((run) => run()); });
+      expect(request).toHaveBeenCalledWith(key, expect.any(Function));
+      expect(localStorage.getItem(key)).toBe(remote);
+      expect(container.querySelector('[role="status"]')?.textContent).toBe("disabled");
+      expect(container.textContent).toContain("New leave");
+    } finally {
+      Reflect.deleteProperty(navigator, "locks");
+    }
+  });
+
+  it("serializes two tabs racing to save and keeps the losing tab's edits exportable", async () => {
+    localStorage.setItem(key, JSON.stringify(emptyStore()));
+    const pending: (() => void)[] = [];
+    Object.defineProperty(navigator, "locks", { configurable: true, value: {
+      request: (_name: string, callback: () => void) => new Promise<void>((resolve) => {
+        pending.push(() => { callback(); resolve(); });
+      }),
+    } });
+    const otherContainer = document.createElement("div");
+    const otherRoot = createRoot(otherContainer);
+    try {
+      await mount();
+      await act(async () => otherRoot.render(<Planner name="Other tab's leave" />));
+      await act(async () => { pending.splice(0).forEach((run) => run()); });
+      await act(async () => {
+        container.querySelector("button")!.click();
+        otherContainer.querySelector("button")!.click();
+      });
+      await act(async () => { pending.splice(0).forEach((run) => run()); });
+      expect(JSON.parse(localStorage.getItem(key)!)).toEqual(replacement);
+      expect(container.querySelector('[role="status"]')?.textContent).toBe("saved");
+      expect(otherContainer.querySelector('[role="status"]')?.textContent).toBe("disabled");
+      expect(otherContainer.textContent).toContain("Other tab's leave");
+      expect(otherContainer.querySelector('[role="alert"]')?.textContent).toContain("Export a backup");
+    } finally {
+      await act(async () => otherRoot.unmount());
+      Reflect.deleteProperty(navigator, "locks");
+    }
+  });
+
+  it("ignores unrelated storage and stale notifications without writing back", async () => {
+    await mount();
+    const setItem = vi.spyOn(Storage.prototype, "setItem");
+    await act(async () => {
+      window.dispatchEvent(new StorageEvent("storage", { key: "hima.settings.v1", storageArea: localStorage }));
+      window.dispatchEvent(new StorageEvent("storage", { key, newValue: "old value", storageArea: localStorage }));
+      window.dispatchEvent(new StorageEvent("storage", { key, storageArea: sessionStorage }));
+    });
+    expect(container.querySelector('[role="status"]')?.textContent).toBe("saved");
+    expect(setItem).not.toHaveBeenCalled();
+  });
+
   it.each(["QuotaExceededError", "SecurityError"])("reports %s, retains edits and recovers on the next successful save", async (error) => {
     const original = JSON.stringify(emptyStore());
     localStorage.setItem(key, original);
