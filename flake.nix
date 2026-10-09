@@ -87,13 +87,14 @@
       devShells = forAllSystems (pkgs:
         {
           default = pkgs.mkShell {
-            packages = [ pkgs.nodejs_22 pkgs.pnpm_12 ];
+            packages = [ pkgs.nodejs_22 pkgs.pnpm_12 pkgs.cargo pkgs.rustc pkgs.rustfmt pkgs.clippy ];
 
             shellHook = ''
               echo "hima React + TypeScript development environment"
               echo "  pnpm run dev    Run the app with live reload"
               echo "  pnpm test       Run the calculation tests"
               echo "  pnpm run build  Build the production web app"
+              echo "  cargo run --manifest-path backend/Cargo.toml  Run the API"
             '';
           };
         });

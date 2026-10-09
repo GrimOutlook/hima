@@ -2,4 +2,7 @@
 /dist
 /.vite
 /coverage
+/backend/target
+/.env
+/backend/.env
 !/pnpm-lock.yaml
