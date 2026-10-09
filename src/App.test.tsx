@@ -49,8 +49,8 @@ it.each([
     for (const history of Object.values(histories)) {
       expect(history.map((point) => point.date)).toEqual(dates);
     }
-    expect(histories[1].find((point) => point.date === "2026-01-15")?.balance).toBe(0);
-    expect(histories[2].find((point) => point.date === "2026-01-15")?.balance).toBe(100);
+    expect(histories[1]?.find((point) => point.date === "2026-01-15")?.balance).toBe(0);
+    expect(histories[2]?.find((point) => point.date === "2026-01-15")?.balance).toBe(100);
   } finally {
     await act(async () => root.unmount());
     container.remove();

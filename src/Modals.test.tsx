@@ -133,7 +133,11 @@ it("preserves surviving event day and allocation controls when earlier rows are 
         { date: "2026-06-10", allocations: [{ pool_id: 1, hours: "2" }, { pool_id: 2, hours: "3" }] },
       ]} onClose={vi.fn()} onSave={save} /></StrictMode>));
     const survivor = container.querySelectorAll<HTMLElement>(".event-day-card")[1];
+    expect(survivor).toBeDefined();
+    if (!survivor) throw new Error("Missing surviving event day");
     const allocation = survivor.querySelectorAll<HTMLElement>(".event-allocation-row")[1];
+    expect(allocation).toBeDefined();
+    if (!allocation) throw new Error("Missing surviving allocation");
     const hours = allocation.querySelector("input")!;
     await act(async () => container.querySelector<HTMLButtonElement>('[aria-label="Remove event day"]')!.click());
     expect(container.querySelector(".event-day-card")).toBe(survivor);

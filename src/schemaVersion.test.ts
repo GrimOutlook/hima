@@ -23,7 +23,7 @@ describe("planner schema versions", () => {
     expect(loaded.canSave).toBe(true);
     expect(loaded.warning).toBeNull();
     expect(loaded.store.version).toBe(STORE_VERSION);
-    expect(loaded.store.events.map((event) => event.days[0].allocations))
+    expect(loaded.store.events.map((event) => event.days[0]?.allocations))
       .toEqual([8, 4, 2, 1].map((hours) => [{ pool_id: 1, hours }]));
     expect(saveStore(loaded.store)).toBe(true);
     expect(JSON.parse(window.localStorage.getItem(STORAGE_KEY)!)).toEqual(loaded.store);

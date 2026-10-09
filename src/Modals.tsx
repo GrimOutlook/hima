@@ -592,8 +592,9 @@ export function AdditionModal({
       return;
     }
     const parsedEntries: { amount: number; date: string }[] = [];
+    const firstSelectedDate = selectedDates[0];
     if (batchAdding) {
-      if (!selectedDates.length || selectedDates.some((selected) => !isValidDate(selected))) {
+      if (firstSelectedDate === undefined || selectedDates.some((selected) => !isValidDate(selected))) {
         setError("Choose at least one valid date.");
         return;
       }
@@ -604,7 +605,7 @@ export function AdditionModal({
       reset,
       expiresSameDay: !reset && initialExpiresSameDay,
       amount: parsedAmount,
-      date: batchAdding ? selectedDates[0] : date,
+      date: batchAdding ? firstSelectedDate ?? date : date,
       recurring,
       cadence,
       ...(recurring && endDate ? { endDate } : {}),
@@ -806,21 +807,23 @@ export function EventModal({
   }
 
   function changeDefaultHours(hours: string) {
-    setDays((current) => current.map((day) =>
-      day.allocations.length === 1 && day.allocations[0].hours === defaultHours
-        ? { ...day, allocations: [{ ...day.allocations[0], hours }] }
-        : day,
-    ));
+    setDays((current) => current.map((day) => {
+      const allocation = day.allocations[0];
+      return day.allocations.length === 1 && allocation?.hours === defaultHours
+        ? { ...day, allocations: [{ ...allocation, hours }] }
+        : day;
+    }));
     setDefaultHours(hours);
     setError("");
   }
 
   function changeDefaultPool(poolId: number) {
-    setDays((current) => current.map((day) =>
-      day.allocations.length === 1 && day.allocations[0].pool_id === defaultPoolId
-        ? { ...day, allocations: [{ ...day.allocations[0], pool_id: poolId }] }
-        : day,
-    ));
+    setDays((current) => current.map((day) => {
+      const allocation = day.allocations[0];
+      return day.allocations.length === 1 && allocation?.pool_id === defaultPoolId
+        ? { ...day, allocations: [{ ...allocation, pool_id: poolId }] }
+        : day;
+    }));
     setDefaultPoolId(poolId);
     setError("");
   }

@@ -106,10 +106,10 @@ describe("shared chart timeline", () => {
       expect(history.map((point) => point.date)).toEqual(dates);
       expect(history.at(-1)?.projected).toBe(true);
     }
-    expect(histories[0][0]?.balance).toBe(0);
-    expect(histories[0].find((point) => point.date === "2028-01-01")?.balance).toBe(100);
-    expect(histories[0].at(-1)?.balance).toBe(100);
-    expect(histories[1].at(-1)?.balance).toBe(40);
+    expect(histories[0]?.[0]?.balance).toBe(0);
+    expect(histories[0]?.find((point) => point.date === "2028-01-01")?.balance).toBe(100);
+    expect(histories[0]?.at(-1)?.balance).toBe(100);
+    expect(histories[1]?.at(-1)?.balance).toBe(40);
     expect(combined.at(-1)?.balance).toBe(140);
   });
 });
@@ -130,7 +130,7 @@ describe("fractional hour balances", () => {
     expect(balanceHistory(store, "2026-01-15", 1).find((point) => point.date === "2026-01-15")?.balance).toBe(0);
 
     store.events = [];
-    expect(eventBalanceWarnings(store, [{ ...days[0], allocations: [{ pool_id: 1, hours: 22.81 }] }]))
+    expect(eventBalanceWarnings(store, [{ date: "2026-01-15", allocations: [{ pool_id: 1, hours: 22.81 }] }]))
       .toEqual([{ poolId: 1, date: "2026-01-15", balance: -0.01 }]);
   });
 
@@ -193,7 +193,7 @@ describe("holiday hours", () => {
       additions: [...pool.additions, { id: 4, amount: 6, date: "2025-12-01" }],
     }] };
     expect(poolTotalsOn(store, 1, "2026-01-02")).toEqual({ accrued: 10, used: 0, balance: 6 });
-    store.pools[0].additions.push({ id: 5, amount: 7, reset: true, date: "2026-01-01" });
+    store.pools[0]!.additions.push({ id: 5, amount: 7, reset: true, date: "2026-01-01" });
     expect(poolBalanceOn(store, 1, "2026-01-02")).toBe(7);
   });
 
@@ -203,7 +203,7 @@ describe("holiday hours", () => {
     }] }] };
     expect(parseStoreJson(serializeStoreJson(store))).toEqual(store);
     const resetStore = { ...store, pools: [{ ...store.pools[0], additions: [{ ...pool.additions[0], reset: true }] }] };
-    expect(normalizeStore(resetStore).pools[0].additions[0].expires_same_day).toBeUndefined();
+    expect(normalizeStore(resetStore).pools[0]!.additions[0]!.expires_same_day).toBeUndefined();
   });
 
   it("warns when holiday hours are allocated on a later day", () => {
@@ -591,9 +591,9 @@ describe("saved data compatibility", () => {
       ],
     }, warnings);
     expect(store.pools).toHaveLength(1);
-    expect(store.pools[0].additions).toEqual([{ id: 2, date: "2026-01-01", amount: 1.23 }]);
-    expect(store.pools[0].recurring[0].amount).toBe(2.35);
-    expect(store.pools[0].caps[0].max_balance).toBe(9.88);
+    expect(store.pools[0]?.additions).toEqual([{ id: 2, date: "2026-01-01", amount: 1.23 }]);
+    expect(store.pools[0]?.recurring[0]?.amount).toBe(2.35);
+    expect(store.pools[0]?.caps[0]?.max_balance).toBe(9.88);
     expect(store.events).toEqual([{ id: 6, name: "Trip", days: [
       { date: "2026-01-02", allocations: [{ pool_id: 1, hours: 1.23 }] },
     ] }]);
@@ -727,11 +727,11 @@ describe("balance chart", () => {
     expect(dates.at(-1)).toBe("2029-01-08");
     const histories = store.pools.map((pool) => balanceHistoryForDates(store, today, dates, pool.id));
     expect(histories.every((history) => history.map((point) => point.date).join() === dates.join())).toBe(true);
-    expect(histories[0].at(-1)?.balance).toBe(10);
-    expect(histories[1].at(-1)?.balance).toBe(17);
+    expect(histories[0]?.at(-1)?.balance).toBe(10);
+    expect(histories[1]?.at(-1)?.balance).toBe(17);
     expect(dates.map((date, index) => ({
       date, projected: date > today,
-      balance: histories.reduce((sum, history) => sum + history[index].balance, 0),
+      balance: histories.reduce((sum, history) => sum + history[index]!.balance, 0),
     }))).toEqual(balanceHistory(allPools, today));
     expect(balanceHistoryDates(store, today)[0]).toBe("2025-01-01");
     expect(balanceHistoryDates(emptyStore(), today)).toEqual(balanceHistory(emptyStore(), today).map((point) => point.date));
@@ -800,16 +800,16 @@ describe("balance chart", () => {
     expect(balanceHistory(restored, "2026-01-02").at(-1)?.balance).toBe(8);
     expect(balanceHistory(restored, "2026-01-02", 2).at(-1)?.balance).toBe(17);
     expect(totalsOn(restored, "2026-01-02")).toEqual({ accrued: 30, used: 5, balance: 25 });
-    restored.pools[1].hidden_from_total = true;
+    restored.pools[1]!.hidden_from_total = true;
     const hiddenTotalStore = normalizeStore(JSON.parse(JSON.stringify(restored)));
-    expect(hiddenTotalStore.pools[1].hidden_from_total).toBe(true);
+    expect(hiddenTotalStore.pools[1]?.hidden_from_total).toBe(true);
     expect(totalsOn(hiddenTotalStore, "2026-01-02")).toEqual({ accrued: 10, used: 2, balance: 8 });
     expect(poolTotalsOn(hiddenTotalStore, 2, "2026-01-02")).toEqual({ accrued: 20, used: 3, balance: 17 });
     expect(balanceHistory(hiddenTotalStore, "2026-01-02", 2).at(-1)?.balance).toBe(17);
-    hiddenTotalStore.pools[0].hidden_from_total = true;
+    hiddenTotalStore.pools[0]!.hidden_from_total = true;
     expect(totalsOn(hiddenTotalStore, "2026-01-02")).toEqual({ accrued: 0, used: 0, balance: 0 });
 
-    restored.pools[0].hidden_from_graph = true;
+    restored.pools[0]!.hidden_from_graph = true;
     const emptyHistory = balanceHistory(restored, "2026-01-02");
     expect(emptyHistory.length).toBeGreaterThan(0);
     expect(emptyHistory.every((point) => point.balance === 0)).toBe(true);

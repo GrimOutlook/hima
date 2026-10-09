@@ -47,7 +47,7 @@ describe("pure store mutations", () => {
     for (const openingAmount of ["", "0"]) {
       const empty = reduceStore(store, { ...poolAction, openingAmount });
       expect(empty.next_id).toBe(9);
-      expect(empty.pools[2].additions).toEqual([]);
+      expect(empty.pools[2]?.additions).toEqual([]);
     }
   });
 
@@ -55,10 +55,10 @@ describe("pure store mutations", () => {
     const store = fixture();
     const result = reduceStore(store, { ...poolAction, poolId: 1, color: "#123456", newAdditionsExpireSameDay: false, openingAmount: "ignored" });
     expect(result.pools[0]).toMatchObject({ name: "New", color: "#123456", hidden_from_total: true });
-    expect(result.pools[0].new_additions_expire_same_day).toBeUndefined();
-    expect(result.pools[0].additions).toBe(store.pools[0].additions);
-    expect(result.pools[0].recurring).toBe(store.pools[0].recurring);
-    expect(result.pools[0].caps).toBe(store.pools[0].caps);
+    expect(result.pools[0]!.new_additions_expire_same_day).toBeUndefined();
+    expect(result.pools[0]!.additions).toBe(store.pools[0]!.additions);
+    expect(result.pools[0]!.recurring).toBe(store.pools[0]!.recurring);
+    expect(result.pools[0]!.caps).toBe(store.pools[0]!.caps);
     expect(result.pools[1]).toBe(store.pools[1]);
     expect(result.next_id).toBe(store.next_id);
   });
@@ -66,7 +66,7 @@ describe("pure store mutations", () => {
   it("adds a batch of one-time credits with consecutive IDs and pool expiry defaults", () => {
     const store = fixture();
     const result = reduceStore(store, { type: "save-addition", poolId: 1, form: { ...form, additionalEntries: [{ amount: 3, date: "2026-04-02" }] } });
-    expect(result.pools[0].additions.slice(1)).toEqual([
+    expect(result.pools[0]?.additions.slice(1)).toEqual([
       { id: 8, amount: 1.25, date: "2026-04-01", reset: undefined, expires_same_day: true },
       { id: 9, amount: 3, date: "2026-04-02", reset: undefined, expires_same_day: true },
     ]);
@@ -79,35 +79,35 @@ describe("pure store mutations", () => {
       ...form, reset, recurring: true, cadence: "YearlyNthWeekday", month: 11, nthWeekday: "Fourth", weekday: "Thursday",
       endDate: "2029-12-31", additionalEntries: [{ amount: 100, date: "2026-04-02" }],
     } });
-    expect(result.pools[0].recurring[1]).toEqual({ id: 8, amount: 1.25, start_date: "2026-04-01", end_date: "2029-12-31",
+    expect(result.pools[0]?.recurring[1]).toEqual({ id: 8, amount: 1.25, start_date: "2026-04-01", end_date: "2029-12-31",
       cadence: "YearlyNthWeekday", month: 11, nth_weekday: "Fourth", weekday: "Thursday", reset: reset || undefined, expires_same_day: reset ? undefined : true });
     expect(result.next_id).toBe(9);
-    expect(result.pools[0].additions).toHaveLength(1);
+    expect(result.pools[0]?.additions).toHaveLength(1);
   });
 
   it("ignores batch rows for a one-time reset and allows a zero balance", () => {
     const result = reduceStore(fixture(), { type: "save-addition", poolId: 1, form: { ...form, reset: true, amount: 0, additionalEntries: [{ amount: 8, date: "2026-04-02" }] } });
     expect(result.next_id).toBe(9);
-    expect(result.pools[0].additions[1]).toMatchObject({ id: 8, reset: true, amount: 0 });
-    expect(result.pools[0].additions[1].expires_same_day).toBeUndefined();
+    expect(result.pools[0]?.additions[1]).toMatchObject({ id: 8, reset: true, amount: 0 });
+    expect(result.pools[0]!.additions[1]!.expires_same_day).toBeUndefined();
   });
 
   it("edits one-time credits in place and uses the explicit expiry setting", () => {
     const store = fixture();
     const action: StoreAction = { type: "save-addition", poolId: 1, target: { type: "one-time", id: 3 }, form };
     const result = reduceStore(store, action);
-    expect(result.pools[0].additions).toEqual([{ id: 3, amount: 1.25, date: "2026-04-01", reset: undefined, expires_same_day: undefined }]);
+    expect(result.pools[0]?.additions).toEqual([{ id: 3, amount: 1.25, date: "2026-04-01", reset: undefined, expires_same_day: undefined }]);
     expect(result.next_id).toBe(store.next_id);
     const expiring = reduceStore(store, { ...action, form: { ...form, expiresSameDay: true } });
-    expect(expiring.pools[0].additions[0].expires_same_day).toBe(true);
+    expect(expiring.pools[0]?.additions[0]?.expires_same_day).toBe(true);
     const reset = reduceStore(expiring, { ...action, form: { ...form, reset: true, expiresSameDay: true } });
-    expect(reset.pools[0].additions[0].expires_same_day).toBeUndefined();
+    expect(reset.pools[0]!.additions[0]!.expires_same_day).toBeUndefined();
   });
 
   it("clears obsolete recurring schedule fields when changing cadence", () => {
     const store = fixture();
     const result = reduceStore(store, { type: "save-addition", poolId: 1, target: { type: "recurring", id: 4 }, form: { ...form, recurring: true, cadence: "Weekly", expiresSameDay: true } });
-    expect(result.pools[0].recurring[0]).toEqual({ id: 4, amount: 1.25, cadence: "Weekly", start_date: "2026-04-01", end_date: undefined,
+    expect(result.pools[0]?.recurring[0]).toEqual({ id: 4, amount: 1.25, cadence: "Weekly", start_date: "2026-04-01", end_date: undefined,
       month: undefined, nth_weekday: undefined, weekday: undefined, reset: undefined, expires_same_day: true });
     expect(result.next_id).toBe(store.next_id);
   });
@@ -116,10 +116,10 @@ describe("pure store mutations", () => {
     const store = fixture();
     const cap = { max_balance: 20, start_date: "2026-07-01" };
     const created = reduceStore(store, { type: "save-cap", poolId: 1, cap });
-    expect(created.pools[0].caps[1]).toEqual({ ...cap, id: 8 });
+    expect(created.pools[0]?.caps[1]).toEqual({ ...cap, id: 8 });
     expect(created.next_id).toBe(9);
     const edited = reduceStore(store, { type: "save-cap", poolId: 1, capId: 5, cap: { ...cap, start_date: "2026-01-01" } });
-    expect(edited.pools[0].caps).toEqual([{ ...cap, start_date: "2026-01-01", id: 5 }]);
+    expect(edited.pools[0]?.caps).toEqual([{ ...cap, start_date: "2026-01-01", id: 5 }]);
     expect(edited.next_id).toBe(store.next_id);
     const conflict: StoreAction = { type: "save-cap", poolId: 1, cap: { ...cap, start_date: "2026-06-30" } };
     expect(storeActionError(store, conflict)).toBe("Cap date ranges must not overlap.");
@@ -153,13 +153,13 @@ describe("pure store mutations", () => {
   it("deletes only the selected addition, recurring rule, cap, or event", () => {
     const store = fixture();
     const oneTime = reduceStore(store, { type: "remove-addition", poolId: 1, additionId: 3, recurring: false });
-    expect(oneTime.pools[0].additions).toEqual([]);
-    expect(oneTime.pools[0].recurring).toBe(store.pools[0].recurring);
+    expect(oneTime.pools[0]?.additions).toEqual([]);
+    expect(oneTime.pools[0]!.recurring).toBe(store.pools[0]!.recurring);
     const recurring = reduceStore(store, { type: "remove-addition", poolId: 1, additionId: 4, recurring: true });
-    expect(recurring.pools[0].recurring).toEqual([]);
-    expect(recurring.pools[0].additions).toBe(store.pools[0].additions);
+    expect(recurring.pools[0]?.recurring).toEqual([]);
+    expect(recurring.pools[0]!.additions).toBe(store.pools[0]!.additions);
     const cap = reduceStore(store, { type: "remove-cap", poolId: 1, capId: 5 });
-    expect(cap.pools[0].caps).toEqual([]);
+    expect(cap.pools[0]?.caps).toEqual([]);
     expect(cap.events).toBe(store.events);
     expect(reduceStore(store, { type: "remove-event", eventId: 6 }).events).toEqual([store.events[1]]);
   });
@@ -172,10 +172,10 @@ describe("pure store mutations", () => {
     expect(reduceStore(store, { type: "reorder-pool", poolId: 1, targetId: 1 })).toBe(store);
     expect(reduceStore(store, { type: "reorder-pool", poolId: 1, targetId: 99 })).toBe(store);
     const hidden = reduceStore(store, { type: "set-pool-visibility", poolId: 1, visible: false });
-    expect(hidden.pools[0].hidden_from_graph).toBe(true);
-    expect(hidden.pools[0].additions).toBe(store.pools[0].additions);
+    expect(hidden.pools[0]?.hidden_from_graph).toBe(true);
+    expect(hidden.pools[0]!.additions).toBe(store.pools[0]!.additions);
     expect(hidden.events).toBe(store.events);
-    expect(reduceStore(hidden, { type: "set-pool-visibility", poolId: 1, visible: true }).pools[0].hidden_from_graph).toBe(false);
+    expect(reduceStore(hidden, { type: "set-pool-visibility", poolId: 1, visible: true }).pools[0]?.hidden_from_graph).toBe(false);
   });
 
   it.each([
