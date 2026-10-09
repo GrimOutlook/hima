@@ -469,7 +469,7 @@ export function BalanceChart({
                 tickLine={false}
                 tickMargin={9}
                 height={30}
-                tick={{ fill: "#969d95", fontSize: 10, fontFamily: "DM Sans, sans-serif" }}
+                tick={{ fill: "var(--muted)", fontSize: 12, fontFamily: "DM Sans, sans-serif" }}
                 allowDataOverflow
               />
               <YAxis
@@ -481,7 +481,7 @@ export function BalanceChart({
                 tickLine={false}
                 tickMargin={8}
                 width={PLOT_LEFT}
-                tick={{ fill: "#969d95", fontSize: 10, fontFamily: "DM Sans, sans-serif" }}
+                tick={{ fill: "var(--muted)", fontSize: 12, fontFamily: "DM Sans, sans-serif" }}
                 allowDecimals
               />
               {todayIsVisible && <ReferenceLine
@@ -491,8 +491,8 @@ export function BalanceChart({
                 label={{
                   value: selectedIndex === todayIndex ? "Today · selected date" : "Today",
                   position: "insideTop",
-                  fill: "#747e74",
-                  fontSize: 9,
+                  fill: "var(--muted)",
+                  fontSize: 12,
                   className: "chart-today-label",
                 }}
               />}
@@ -504,8 +504,8 @@ export function BalanceChart({
                   label={{
                     value: "Selected date",
                     position: "insideBottom",
-                    fill: PROJECTED_COLOR,
-                    fontSize: 9,
+                    fill: "var(--text-warm)",
+                    fontSize: 12,
                     className: "chart-selected-date-label",
                   }}
                 />
