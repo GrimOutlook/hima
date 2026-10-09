@@ -290,10 +290,14 @@ async fn token(
     assert_eq!(form["grant_type"], "authorization_code");
     assert_eq!(
         form["redirect_uri"],
-        if mode == "vite" {
-            "http://127.0.0.1:5173/auth/callback"
+        if mode == "proxy" {
+            format!(
+                "{}/auth/callback",
+                std::env::var("HIMA_TEST_HTTPS_PROXY")
+                    .unwrap_or_else(|_| "http://127.0.0.1:5173".into())
+            )
         } else {
-            "https://app.example/auth/callback"
+            "https://app.example/auth/callback".into()
         }
     );
     if let Some(authorization) = headers.get("authorization") {
@@ -419,40 +423,60 @@ async fn start(app: &Router, provider: &Provider, mode: &str) -> (String, String
     (format!("/auth/callback?state={code}&code={code}"), browser)
 }
 
-// Opt-in because this uses the contributor's running Vite process and its fixed
-// backend port. The provider still verifies the real code exchange and S256 PKCE.
-async fn vite_proxy_contract(pool: &PgPool, provider: &Provider) {
-    let origin = "http://127.0.0.1:5173";
-    let app = server::with_auth(
-        Auth::new(
-            Database::from_pool(pool.clone()),
-            &provider.issuer,
-            "hima-test".into(),
-            None,
-            origin,
+// Opt-in proxies use the fixed upstream port; TLS tests trust only their test CA.
+async fn proxy_contract(pool: &PgPool, provider: &Provider) {
+    let https_origin = std::env::var("HIMA_TEST_HTTPS_PROXY").ok();
+    let origin = https_origin.as_deref().unwrap_or("http://127.0.0.1:5173");
+    let make = || async {
+        server::with_auth(
+            Auth::new(
+                Database::from_pool(pool.clone()),
+                &provider.issuer,
+                "hima-test".into(),
+                None,
+                origin,
+            )
+            .await
+            .unwrap(),
         )
-        .await
-        .unwrap(),
-    );
+    };
+    let app = make().await;
     let listener = tokio::net::TcpListener::bind("127.0.0.1:3000")
         .await
-        .expect("stop the backend before running the Vite proxy test");
+        .expect("stop the backend before running the proxy test");
     let task = tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
-    let client = openidconnect::reqwest::Client::builder()
-        .redirect(openidconnect::reqwest::redirect::Policy::none())
-        .build()
-        .unwrap();
+    let mut builder = openidconnect::reqwest::Client::builder()
+        .redirect(openidconnect::reqwest::redirect::Policy::none());
+    if https_origin.is_some() {
+        let pem = std::fs::read(std::env::var("HIMA_TEST_PROXY_CA").unwrap()).unwrap();
+        builder = builder
+            .add_root_certificate(openidconnect::reqwest::Certificate::from_pem(&pem).unwrap());
+    }
+    let client = builder.build().unwrap();
+    for (path, expected) in [("/api", 404), ("/auth", 404), ("/api/me", 401)] {
+        let response = client.get(format!("{origin}{path}")).send().await.unwrap();
+        assert_eq!(response.status().as_u16(), expected);
+        assert_eq!(response.headers()["content-type"], "application/json");
+    }
     let login = client
         .get(format!("{origin}/auth/login"))
         .send()
         .await
-        .expect("start pnpm run dev before running the Vite proxy test");
+        .expect("start the proxy before running the proxy test");
     assert_eq!(login.status().as_u16(), 303);
     assert_eq!(login.headers()["cache-control"], "no-store");
     let cookie = login.headers()["set-cookie"].to_str().unwrap();
-    assert!(cookie.starts_with("hima-login="));
+    let prefix = if https_origin.is_some() {
+        "__Host-"
+    } else {
+        ""
+    };
+    assert!(cookie.starts_with(&format!("{prefix}hima-login=")));
     assert!(cookie.contains("HttpOnly"));
-    assert!(!cookie.contains("Secure"));
+    assert_eq!(cookie.contains("Secure"), https_origin.is_some());
+    assert!(cookie.contains("SameSite=Lax"));
+    assert!(cookie.contains("Path=/"));
+    assert!(!cookie.contains("Domain="));
     let browser = cookie.split(';').next().unwrap().to_owned();
     let url =
         openidconnect::url::Url::parse(login.headers()["location"].to_str().unwrap()).unwrap();
@@ -465,7 +489,7 @@ async fn vite_proxy_contract(pool: &PgPool, provider: &Provider) {
         (
             query["nonce"].clone(),
             query["code_challenge"].clone(),
-            "vite".into(),
+            "proxy".into(),
         ),
     );
     let callback = client
@@ -476,17 +500,19 @@ async fn vite_proxy_contract(pool: &PgPool, provider: &Provider) {
         .unwrap();
     assert_eq!(callback.status().as_u16(), 303);
     assert_eq!(callback.headers()["location"], "/");
-    let session = callback
+    let session_cookie = callback
         .headers()
         .get_all("set-cookie")
         .iter()
         .map(|v| v.to_str().unwrap())
-        .find(|v| v.starts_with("hima-session="))
-        .unwrap()
-        .split(';')
-        .next()
-        .unwrap()
-        .to_owned();
+        .find(|v| v.starts_with(&format!("{prefix}hima-session=")))
+        .unwrap();
+    assert_eq!(session_cookie.contains("Secure"), https_origin.is_some());
+    for attribute in ["HttpOnly", "SameSite=Lax", "Path=/"] {
+        assert!(session_cookie.contains(attribute));
+    }
+    assert!(!session_cookie.contains("Domain="));
+    let session = session_cookie.split(';').next().unwrap().to_owned();
     let me = client
         .get(format!("{origin}/api/me"))
         .header("cookie", &session)
@@ -503,6 +529,41 @@ async fn vite_proxy_contract(pool: &PgPool, provider: &Provider) {
         .await
         .unwrap();
     assert_eq!(planner.status().as_u16(), 200);
+    let planner: Value = serde_json::from_str(&planner.text().await.unwrap()).unwrap();
+    let revision = planner["revision"].as_i64().unwrap();
+    let document = json!({"version":1,"pools":[],"events":[],"next_id":9});
+    let save_body = json!({"expected_revision":revision,"document":document}).to_string();
+    for (csrf, expected) in [("wrong", 403), (me["csrf_token"].as_str().unwrap(), 200)] {
+        let saved = client
+            .put(format!("{origin}/api/planner"))
+            .header("cookie", &session)
+            .header("origin", origin)
+            .header("x-csrf-token", csrf)
+            .header("content-type", "application/json")
+            .body(save_body.clone())
+            .send()
+            .await
+            .unwrap();
+        assert_eq!(saved.status().as_u16(), expected);
+    }
+    // Restart the HTTP service and recreate auth state behind the same proxy.
+    task.abort();
+    let _ = task.await;
+    let app = make().await;
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:3000")
+        .await
+        .unwrap();
+    let task = tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
+    let restored = client
+        .get(format!("{origin}/api/planner"))
+        .header("cookie", &session)
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(restored.status().as_u16(), 200);
+    let restored: Value = serde_json::from_str(&restored.text().await.unwrap()).unwrap();
+    assert_eq!(restored["document"], document);
+    assert_eq!(restored["revision"], revision + 1);
     let logout = client
         .post(format!("{origin}/auth/logout"))
         .header("cookie", &session)
@@ -575,6 +636,34 @@ async fn oidc_and_persistent_browser_sessions(pool: PgPool) {
         )
     };
     let app = server::with_auth(make().await.unwrap());
+    // TLS terminates at a proxy; neither its HTTP upstream nor spoofed forwarding
+    // headers may downgrade cookies or change the registered public callback.
+    let proxy_login = request(
+        &app,
+        "GET",
+        "/auth/login",
+        "",
+        &[
+            ("host", "internal:3000"),
+            ("x-forwarded-proto", "http"),
+            ("x-forwarded-host", "evil.example"),
+            ("forwarded", "proto=http;host=evil.example"),
+        ],
+    )
+    .await;
+    assert_eq!(proxy_login.status(), StatusCode::SEE_OTHER);
+    let proxy_cookie = proxy_login.headers()["set-cookie"].to_str().unwrap();
+    assert!(proxy_cookie.starts_with("__Host-hima-login="));
+    for attribute in ["Secure", "HttpOnly", "SameSite=Lax", "Path=/"] {
+        assert!(proxy_cookie.contains(attribute));
+    }
+    assert!(!proxy_cookie.contains("Domain="));
+    let proxy_url =
+        openidconnect::url::Url::parse(proxy_login.headers()["location"].to_str().unwrap())
+            .unwrap();
+    assert!(proxy_url.query_pairs().any(|(key, value)| {
+        key == "redirect_uri" && value == "https://app.example/auth/callback"
+    }));
     planner_http_contract(&app, &pool).await;
     for origin in [
         "http://app.example",
@@ -693,6 +782,25 @@ async fn oidc_and_persistent_browser_sessions(pool: PgPool) {
             .status(),
         StatusCode::BAD_REQUEST
     );
+    let before_restart = request(&app, "GET", "/api/me", &session, &[]).await;
+    let before_restart: Value = serde_json::from_slice(
+        &before_restart
+            .into_body()
+            .collect()
+            .await
+            .unwrap()
+            .to_bytes(),
+    )
+    .unwrap();
+    let db = Database::from_pool(pool.clone());
+    let saved_before_restart = db
+        .save(
+            before_restart["user_id"].as_i64().unwrap(),
+            &json!({"version":1,"pools":[],"events":[],"next_id":7}),
+            0,
+        )
+        .await
+        .unwrap();
     // Recreate the backend state and reconnect: no in-memory session dependency.
     let reopened = Database::from_pool(
         sqlx::postgres::PgPoolOptions::new()
@@ -717,6 +825,12 @@ async fn oidc_and_persistent_browser_sessions(pool: PgPool) {
     let me: Value = serde_json::from_slice(&bytes).unwrap();
     assert!(!String::from_utf8_lossy(&bytes).contains("provider-access-token"));
     let csrf = me["csrf_token"].as_str().unwrap();
+    assert_eq!(me, before_restart);
+    let planner = request(&restored, "GET", "/api/planner", &session, &[]).await;
+    assert_eq!(planner.status(), StatusCode::OK);
+    let planner: Value =
+        serde_json::from_slice(&planner.into_body().collect().await.unwrap().to_bytes()).unwrap();
+    assert_eq!(planner, serde_json::to_value(saved_before_restart).unwrap());
     assert_eq!(
         request(&restored, "POST", "/api/future-mutation", &session, &[])
             .await
@@ -898,8 +1012,10 @@ async fn oidc_and_persistent_browser_sessions(pool: PgPool) {
         .status(),
         StatusCode::BAD_REQUEST
     );
-    if std::env::var_os("HIMA_TEST_VITE_PROXY").is_some() {
-        vite_proxy_contract(&pool, &provider).await;
+    if std::env::var_os("HIMA_TEST_VITE_PROXY").is_some()
+        || std::env::var_os("HIMA_TEST_HTTPS_PROXY").is_some()
+    {
+        proxy_contract(&pool, &provider).await;
     }
     task.abort();
 }

@@ -29,9 +29,22 @@ pnpm run build
 
 The generated site is written to `dist/`. Run `pnpm run preview` to serve the production build locally.
 
+## Architecture and production hosting
+
+React serves the planner UI from static `dist/` assets. Relative `/api` and `/auth`
+requests go to the Rust Axum service under the same HTTPS origin. PostgreSQL 17
+stores account identities, revision-checked planner documents, login transactions,
+and hashed sessions. The API has no local data directory; neither frontend files
+nor browser storage are the authoritative account database.
+
+See [production deployment](deploy/README.md) for locked release builds, Nix
+frontend/backend packages, an HTTPS nginx reverse proxy, systemd startup and
+restart, OIDC/secret configuration, migrations, backup/restore, and acceptance
+health checks.
+
 ### Build with Nix
 
-With Nix flakes enabled, run `nix build` to build the production site using the pinned Node.js and pnpm dependencies. The static site is available in `result/dist/`, ready to serve with a static web server. Package outputs support `x86_64-linux` and `aarch64-linux`.
+With Nix flakes enabled, run `nix build .#frontend` (or `nix build`) to build the production site using the pinned Node.js and pnpm dependencies. The static site is available in `result/dist/`, ready to serve with a static web server. `nix build .#backend --out-link result-backend` builds release executables `result-backend/bin/hima-api` and `result-backend/bin/migrate`, including embedded migrations. Package outputs support `x86_64-linux` and `aarch64-linux`.
 
 Run `nix develop` for the Node.js, pnpm, and Rust development shell, or `nix run` to start the development server after installing dependencies with `pnpm install --frozen-lockfile`.
 
