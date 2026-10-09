@@ -12,6 +12,21 @@ jobs:
     name: Backend format, lint, test, and build
     runs-on: ubuntu-latest
     timeout-minutes: 10
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_PASSWORD: hima-test
+          POSTGRES_DB: hima_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      DATABASE_URL: postgres://postgres:hima-test@localhost:5432/hima_test
     defaults:
       run:
         working-directory: backend
@@ -25,6 +40,7 @@ jobs:
       - run: cargo fmt --check
       - run: cargo clippy --locked --all-targets -- -D warnings
       - run: cargo test --locked
+      - run: cargo test --locked --test postgres -- --ignored
       - run: cargo build --locked
   checks:
     name: Lint, typecheck, test, and build

@@ -52,7 +52,7 @@ cargo run --locked --manifest-path backend/Cargo.toml
 curl http://127.0.0.1:3000/health
 ```
 
-The health response is HTTP 200 with `Content-Type: application/json` and `{"status":"ok"}`. This is a liveness check; no database is required. The frontend still uses browser storage. Authentication, PostgreSQL persistence, planner routes, and frontend integration are follow-up work; `auth`, `db`, and `planner` modules establish their boundaries.
+The health response is HTTP 200 with `Content-Type: application/json` and `{"status":"ok"}`. This is a liveness check; no database is required. The frontend still uses browser storage. The SQLx `db` module provides PostgreSQL persistence and the `planner` module validates documents; authentication, planner HTTP routes, and frontend integration are follow-up work.
 
 Configuration is read from the process environment (no automatic `.env` loading):
 
@@ -81,6 +81,39 @@ cargo build --manifest-path backend/Cargo.toml --locked
 ```
 
 Commit `backend/Cargo.lock` when changing Rust dependencies. CI runs these checks alongside the frontend checks.
+
+### PostgreSQL storage
+
+Use PostgreSQL 17 (also used in CI). For a local development database:
+
+```sh
+docker run -d --name hima-postgres -e POSTGRES_PASSWORD=hima-dev -e POSTGRES_DB=hima -p 127.0.0.1:5432:5432 -v hima-postgres-data:/var/lib/postgresql/data postgres:17
+export DATABASE_URL=postgres://postgres:hima-dev@127.0.0.1:5432/hima
+cargo run --locked --manifest-path backend/Cargo.toml --bin migrate
+```
+
+The migration command connects using `DATABASE_URL` and applies embedded SQLx
+migrations from `backend/migrations/`; rerunning is safe. The database must exist,
+and the migration role needs schema/table creation privileges. Deployment should
+run migrations before starting services that use storage. The HTTP liveness service
+does not read `DATABASE_URL` or automatically migrate. Production connection URLs
+should use the deployment's database credentials and TLS configuration.
+
+Storage callers use `Database::connect`, then the per-user `ensure_user`, `load`,
+and validated `save` methods. Data lives in PostgreSQL, so restarting backend
+processes does not discard planners. See [the document contract](backend/DOCUMENT.md)
+for version-1 compatibility, synchronized preferences, validation, and revision semantics.
+
+Run the actual PostgreSQL integration test against a disposable test instance
+(the role must have `CREATEDB`; SQLx creates an isolated test database):
+
+```sh
+DATABASE_URL=postgres://postgres:hima-dev@127.0.0.1:5432/hima cargo test --locked --manifest-path backend/Cargo.toml --test postgres -- --ignored
+```
+
+Regular `cargo test` runs offline validation and HTTP tests; the explicitly ignored
+PostgreSQL suite runs separately in CI, covering fresh migrations, constraints,
+per-user isolation, atomic revisions, invalid-write preservation, and reconnect persistence.
 
 ## License
 
