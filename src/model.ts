@@ -794,25 +794,6 @@ interface PoolDailyActions {
 }
 
 function poolLedgerForDates(pool: Pool, events: LeaveEvent[], dates: string[]): PoolLedgerSnapshot[] {
-  if (pool.caps.length === 0 && !pool.additions.some((addition) => addition.reset || addition.expires_same_day) && !pool.recurring.some((rule) => rule.reset || rule.expires_same_day)) {
-    return dates.map((date) => {
-      if (!isValidDate(date)) return { accrued: 0, used: 0, balance: 0 };
-      const oneTime = pool.additions
-        .filter((addition) => addition.date <= date)
-        .reduce((total, addition) => total + addition.amount, 0);
-      const recurring = pool.recurring.reduce(
-        (total, rule) => total + rule.amount * recurringOccurrencesThrough(rule, date),
-        0,
-      );
-      const accrued = oneTime + recurring;
-      const used = events.reduce(
-        (total, event) => total + eventHoursFromPoolThrough(event, pool.id, date),
-        0,
-      );
-      return { accrued: roundHours(accrued), used: roundHours(used), balance: roundHours(accrued - used) };
-    });
-  }
-
   const throughDate = dates.at(-1);
   if (!throughDate || !isValidDate(throughDate)) return dates.map(() => ({ accrued: 0, used: 0, balance: 0 }));
 

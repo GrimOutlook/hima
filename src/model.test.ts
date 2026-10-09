@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  addDays,
   allocateIds,
   balanceHistory,
   balanceHistoryForDates,
@@ -32,6 +33,58 @@ function recurring(
 ): RecurringAddition {
   return { id: 1, amount, cadence, start_date, ...(end_date ? { end_date } : {}) };
 }
+
+describe("incremental uncapped balance history", () => {
+  it.each(["Weekly", "Fortnightly", "Monthly", "Yearly", "YearlyNthWeekday"] as const)(
+    "preserves cumulative credits and leave for %s schedules",
+    (cadence) => {
+      const rule: RecurringAddition = {
+        ...recurring(cadence, "2024-01-31", 1.25, "2026-02-28"),
+        ...(cadence === "YearlyNthWeekday" ? { month: 2, nth_weekday: "Last" as const, weekday: "Monday" as const } : {}),
+      };
+      const pool: Pool = {
+        id: 1, name: "Leave", caps: [], recurring: [rule],
+        additions: [{ id: 2, date: "2024-01-01", amount: 10.5 }],
+      };
+      const store = { ...emptyStore(), pools: [pool], events: [{
+        id: 3, name: "Leave", days: [
+          { date: "2024-01-01", allocations: [{ pool_id: 1, hours: 12 }] },
+          { date: "2025-02-28", allocations: [{ pool_id: 1, hours: 2.25 }, { pool_id: 99, hours: 100 }] },
+        ],
+      }] };
+      const dates = ["2023-12-31", "2024-01-01", "2024-02-29", "2025-02-28", "2026-02-28", "2027-01-01"];
+      const history = balanceHistoryForDates(store, "2025-02-28", dates, 1);
+      expect(history).toEqual(dates.map((date) => ({
+        date,
+        balance: (date < "2024-01-01" ? 0 : 10.5 - 12) +
+          1.25 * recurringOccurrencesThrough(rule, date) - (date >= "2025-02-28" ? 2.25 : 0),
+        projected: date > "2025-02-28",
+      })));
+    },
+  );
+
+  it("scans event days once per pool over a decade of daily chart points", () => {
+    let eventScans = 0;
+    const pools: Pool[] = Array.from({ length: 8 }, (_, index) => ({
+      id: index + 1, name: "Leave", caps: [],
+      additions: [{ id: index + 10, date: "2020-01-01", amount: 100 }],
+      recurring: [recurring("Weekly", "2020-01-01", 1)],
+    }));
+    const events: LeaveEvent[] = Array.from({ length: 300 }, (_, index) => ({
+      id: index + 100, name: "Leave",
+      get days() {
+        eventScans += 1;
+        return [{ date: addDays("2020-01-01", index), allocations: [{ pool_id: index % 8 + 1, hours: 1 }] }];
+      },
+    }));
+    const dates = Array.from({ length: 3652 }, (_, index) => addDays("2020-01-01", index));
+    const history = balanceHistoryForDates({ ...emptyStore(), pools, events }, "2025-01-01", dates);
+    expect(history).toHaveLength(dates.length);
+    expect(history[0]?.balance).toBe(807);
+    expect(history.at(-1)?.balance).toBe(800 + 8 * (Math.floor(3651 / 7) + 1) - 300);
+    expect(eventScans).toBe(events.length * pools.length);
+  });
+});
 
 describe("shared chart timeline", () => {
   it.each([false, true])("preserves balances beyond another pool's last event (capped: %s)", (capped) => {
