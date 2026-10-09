@@ -571,10 +571,12 @@ export function eventHoursFromPoolThrough(event: LeaveEvent, poolId: number, dat
 }
 
 export function totalsOn(store: Store, date: string): { accrued: number; used: number; balance: number } {
-  const ledgers = store.pools.map((pool) => poolLedgerForDates(pool, store.events, [date])[0]);
+  const ledgers = store.pools
+    .filter((pool) => !pool.hidden_from_total)
+    .map((pool) => poolLedgerForDates(pool, store.events, [date])[0]);
   const accrued = ledgers.reduce((total, ledger) => total + (ledger?.accrued ?? 0), 0);
   const used = ledgers.reduce((total, ledger) => total + (ledger?.used ?? 0), 0);
-  const balance = ledgers.reduce((total, ledger, index) => total + (store.pools[index].hidden_from_total ? 0 : ledger?.balance ?? 0), 0);
+  const balance = ledgers.reduce((total, ledger) => total + (ledger?.balance ?? 0), 0);
   return { accrued: roundHours(accrued), used: roundHours(used), balance: roundHours(balance) };
 }
 
