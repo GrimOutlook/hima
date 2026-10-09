@@ -34,3 +34,29 @@ it("restores the configured timeline and selects today with the visible reset bu
     vi.unstubAllGlobals();
   }
 });
+
+it("recomputes a widened event range when history dates change without changing event indices", async () => {
+  vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
+  const container = document.createElement("div");
+  const root = createRoot(container);
+  const render = (historyDates: string[], eventDate: string) => root.render(<BalanceChart
+    defaultTimeline="all time" historyDates={historyDates}
+    today="2026-10-09" selectedDate="2026-10-09" onDateChange={vi.fn()} onToday={vi.fn()}
+    pools={[]} poolHistories={{}} onPoolVisibilityChange={vi.fn()}
+    zoomEvent={{ id: 1, name: "Trip", days: [{ date: eventDate, allocations: [] }] }}
+    eventSelectionRequest={1} widenSelectedEvent
+  />);
+  try {
+    await act(async () => render(
+      ["2025-01-01", "2026-04-01", "2026-10-01", "2027-04-01", "2028-01-01"], "2026-10-01",
+    ));
+    expect(container.querySelector(".history-range")?.textContent).toContain("Apr 01, 2026 – Apr 01, 2027");
+    await act(async () => render(
+      ["2025-01-01", "2026-01-01", "2026-04-01", "2027-01-01", "2028-01-01"], "2026-04-01",
+    ));
+    expect(container.querySelector(".history-range")?.textContent).toContain("Jan 01, 2026 – Jan 01, 2027");
+  } finally {
+    await act(async () => root.unmount());
+    vi.unstubAllGlobals();
+  }
+});

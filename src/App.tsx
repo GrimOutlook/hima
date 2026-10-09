@@ -109,11 +109,11 @@ function App() {
     [store, chartHistoryEnd, historyDates],
   );
   const firstPoolId = store.pools[0]?.id;
-  const timeline = [...store.events].sort((left, right) =>
+  const timeline = useMemo(() => [...store.events].sort((left, right) =>
     left.days[0]?.date.localeCompare(right.days[0]?.date ?? "") ?? 0,
-  );
+  ), [store.events]);
   const usesFilterPool = store.pools.find((pool) => pool.id === selectedUsesPoolId);
-  const visibleTimeline = usesFilterPool
+  const visibleTimeline = useMemo(() => usesFilterPool
     ? timeline.flatMap((event) => {
         const days = event.days.flatMap((day) => {
           const allocations = day.allocations.filter((allocation) => allocation.pool_id === usesFilterPool.id);
@@ -121,7 +121,7 @@ function App() {
         });
         return days.length > 0 ? [{ ...event, days }] : [];
       })
-    : timeline;
+    : timeline, [timeline, usesFilterPool]);
   const visibleUsedHours = usesFilterPool
     ? poolTotalsOn(store, usesFilterPool.id, balanceDate).used
     : balance.used;
@@ -137,11 +137,7 @@ function App() {
     saveSettings(firstDayOfWeek, ignoreWeekends, defaultTimeline);
   }, [firstDayOfWeek, ignoreWeekends, defaultTimeline]);
 
-  useEffect(() => {
-    scrollToClosestEvent(balanceDate);
-  }, [balanceDate, selectedUsesPoolId, store.events]);
-
-  function scrollToClosestEvent(date: string) {
+  const scrollToClosestEvent = useCallback((date: string) => {
     const list = timelineListRef.current;
     if (!list) return;
     const clickedTime = Date.parse(date);
@@ -162,7 +158,11 @@ function App() {
       top: list.scrollTop + row.getBoundingClientRect().top - list.getBoundingClientRect().top - list.clientTop,
       behavior: window.matchMedia("(prefers-reduced-motion: reduce)").matches ? "instant" : "smooth",
     });
-  }
+  }, [visibleTimeline]);
+
+  useEffect(() => {
+    scrollToClosestEvent(balanceDate);
+  }, [balanceDate, scrollToClosestEvent]);
 
   function createPool() {
     setModal({ type: "new-pool" });

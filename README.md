@@ -17,9 +17,10 @@ npm install
 npm run dev
 ```
 
-Run the tests and create a production build with:
+Check the app and chart hook dependencies, run the tests, and create a production build with:
 
 ```sh
+npm run lint
 npm test
 npm run build
 ```
