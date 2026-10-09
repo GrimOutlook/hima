@@ -16,6 +16,7 @@ import {
   type TooltipContentProps,
 } from "recharts";
 import { addMonths, formatHours, formatSignedHours, prettyDate, type BalancePoint, type LeaveEvent, type Pool } from "./model";
+import { poolColor } from "./poolColors";
 
 interface BalanceChartProps {
   defaultTimeline: TimelinePreset;
@@ -171,9 +172,9 @@ export function BalanceChart({
   const selectedPool = selectedPools.length === 1 ? selectedPools[0] : undefined;
   const series = combinedTotals && selectedPools.length > 0
     ? [{ key: "combined", name: "Combined Totals", color: ACTUAL_COLOR }]
-    : selectedPools.map((pool, index) => ({
+    : selectedPools.map((pool) => ({
       key: `pool_${pool.id}`, name: pool.name,
-      color: pool.color || [ACTUAL_COLOR, PROJECTED_COLOR, "#547eaa", "#9b6dad", "#ad913e"][index % 5],
+      color: poolColor(pool.id, pool.color),
     }));
   const fullHistory = useMemo(() => {
     const balances = new Map<string, number>();
