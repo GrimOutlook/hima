@@ -190,6 +190,19 @@ describe("event balance preview", () => {
       .toEqual([{ poolId: 1, date: "2026-02-01", balance: -2 }]);
   });
 
+  it("replaces the edited event without double-counting and preserves other planned leave", () => {
+    const original = { id: 3, name: "Edited leave", days: [{ date: "2026-01-02", allocations: [{ pool_id: 1, hours: 8 }] }] };
+    const later = { id: 4, name: "Later leave", days: [{ date: "2026-02-01", allocations: [{ pool_id: 1, hours: 2 }] }] };
+    const store = { ...emptyStore(), next_id: 5, pools: [pool], events: [original, later] };
+    expect(eventBalanceWarnings(store, original.days, original.id)).toEqual([]);
+    expect(eventBalanceWarnings(store, [{ date: "2026-01-03", allocations: [{ pool_id: 1, hours: 9 }] }], original.id))
+      .toEqual([{ poolId: 1, date: "2026-02-01", balance: -1 }]);
+    expect(eventBalanceWarnings(store, [{ date: "2026-01-03", allocations: [{ pool_id: 1, hours: 11 }] }], original.id))
+      .toEqual([{ poolId: 1, date: "2026-01-03", balance: -1 }]);
+    expect(store.events).toEqual([original, later]);
+    expect(poolBalanceOn(store, 1, "2026-02-01")).toBe(0);
+  });
+
   it("accounts for accruals, caps and resets and excludes untouched pools", () => {
     const store = { ...emptyStore(), pools: [
       { ...pool, additions: [...pool.additions, { id: 3, amount: 3, reset: true, date: "2026-01-03" }], recurring: [recurring("Weekly", "2026-01-02", 5)], caps: [{ id: 4, max_balance: 12, start_date: "2026-01-01" }] },
