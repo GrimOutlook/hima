@@ -1,9 +1,52 @@
 // @vitest-environment jsdom
-import { act } from "react";
+import { act, useState } from "react";
 import { createRoot } from "react-dom/client";
 import { expect, it, vi } from "vitest";
 import { CalendarPicker } from "./CalendarPicker";
 import { ModalFrame } from "./Modals";
+import { IgnoreWeekendsContext } from "./settings";
+
+it("enforces minimum dates and weekends, commits a selection, and clears an optional date", async () => {
+  vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
+  const container = document.createElement("div");
+  document.body.append(container);
+  const root = createRoot(container);
+  const change = vi.fn();
+  function DateField() {
+    const [value, setValue] = useState("2026-06-10");
+    return <IgnoreWeekendsContext.Provider value={true}>
+      <CalendarPicker label="End date" optional value={value} min="2026-06-10"
+        onChange={(date) => { change(date); setValue(date); }} />
+    </IgnoreWeekendsContext.Provider>;
+  }
+  try {
+    await act(async () => root.render(<DateField />));
+    const trigger = container.querySelector<HTMLButtonElement>(".date-picker-trigger")!;
+    await act(async () => trigger.click());
+    const day = (date: string) => document.querySelector<HTMLButtonElement>(`[data-date="${date}"]`)!;
+    expect(day("2026-06-09").disabled).toBe(true);
+    expect(day("2026-06-13").disabled).toBe(true);
+    expect(day("2026-06-14").disabled).toBe(true);
+    await act(async () => { day("2026-06-09").click(); day("2026-06-13").click(); });
+    expect(change).not.toHaveBeenCalled();
+    await act(async () => day("2026-06-12").click());
+    expect(change).toHaveBeenCalledExactlyOnceWith("2026-06-12");
+    expect(document.querySelector(".date-picker-calendar")).toBeNull();
+    expect(document.activeElement).toBe(trigger);
+    await act(async () => trigger.click());
+    expect(day("2026-06-12").getAttribute("aria-pressed")).toBe("true");
+    await act(async () => Array.from(document.querySelectorAll<HTMLButtonElement>(".date-picker-calendar button"))
+      .find((button) => button.textContent === "Clear date")!.click());
+    expect(change).toHaveBeenLastCalledWith("");
+    expect(trigger.textContent).toBe("Choose date");
+    expect(document.querySelector(".date-picker-calendar")).toBeNull();
+    expect(document.activeElement).toBe(trigger);
+  } finally {
+    await act(async () => root.unmount());
+    container.remove();
+    vi.unstubAllGlobals();
+  }
+});
 
 it("uses the variant rather than label text for styling and empty-date fallback", async () => {
   vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
