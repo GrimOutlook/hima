@@ -576,6 +576,12 @@ function App() {
             setBalanceDate(ignoreWeekends ? nextWeekday(chartHistoryEnd) : chartHistoryEnd);
           }}
           pools={store.pools}
+          onPoolVisibilityChange={(poolId, visible) => setStore((current) => ({
+            ...current,
+            pools: current.pools.map((pool) => pool.id === poolId
+              ? { ...pool, hidden_from_graph: !visible }
+              : pool),
+          }))}
           poolHistories={poolHistories}
           selectedEvent={selectedEvent}
           zoomEvent={zoomEvent}
