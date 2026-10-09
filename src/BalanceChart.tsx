@@ -1,4 +1,4 @@
-import { Fragment, useContext, useEffect, useMemo, useRef, useState } from "react";
+import { Fragment, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
 import { IgnoreWeekendsContext, isWeekend, TIMELINE_PRESETS, type TimelinePreset } from "./settings";
 import {
   Area,
@@ -172,12 +172,12 @@ export function BalanceChart({
     ? eventPoolIds.has(pool.id)
     : !pool.hidden_from_graph), [pools, eventPoolIds]);
   const selectedPool = selectedPools.length === 1 ? selectedPools[0] : undefined;
-  const series = combinedTotals && selectedPools.length > 0
+  const series = useMemo(() => combinedTotals && selectedPools.length > 0
     ? [{ key: "combined", name: "Combined Totals", color: ACTUAL_COLOR }]
     : selectedPools.map((pool) => ({
       key: `pool_${pool.id}`, name: pool.name,
       color: poolColor(pool.id, pool.color),
-    }));
+    })), [combinedTotals, selectedPools]);
   const fullHistory = useMemo(() => {
     const balances = new Map<string, number>();
     for (const pool of selectedPools) {
@@ -200,10 +200,10 @@ export function BalanceChart({
     chartRangeDates(history, timelineRange(defaultTimeline, history, today, todayIndex, lastIndex)),
   );
   const brushRange = chartRangeIndices(history, brushDates);
-  const setBrushRange = (range: ChartIndexRange | ((current: ChartIndexRange) => ChartIndexRange)) => {
+  const setBrushRange = useCallback((range: ChartIndexRange | ((current: ChartIndexRange) => ChartIndexRange)) => {
     setBrushDates((current) => chartRangeDates(history,
       typeof range === "function" ? range(chartRangeIndices(history, current)) : range));
-  };
+  }, [history]);
   const selectedPresetRef = useRef<TimelinePreset | null>(defaultTimeline);
   const previousSelectedDate = useRef(selectedDate);
   useEffect(() => {
@@ -211,7 +211,7 @@ export function BalanceChart({
     if (activePreset) {
       setBrushRange(timelineRange(activePreset, history, today, todayIndex, lastIndex));
     }
-  }, [history, today, todayIndex, lastIndex]);
+  }, [history, today, todayIndex, lastIndex, setBrushRange]);
   useEffect(() => {
     if (previousSelectedDate.current === selectedDate) return;
     previousSelectedDate.current = selectedDate;
@@ -224,7 +224,7 @@ export function BalanceChart({
     setBrushRange({ startIndex, endIndex: Math.min(lastIndex, startIndex + rangeSize) });
     selectedPresetRef.current = null;
     setSelectedPreset(null);
-  }, [selectedDate, selectedIndex, lastIndex]);
+  }, [selectedDate, selectedIndex, lastIndex, brushRange.startIndex, brushRange.endIndex, setBrushRange]);
   const eventIndices = [...new Set(selectedEvent?.days.map((day) =>
     history.findIndex((point) => point.date === day.date)) ?? [])].filter((index) => index >= 0).sort((a, b) => a - b);
   const highlightedStart = eventIndices[0];
@@ -241,7 +241,7 @@ export function BalanceChart({
     });
     selectedPresetRef.current = null;
     setSelectedPreset(null);
-  }, [selectedEvent?.id, highlightedStart, highlightedEnd, lastIndex]);
+  }, [selectedEvent?.id, highlightedStart, highlightedEnd, lastIndex, brushRange.startIndex, brushRange.endIndex, setBrushRange]);
   const zoomIndices = (zoomEvent?.days.map((day) =>
     history.findIndex((point) => point.date === day.date)) ?? []).filter((index) => index >= 0).sort((a, b) => a - b);
   const eventStart = zoomIndices[0];
@@ -266,7 +266,7 @@ export function BalanceChart({
       setSelectedPreset(null);
       return;
     }
-  }, [eventSelectionRequest, eventStart, eventEnd, lastIndex, zoomToSelectedEvent, widenSelectedEvent]);
+  }, [eventSelectionRequest, eventStart, eventEnd, lastIndex, zoomToSelectedEvent, widenSelectedEvent, history, setBrushRange]);
   const chartData = useMemo<ChartPoint[]>(
     () => {
       const balances = Object.fromEntries(selectedPools.map((pool) => [pool.id,
@@ -285,7 +285,7 @@ export function BalanceChart({
       })),
     }));
     },
-    [history, todayIndex, todayIsVisible, poolHistories, combinedTotals],
+    [history, todayIndex, todayIsVisible, poolHistories, selectedPools, series],
   );
   const todayPoint = fullHistory.find((point) => point.date === today);
   const currentBalance = todayPoint?.balance ?? 0;
