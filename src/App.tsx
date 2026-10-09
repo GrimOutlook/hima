@@ -22,7 +22,7 @@ import {
 import {
   addDays,
   allocateIds,
-  balanceHistory,
+  balanceHistoryDates,
   balanceHistoryForDates,
   capRangesOverlap,
   dayLabel,
@@ -92,16 +92,15 @@ function App() {
   const timelineListRef = useRef<HTMLDivElement>(null);
   const chartHistoryEnd = todayDate();
   const balance = totalsOn(store, balanceDate);
-  const history = useMemo(
-    () => balanceHistory({ ...store, pools: store.pools.map((pool) => ({ ...pool, hidden_from_graph: false })) }, chartHistoryEnd),
+  const historyDates = useMemo(
+    () => balanceHistoryDates({ ...store, pools: store.pools.map((pool) => ({ ...pool, hidden_from_graph: false })) }, chartHistoryEnd),
     [store, chartHistoryEnd],
   );
   const poolHistories = useMemo(
     () => {
-      const dates = history.map((point) => point.date);
-      return Object.fromEntries(store.pools.map((pool) => [pool.id, balanceHistoryForDates(store, chartHistoryEnd, dates, pool.id)]));
+      return Object.fromEntries(store.pools.map((pool) => [pool.id, balanceHistoryForDates(store, chartHistoryEnd, historyDates, pool.id)]));
     },
-    [store, chartHistoryEnd, history],
+    [store, chartHistoryEnd, historyDates],
   );
   const firstPoolId = store.pools[0]?.id;
   const timeline = [...store.events].sort((left, right) =>
@@ -570,7 +569,7 @@ function App() {
 
         <BalanceChart
           defaultTimeline={defaultTimeline}
-          history={history}
+          historyDates={historyDates}
           today={chartHistoryEnd}
           selectedDate={balanceDate}
           onDateChange={setBalanceDate}
