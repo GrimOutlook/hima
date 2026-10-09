@@ -243,10 +243,11 @@ function App() {
 
     try {
       const shouldImportSettings = importSettingsRef.current;
-      const { store: imported, settings } = parseBackupJson(await file.text());
+      const warnings: string[] = [];
+      const { store: imported, settings } = parseBackupJson(await file.text(), warnings);
       const restoreSettings = shouldImportSettings && settings !== undefined;
       const confirmed = window.confirm(
-        `Replace the data saved in this browser with ${imported.pools.length} ${imported.pools.length === 1 ? "pool" : "pools"} and ${imported.events.length} ${imported.events.length === 1 ? "event" : "events"}${restoreSettings ? " and restore the backup settings" : ""}?`,
+        `${warnings.length ? `${warnings.join("\n")}\n\n` : ""}Imported amounts are rounded to hundredths of an hour.\n\nReplace the data saved in this browser with ${imported.pools.length} ${imported.pools.length === 1 ? "pool" : "pools"} and ${imported.events.length} ${imported.events.length === 1 ? "event" : "events"}${restoreSettings ? " and restore the backup settings" : ""}?`,
       );
       if (!confirmed) return;
       setStore(imported);

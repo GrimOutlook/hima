@@ -514,6 +514,44 @@ describe("balances", () => {
 });
 
 describe("saved data compatibility", () => {
+  it("repairs inconsistent imports and reports discarded entries", () => {
+    const warnings: string[] = [];
+    const store = normalizeStore({
+      pools: [
+        { id: 1, name: "Leave", additions: [
+          { id: 2, date: "2026-01-01", amount: 1.23456 },
+          { id: 2, date: "2026-01-01", amount: 99 },
+          { id: 3, date: "invalid", amount: 4 },
+        ], recurring: [{ id: 4, start_date: "2026-01-01", amount: 2.34567 }],
+        caps: [{ id: 5, start_date: "2026-01-01", max_balance: 9.87654 }] },
+        { id: 1, name: "Duplicate" },
+        null,
+      ],
+      events: [
+        { id: 6, name: "Trip", days: [
+          { date: "2026-01-02", allocations: [{ pool_id: 1, hours: 1.23456 }, { pool_id: 99, hours: 2 }] },
+          { date: "2026-01-03", allocations: [{ pool_id: 99, hours: 2 }] },
+          { date: "invalid", allocations: [{ pool_id: 1, hours: 2 }] },
+        ] },
+        { id: 6, name: "Duplicate", pool_id: 1, date: "2026-01-04", amount: 3 },
+        { id: 7, name: "Orphan", pool_id: 99, date: "2026-01-04", amount: 3 },
+      ],
+    }, warnings);
+    expect(store.pools).toHaveLength(1);
+    expect(store.pools[0].additions).toEqual([{ id: 2, date: "2026-01-01", amount: 1.23 }]);
+    expect(store.pools[0].recurring[0].amount).toBe(2.35);
+    expect(store.pools[0].caps[0].max_balance).toBe(9.88);
+    expect(store.events).toEqual([{ id: 6, name: "Trip", days: [
+      { date: "2026-01-02", allocations: [{ pool_id: 1, hours: 1.23 }] },
+    ] }]);
+    expect(warnings.join("\n")).toContain("Ignored 2 pools");
+    expect(warnings.join("\n")).toContain("Ignored 2 one-time additions");
+    expect(warnings.join("\n")).toContain("missing pool");
+    expect(warnings.join("\n")).toContain("Ignored 2 event days");
+    expect(warnings.join("\n")).toContain("Ignored 2 events");
+    expect(store.next_id).toBe(7);
+  });
+
   it("keeps legacy recurring rules open-ended and restores valid end dates", () => {
     const store = normalizeStore({
       pools: [{
@@ -572,6 +610,7 @@ describe("saved data compatibility", () => {
   it("migrates old per-day pool assignments and preserves the next id", () => {
     const store = normalizeStore({
       next_id: 20,
+      pools: [{ id: 2, name: "Personal leave" }, { id: 4, name: "Annual leave" }],
       events: [{
         id: 8,
         name: "Conference",
