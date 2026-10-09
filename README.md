@@ -10,10 +10,10 @@ For holidays, create a pool (for example, **Holidays**) and enable **Holiday Mod
 
 ## Run locally
 
-Install Node.js 20 or later, then install the dependencies and start the development server:
+Install Node.js 20 or later and npm 10.9.4 (the version declared in `package.json`), then install the dependencies and start the development server. This project uses npm; `package-lock.json` is the dependency lockfile to keep committed when updating dependencies.
 
 ```sh
-npm install
+npm ci
 npm run dev
 ```
 
