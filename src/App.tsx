@@ -7,7 +7,8 @@ import { poolColor } from "./poolColors";
 import { parseBackupJson, serializeBackupJson } from "./backup";
 import { useStoredPlanner } from "./useStoredPlanner";
 import { usePoolCardFigures } from "./usePoolCardFigures";
-import { FirstDayOfWeekContext, IgnoreWeekendsContext, loadDefaultTimeline, loadFirstDayOfWeek, loadIgnoreWeekends, nextWeekday, saveSettings } from "./settings";
+import { FirstDayOfWeekContext, IgnoreWeekendsContext, nextWeekday } from "./settings";
+import { defaultSettings, type PlannerDocument } from "./plannerPersistence";
 import {
   AdditionModal,
   PoolCapModal,
@@ -22,6 +23,7 @@ import {
   type PoolFormData,
 } from "./Modals";
 import {
+  STORAGE_KEY,
   reduceStore,
   storeActionError,
   type StoreAction,
@@ -60,10 +62,45 @@ type ModalState =
   | { type: "edit-event"; eventId: number; name: string; days: EventDayInput[] };
 
 function App() {
-  const [firstDayOfWeek, setFirstDayOfWeek] = useState(loadFirstDayOfWeek);
-  const [ignoreWeekends, setIgnoreWeekends] = useState(loadIgnoreWeekends);
-  const [defaultTimeline, setDefaultTimeline] = useState(loadDefaultTimeline);
-  const { store, setStore, storageWarning, saveStatus } = useStoredPlanner();
+  const planner = useStoredPlanner();
+  const [hasLocalData] = useState(() => {
+    try { return localStorage.getItem(STORAGE_KEY) !== null || localStorage.getItem("hima.settings.v1") !== null; }
+    catch { return false; }
+  });
+  return <>
+    {planner.recoveries.map((recovery, index) => <p role="alert" key={index}>
+      Unsaved changes from account {recovery.userId} are retained in this page.
+      <button className="button" type="button" onClick={() => downloadBackup(recovery.document)}>Export retained backup</button>
+    </p>)}
+    {hasLocalData && <p role="status">Existing browser data is preserved. It has not been uploaded or replaced. Local-data migration will be available separately; account edits save only to the server.</p>}
+    {planner.phase === "ready" ? <Planner key={planner.generation} planner={planner} /> : <main className="page-content">
+      <h1>hima</h1>
+      {planner.phase === "loading" ? <p role="status">Loading your account and planner…</p> : planner.phase === "logging-out" ? <p role="status">Signing out…</p> : <>
+        {planner.phase === "error" ? <><p role="alert">Could not load your planner: {planner.error}</p><button className="button" type="button" onClick={planner.retry}>Retry loading</button></> : <><p>Sign in to load and save your planner.</p><a className="button button-primary" href="/auth/login">Sign in</a></>}
+      </>}
+    </main>}
+  </>;
+}
+
+function downloadBackup(document: PlannerDocument) {
+  const blob = new Blob([serializeBackupJson(document, document.settings ?? defaultSettings)], { type: "application/json" });
+  const url = URL.createObjectURL(blob);
+  const link = window.document.createElement("a");
+  link.href = url;
+  link.download = `hima-backup-${todayDate()}.json`;
+  window.document.body.append(link);
+  link.click();
+  link.remove();
+  window.setTimeout(() => URL.revokeObjectURL(url), 0);
+}
+
+function Planner({ planner }: { planner: ReturnType<typeof useStoredPlanner> }) {
+  const { store, setStore, saveStatus, settings: { firstDayOfWeek, ignoreWeekends, defaultTimeline } } = planner;
+  const setFirstDayOfWeek = (firstDayOfWeek: typeof planner.settings.firstDayOfWeek) => planner.setSettings({ firstDayOfWeek });
+  const setIgnoreWeekends = (ignoreWeekends: boolean) => planner.setSettings({ ignoreWeekends });
+  const setDefaultTimeline = (defaultTimeline: typeof planner.settings.defaultTimeline) => planner.setSettings({ defaultTimeline });
+  const mounted = useRef(true);
+  useEffect(() => { mounted.current = true; return () => { mounted.current = false; }; }, []);
   function dispatch(action: StoreAction): string | null {
     const error = storeActionError(store, action);
     if (error) return error;
@@ -130,10 +167,6 @@ function App() {
   const informationPool = modal?.type === "pool-info"
     ? store.pools.find((pool) => pool.id === modal.poolId)
     : undefined;
-
-  useEffect(() => {
-    saveSettings(firstDayOfWeek, ignoreWeekends, defaultTimeline);
-  }, [firstDayOfWeek, ignoreWeekends, defaultTimeline]);
 
   const scrollToClosestEvent = useCallback((date: string) => {
     const list = timelineListRef.current;
@@ -209,15 +242,7 @@ function App() {
   }
 
   function exportData() {
-    const blob = new Blob([serializeBackupJson(store, { firstDayOfWeek, ignoreWeekends, defaultTimeline })], { type: "application/json" });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement("a");
-    link.href = url;
-    link.download = `hima-backup-${todayDate()}.json`;
-    document.body.append(link);
-    link.click();
-    link.remove();
-    window.setTimeout(() => URL.revokeObjectURL(url), 0);
+    downloadBackup(store);
   }
 
   async function importData(event: ChangeEvent<HTMLInputElement>) {
@@ -230,20 +255,17 @@ function App() {
       const shouldImportSettings = importSettingsRef.current;
       const warnings: string[] = [];
       const { store: imported, settings } = parseBackupJson(await file.text(), warnings);
+      if (!mounted.current) return;
       const restoreSettings = shouldImportSettings && settings !== undefined;
       const confirmed = window.confirm(
-        `${warnings.length ? `${warnings.join("\n")}\n\n` : ""}Imported amounts are rounded to hundredths of an hour.\n\nReplace the data saved in this browser with ${imported.pools.length} ${imported.pools.length === 1 ? "pool" : "pools"} and ${imported.events.length} ${imported.events.length === 1 ? "event" : "events"}${restoreSettings ? " and restore the backup settings" : ""}?`,
+        `${warnings.length ? `${warnings.join("\n")}\n\n` : ""}Imported amounts are rounded to hundredths of an hour.\n\nReplace this account's planner with ${imported.pools.length} ${imported.pools.length === 1 ? "pool" : "pools"} and ${imported.events.length} ${imported.events.length === 1 ? "event" : "events"}${restoreSettings ? " and restore the backup settings" : ""}? Export a backup first to keep the current copy.`,
       );
       if (!confirmed) return;
-      setStore(imported);
-      if (restoreSettings && settings) {
-        setFirstDayOfWeek(settings.firstDayOfWeek);
-        setIgnoreWeekends(settings.ignoreWeekends);
-        setDefaultTimeline(settings.defaultTimeline);
-      }
+      planner.importBackup(imported, restoreSettings ? settings : undefined);
       setBalanceDate(todayDate());
       setModal(null);
     } catch (error) {
+      if (!mounted.current) return;
       const message = error instanceof Error ? error.message : "The file could not be read.";
       window.alert(`Could not import data: ${message}`);
     }
@@ -323,9 +345,11 @@ function App() {
         <div className="topbar-right">
           <span className="privacy-note" role="status">
             {saveStatus === "saved" && <span className="privacy-dot" />}
-            {saveStatus === "saved" ? "Saved on this device" : saveStatus === "disabled" ? "Saving disabled" : saveStatus === "failed" ? "Save failed" : "Not yet saved"}
+            {saveStatus === "saved" ? planner.revision === 0 ? "No changes to save" : "Saved to your account" : saveStatus === "conflict" ? "Save conflict" : saveStatus === "failed" ? "Save failed" : "Changes pending"}
           </span>
-          {(saveStatus === "failed" || saveStatus === "disabled") && <button className="button" type="button" onClick={exportData}>Export backup</button>}
+          {(saveStatus === "failed" || saveStatus === "conflict") && <button className="button" type="button" onClick={exportData}>Export backup</button>}
+          {saveStatus === "failed" && <button className="button" type="button" onClick={planner.retry}>Retry save</button>}
+          <button className="button" type="button" onClick={() => { void planner.logout(); }}>Sign out</button>
           <button ref={settingsButtonRef} className="icon-button" type="button" title="Settings" aria-label="Open settings" aria-haspopup="dialog" onClick={() => setModal({ type: "settings" })}>
             <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
               <path d="m9 3-.5 2-2 1.2-2-.6-2 3.5L4 10.5v3l-1.5 1.4 2 3.5 2-.6 2 1.2.5 2h6l.5-2 2-1.2 2 .6 2-3.5-1.5-1.4v-3l1.5-1.4-2-3.5-2 .6-2-1.2L15 3Z" />
@@ -342,8 +366,8 @@ function App() {
           />
         </div>
       </header>
-      {storageWarning && <p role="alert">{storageWarning}</p>}
-      {saveStatus === "failed" && <p role="alert">Changes could not be saved on this device. Browser storage may be full or unavailable. Export a backup to keep your changes before closing this page.</p>}
+      {saveStatus === "failed" && <p role="alert">Changes could not be saved: {planner.error} Your edits are retained. Retry saving or export a backup before closing this page.</p>}
+      {saveStatus === "conflict" && <p role="alert">The remote planner changed. Your edits are retained and saving is paused to protect both copies. Export a backup before reloading to load the latest remote planner.</p>}
 
       <main id="top" className="page-content">
         <section className="page-intro">

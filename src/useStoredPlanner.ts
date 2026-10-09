@@ -1,69 +1,37 @@
-import { useEffect, useRef, useState } from "react";
-import { loadStore, saveStore, STORAGE_KEY } from "./model";
+import { useCallback, useEffect, useState, useSyncExternalStore, type SetStateAction } from "react";
+import type { Store } from "./model";
+import type { BackupSettings } from "./backup";
+import { plannerApi } from "./plannerApi";
+import { PlannerController } from "./plannerController";
+import { defaultSettings, type PlannerPersistence } from "./plannerPersistence";
 
-export function useStoredPlanner() {
-  const [loaded] = useState(() => {
-    let raw: string | null = null;
-    try { raw = window.localStorage.getItem(STORAGE_KEY); } catch { /* loadStore reports read failures. */ }
-    return { ...loadStore(), raw };
-  });
-  const expectedRaw = useRef(loaded.raw);
-  const conflicted = useRef(false);
-  const [conflict, setConflict] = useState(false);
-  const [store, setStore] = useState(loaded.store);
-  const [savedStore, setSavedStore] = useState<typeof store | null>(null);
-  const [saveFailed, setSaveFailed] = useState(false);
-
+export function useStoredPlanner(persistence: PlannerPersistence = plannerApi) {
+  const [controller] = useState(() => new PlannerController(persistence));
+  const snapshot = useSyncExternalStore(controller.subscribe, controller.getSnapshot);
   useEffect(() => {
-    function changed(event: StorageEvent) {
-      if (event.storageArea !== window.localStorage || (event.key !== STORAGE_KEY && event.key !== null)) return;
-      // Read the current value: queued events may describe an older write.
-      try {
-        if (window.localStorage.getItem(STORAGE_KEY) === expectedRaw.current) return;
-      } catch { /* Stop saving if the current value cannot be verified. */ }
-      conflicted.current = true;
-      setConflict(true);
-    }
-    window.addEventListener("storage", changed);
-    return () => window.removeEventListener("storage", changed);
-  }, []);
-
-  useEffect(() => {
-    let cancelled = false;
-    // Comparing with the loaded object skips every mount effect replay, not
-    // just the first effect invocation in React StrictMode.
-    if (loaded.canSave && (!loaded.warning || store !== loaded.store)) {
-      const save = () => {
-        if (cancelled || conflicted.current) return;
-        try {
-          if (window.localStorage.getItem(STORAGE_KEY) !== expectedRaw.current) {
-            conflicted.current = true;
-            setConflict(true);
-            return;
-          }
-        } catch {
-          setSaveFailed(true);
-          return;
-        }
-        const saved = saveStore(store);
-        if (saved) expectedRaw.current = JSON.stringify(store);
-        setSaveFailed(!saved);
-        setSavedStore(saved ? store : null);
-      };
-      // Serialize the read/check/write across tabs, including before storage
-      // notifications are delivered. Older browsers still get the value guard.
-      if (navigator.locks) {
-        void navigator.locks.request(STORAGE_KEY, save).catch(() => {
-          if (!cancelled) setSaveFailed(true);
-        });
-      } else save();
-    }
-    return () => { cancelled = true; };
-  }, [loaded, store]);
-
-  const saveStatus = conflict || !loaded.canSave ? "disabled" : saveFailed ? "failed" : savedStore === store ? "saved" : "pending";
-  const storageWarning = conflict
-    ? "The planner was changed in another tab. Saving in this tab is disabled to protect both copies. Export a backup of this tab's changes, then reload this page to use the latest saved planner."
-    : loaded.warning;
-  return { store, setStore, storageWarning, saveStatus };
+    controller.start();
+    const refresh = () => { if (document.visibilityState !== "hidden") void controller.refresh(); };
+    window.addEventListener("focus", refresh);
+    document.addEventListener("visibilitychange", refresh);
+    const interval = window.setInterval(refresh, 30_000);
+    return () => {
+      controller.stop();
+      window.removeEventListener("focus", refresh);
+      document.removeEventListener("visibilitychange", refresh);
+      window.clearInterval(interval);
+    };
+  }, [controller]);
+  const generation = snapshot.generation;
+  const setStore = useCallback((update: SetStateAction<Store>) => {
+    controller.edit((document) => ({ ...(typeof update === "function" ? update(document) : update), ...(document.settings ? { settings: document.settings } : {}) }), generation);
+  }, [controller, generation]);
+  const setSettings = useCallback((update: Partial<BackupSettings>) => {
+    controller.edit((document) => ({ ...document, settings: { ...defaultSettings, ...document.settings, ...update } }), generation);
+  }, [controller, generation]);
+  const importBackup = useCallback((store: Store, settings?: BackupSettings) => {
+    controller.edit((document) => ({ ...store, settings: settings ?? document.settings ?? { ...defaultSettings } }), generation);
+  }, [controller, generation]);
+  const logout = useCallback(() => controller.logout(generation), [controller, generation]);
+  return { ...snapshot, store: snapshot.document, settings: snapshot.document.settings ?? defaultSettings,
+    setStore, setSettings, importBackup, retry: controller.retry, logout };
 }
