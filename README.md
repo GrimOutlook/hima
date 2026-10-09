@@ -2,7 +2,7 @@
 
 A small, browser-based PPL planner built with React and TypeScript. Create leave pools, add one-time or recurring accruals with optional end dates, including yearly nth-weekday schedules, set date-ranged balance caps, log leave events with hours split across pools for each day, see date-by-date pool usage by event, check your projected balance on any date, and chart the combined balance or a specific pool over the past year and the year ahead.
 
-All amounts are entered in hours. Your pools and events are saved in this browser's local storage. Use **Export JSON** to download a backup or **Import JSON** to restore one; importing replaces the data saved in this browser.
+All amounts are entered in hours. Sign in to load and save your pools, events, and preferences to your account. Use **Export JSON** to download a backup or **Import JSON** to restore one; importing asks for confirmation and saves through the same validated, revision-checked path as ordinary edits.
 
 Use the graph's **Show** dropdown to choose which pools appear in the chart. These choices are saved across reloads and included in JSON backups. Selecting an event temporarily shows its pools; clearing the event restores your saved choices.
 
@@ -39,9 +39,15 @@ When updating `pnpm-lock.yaml`, also update the `pnpmDeps` hash in `flake.nix`: 
 
 Tests use Node for pure model, settings, and store mutation checks. Component and hook test files opt into jsdom with `@vitest-environment jsdom`. Regression coverage includes fractional-hour balances, shared per-pool history dates, independent graph visibility and total exclusion, modal validation and focus, and calendar selection and keyboard navigation. Run a focused suite with, for example, `pnpm test src/App.test.tsx src/CalendarPicker.test.tsx`.
 
-The app does not need an account or a server. Pools and events are stored in this browser's local storage; existing `hima.store.v1` data is retained and older event formats are migrated when loaded.
+The app requires the API and an authenticated account. Existing `hima.store.v1` and `hima.settings.v1` browser data is preserved byte-for-byte and never automatically uploaded, overwritten, or deleted. The UI reports its presence; explicit local-data migration and conflict-resolution choices are tracked in #125.
 
-Saved planner data and JSON backups carry a numeric `version` (currently `1`). Unversioned data is treated as the legacy schema and migrated to version 1, including older event formats. Unsupported versions are rejected on import; unreadable saved data follows the browser-storage recovery path described by the app.
+Account data loads before editing is enabled. An account with no planner starts with an empty draft and defaults (Monday, weekends included, ±6 month); loading alone never creates or overwrites a server planner. First day of week, ignore weekends, default timeline, and planner visibility flags synchronize with account data. Temporary selections and open dialogs remain session UI state.
+
+Edits are debounced for 500 ms, with one write in flight and newer edits queued for the next revision. The header shows pending, saved, failed, or conflict status. Failed saves retain edits and offer **Retry save** and **Export backup**. A conflict pauses saving without changing either copy; export your edits before reloading to load the current remote planner. Retrying a failed request whose response was lost can surface a conflict if the server already committed it.
+
+Sessions are checked on focus, when the page becomes visible, and every 30 seconds while visible. Loads verify the session again before accepting data; writes use that session's CSRF token. Account changes and logout invalidate queued work and late responses. Unsaved drafts from an expired or changed session remain exportable in this page under their original account ID, and are never uploaded to the next account. Export retained backups before closing or navigating away; this is not offline persistence. Sign out ends the application session, not the provider's SSO session.
+
+Saved planner data and JSON backups carry a numeric `version` (currently `1`). Unversioned backups are treated as the legacy schema and migrated to version 1 on import, including older event formats. Unsupported versions are rejected on import. Remote responses are validated without repairing or dropping fields; unsupported or malformed data blocks editing rather than being saved back.
 
 ### Full local development workflow
 
@@ -114,8 +120,7 @@ static production build or `pnpm run preview`.
    pnpm run dev
    ```
 
-   Visit `http://127.0.0.1:5173`. The current planner UI still uses browser storage;
-   to exercise server login now, navigate to `/auth/login` on this origin. After
+   Visit `http://127.0.0.1:5173` and choose **Sign in**. After
    provider login, the callback returns through Vite, sets an HttpOnly session
    cookie, and redirects to `/`. In the browser console, check:
 
@@ -155,7 +160,7 @@ cargo run --locked --manifest-path backend/Cargo.toml
 curl http://127.0.0.1:3000/health
 ```
 
-The health response is HTTP 200 with `Content-Type: application/json` and `{"status":"ok"}`. This is a liveness check; no database is required in the unconfigured service. The frontend still uses browser storage. The SQLx `db` module provides PostgreSQL persistence and the `planner` module validates documents. The backend supports OIDC authentication and authenticated GET/PUT `/api/planner`; see [the HTTP contract](backend/DOCUMENT.md#authenticated-http-contract). Frontend integration is follow-up work.
+The health response is HTTP 200 with `Content-Type: application/json` and `{"status":"ok"}`. This is a liveness check; no database is required in the unconfigured service. Configure OIDC and PostgreSQL for frontend login and persistence. The SQLx `db` module provides PostgreSQL persistence and the `planner` module validates documents. The backend supports OIDC authentication and authenticated GET/PUT `/api/planner`; see [the HTTP contract](backend/DOCUMENT.md#authenticated-http-contract).
 
 Configuration is read from the process environment (no automatic `.env` loading):
 

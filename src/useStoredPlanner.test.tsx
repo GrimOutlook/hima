@@ -1,275 +1,129 @@
 // @vitest-environment jsdom
 import { StrictMode, act } from "react";
 import { createRoot, type Root } from "react-dom/client";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { emptyStore, loadStore, saveStore } from "./model";
+import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { useStoredPlanner } from "./useStoredPlanner";
+import { plannerApi } from "./plannerApi";
+import { defaultSettings, PersistenceError } from "./plannerPersistence";
+import { emptyStore } from "./model";
 import App from "./App";
 
 vi.mock("./BalanceChart", () => ({ BalanceChart: () => null }));
-
-const key = "hima.store.v1";
-const backup = `${key}.backup`;
-const replacement = { ...emptyStore(), pools: [{ id: 1, name: "New leave", additions: [], recurring: [], caps: [] }], next_id: 2 };
 let root: Root;
 let container: HTMLDivElement;
-
-function Planner({ name = "New leave" }: { name?: string }) {
-  const { store, setStore, storageWarning, saveStatus } = useStoredPlanner();
-  return <>
-    {storageWarning && <p role="alert">{storageWarning}</p>}
-    <span>{store.pools.map((pool) => pool.name).join(", ")}</span>
-    <span role="status">{saveStatus}</span>
-    <button onClick={() => setStore({ ...replacement, pools: replacement.pools.map((pool) => ({ ...pool, name })) })}>Change planner</button>
-  </>;
-}
-
+const remote = { ...emptyStore(), pools: [{ id: 1, name: "Remote leave", additions: [], recurring: [], caps: [] }], next_id: 2, settings: { ...defaultSettings, firstDayOfWeek: "Sunday" as const } };
+let planner: ReturnType<typeof useStoredPlanner>;
+function Probe() { planner = useStoredPlanner(); return <span>{planner.phase}</span>; }
 beforeEach(() => {
   vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
-  localStorage.clear();
-  container = document.createElement("div");
-  document.body.append(container);
-  root = createRoot(container);
+  vi.useFakeTimers();
+  container = document.createElement("div"); document.body.append(container); root = createRoot(container);
+  vi.spyOn(plannerApi, "session").mockResolvedValue({ user_id: 1, csrf_token: "a" });
+  vi.spyOn(plannerApi, "load").mockResolvedValue({ document: remote, revision: 7, updated_at: "now" });
+  vi.spyOn(plannerApi, "save").mockImplementation(async (document, revision) => ({ document, revision: revision + 1, updated_at: "now" }));
+  vi.spyOn(plannerApi, "logout").mockResolvedValue();
 });
-
 afterEach(async () => {
-  await act(async () => root.unmount());
-  container.remove();
-  vi.restoreAllMocks();
-  vi.unstubAllGlobals();
+  await act(async () => root.unmount()); container.remove(); localStorage.clear();
+  vi.restoreAllMocks(); vi.useRealTimers(); vi.unstubAllGlobals();
+});
+const tick = async () => { await act(async () => { await vi.advanceTimersByTimeAsync(500); }); };
+it("loads settings in StrictMode, preserves local bytes and routes edits/import through one queued save", async () => {
+  localStorage.setItem("hima.store.v1", "legacy planner bytes");
+  localStorage.setItem("hima.settings.v1", "legacy settings bytes");
+  const write = vi.spyOn(Storage.prototype, "setItem");
+  await act(async () => root.render(<StrictMode><Probe /></StrictMode>));
+  expect(planner.settings.firstDayOfWeek).toBe("Sunday");
+  await tick(); expect(plannerApi.save).not.toHaveBeenCalled();
+  await act(async () => {
+    planner.setStore((store) => ({ ...store, pools: store.pools.map((pool) => ({ ...pool, name: "Changed" })) }));
+    planner.setSettings({ ignoreWeekends: true });
+  });
+  await tick();
+  expect(plannerApi.save).toHaveBeenCalledWith(expect.objectContaining({ pools: [expect.objectContaining({ name: "Changed" })], settings: { ...remote.settings, ignoreWeekends: true } }), 7, expect.anything(), expect.any(AbortSignal));
+  await act(async () => planner.importBackup(emptyStore(), defaultSettings)); await tick();
+  expect(plannerApi.save).toHaveBeenLastCalledWith({ ...emptyStore(), settings: defaultSettings }, 8, expect.anything(), expect.any(AbortSignal));
+  expect(write).not.toHaveBeenCalled();
+  expect(localStorage.getItem("hima.store.v1")).toBe("legacy planner bytes");
+  expect(localStorage.getItem("hima.settings.v1")).toBe("legacy settings bytes");
 });
 
-async function mount() {
-  await act(async () => root.render(<StrictMode><Planner /></StrictMode>));
-}
+it("rejects stale async-import callbacks after account transition", async () => {
+  await act(async () => root.render(<Probe />));
+  const oldImport = planner.importBackup;
+  const oldLogout = planner.logout;
+  vi.mocked(plannerApi.session).mockResolvedValue({ user_id: 2, csrf_token: "b" });
+  vi.mocked(plannerApi.load).mockResolvedValue({ document: null, revision: 0, updated_at: null });
+  await act(async () => window.dispatchEvent(new Event("focus")));
+  await act(async () => { oldImport(remote, remote.settings); await oldLogout(); }); await tick();
+  expect(planner.store.pools).toEqual([]); expect(plannerApi.save).not.toHaveBeenCalled();
+  expect(plannerApi.logout).not.toHaveBeenCalled();
+});
 
-async function changePlanner() {
-  await act(async () => container.querySelector("button")!.click());
-}
+it("shows login and initial-loading states without exposing an editable empty planner", async () => {
+  vi.mocked(plannerApi.session).mockRejectedValue(new PersistenceError("unauthenticated", "Sign in", 401));
+  await act(async () => root.render(<StrictMode><App /></StrictMode>));
+  expect(container.querySelector('a[href="/auth/login"]')?.textContent).toBe("Sign in");
+  expect(container.querySelector(".balance-card")).toBeNull();
+  expect(plannerApi.save).not.toHaveBeenCalled();
+});
 
-describe("saved planner recovery", () => {
-  it.each([JSON.stringify(replacement), null, "damaged remote data"])("preserves both copies after an external change: %s", async (remote) => {
-    await mount();
-    const setItem = vi.spyOn(Storage.prototype, "setItem");
-    if (remote === null) localStorage.clear();
-    else localStorage.setItem(key, remote);
-    setItem.mockClear();
-    await act(async () => window.dispatchEvent(new StorageEvent("storage", {
-      key: remote === null ? null : key, newValue: remote, storageArea: localStorage,
-    })));
-    await changePlanner();
-    expect(container.textContent).toContain("New leave");
-    expect(container.querySelector('[role="status"]')?.textContent).toBe("disabled");
-    expect(container.querySelector('[role="alert"]')?.textContent).toContain("another tab");
-    expect(localStorage.getItem(key)).toBe(remote);
-    expect(setItem).not.toHaveBeenCalled();
+it("shows failed-save retry and exports retained in-memory data after session expiry", async () => {
+  await act(async () => root.render(<App />));
+  const settingsButton = container.querySelector<HTMLButtonElement>('[aria-label="Open settings"]')!;
+  await act(async () => settingsButton.click());
+  const checkbox = container.querySelector<HTMLInputElement>('input[type="checkbox"]')!;
+  vi.mocked(plannerApi.save).mockRejectedValueOnce(new Error("Offline"));
+  await act(async () => checkbox.click()); await tick();
+  expect(container.querySelector("header")?.textContent).toContain("Save failed");
+  const retry = [...container.querySelectorAll("button")].find((button) => button.textContent === "Retry save")!;
+  await act(async () => retry.click()); await tick();
+  expect(container.querySelector("header")?.textContent).toContain("Saved to your account");
+  vi.mocked(plannerApi.save).mockRejectedValueOnce(new PersistenceError("unauthenticated", "Expired", 401));
+  vi.mocked(plannerApi.session).mockRejectedValue(new PersistenceError("unauthenticated", "Expired", 401));
+  await act(async () => checkbox.click()); await tick();
+  const createObjectURL = vi.fn<(blob: Blob) => string>(() => "blob:backup");
+  vi.stubGlobal("URL", { createObjectURL, revokeObjectURL: vi.fn() });
+  vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(() => {});
+  const exportButton = [...container.querySelectorAll("button")].find((button) => button.textContent === "Export retained backup")!;
+  await act(async () => exportButton.click());
+  expect(createObjectURL).toHaveBeenCalledOnce();
+  const blob = createObjectURL.mock.calls[0]![0];
+  vi.useRealTimers();
+  const text = await new Promise<string>((resolve) => {
+    const reader = new FileReader(); reader.onload = () => resolve(reader.result as string); reader.readAsText(blob);
   });
+  expect(JSON.parse(text)).toEqual({ ...remote, settings: { ...remote.settings, ignoreWeekends: false } });
+  expect(container.querySelector('a[href="/auth/login"]')).not.toBeNull();
+});
 
-  it("detects a remote write before its storage notification arrives", async () => {
-    await mount();
-    const remote = JSON.stringify({ ...replacement, next_id: 100 });
-    localStorage.setItem(key, remote);
-    await changePlanner();
-    expect(localStorage.getItem(key)).toBe(remote);
-    expect(container.querySelector('[role="status"]')?.textContent).toBe("disabled");
-    expect(container.textContent).toContain("New leave");
-  });
+it("confirms a backup replacement and sends normalized data and selected settings through the remote save path", async () => {
+  await act(async () => root.render(<App />));
+  await act(async () => container.querySelector<HTMLButtonElement>('[aria-label="Open settings"]')!.click());
+  await act(async () => [...container.querySelectorAll("button")].find((button) => button.textContent === "Import JSON")!.click());
+  await act(async () => container.querySelector<HTMLInputElement>('input[type="checkbox"]')!.click());
+  await act(async () => [...container.querySelectorAll("button")].find((button) => button.textContent === "Choose backup file")!.click());
+  const input = container.querySelector<HTMLInputElement>('input[type="file"]')!;
+  const imported = { ...emptyStore(), pools: [{ id: 1, name: "Imported", additions: [{ id: 2, amount: "1.234", date: "2026-01-01" }], recurring: [], caps: [] }], next_id: 3, settings: defaultSettings };
+  Object.defineProperty(input, "files", { configurable: true, value: [{ text: async () => JSON.stringify(imported) }] });
+  const confirm = vi.spyOn(window, "confirm").mockReturnValue(true);
+  await act(async () => input.dispatchEvent(new Event("change", { bubbles: true })));
+  expect(confirm).toHaveBeenCalledWith(expect.stringContaining("Replace this account's planner"));
+  await tick();
+  expect(plannerApi.save).toHaveBeenCalledWith({ ...imported, pools: [{ ...imported.pools[0], additions: [{ id: 2, amount: 1.23, date: "2026-01-01" }] }] }, 7, expect.anything(), expect.any(AbortSignal));
+});
 
-  it("checks storage inside the cross-tab lock and cancels obsolete queued saves", async () => {
-    const pending: (() => void)[] = [];
-    const request = vi.fn((_name: string, callback: () => void) => new Promise<void>((resolve) => {
-      pending.push(() => { callback(); resolve(); });
-    }));
-    Object.defineProperty(navigator, "locks", { configurable: true, value: { request } });
-    try {
-      await mount();
-      await changePlanner();
-      const remote = JSON.stringify({ ...replacement, next_id: 100 });
-      localStorage.setItem(key, remote);
-      await act(async () => { pending.forEach((run) => run()); });
-      expect(request).toHaveBeenCalledWith(key, expect.any(Function));
-      expect(localStorage.getItem(key)).toBe(remote);
-      expect(container.querySelector('[role="status"]')?.textContent).toBe("disabled");
-      expect(container.textContent).toContain("New leave");
-    } finally {
-      Reflect.deleteProperty(navigator, "locks");
-    }
-  });
-
-  it("serializes two tabs racing to save and keeps the losing tab's edits exportable", async () => {
-    localStorage.setItem(key, JSON.stringify(emptyStore()));
-    const pending: (() => void)[] = [];
-    Object.defineProperty(navigator, "locks", { configurable: true, value: {
-      request: (_name: string, callback: () => void) => new Promise<void>((resolve) => {
-        pending.push(() => { callback(); resolve(); });
-      }),
-    } });
-    const otherContainer = document.createElement("div");
-    const otherRoot = createRoot(otherContainer);
-    try {
-      await mount();
-      await act(async () => otherRoot.render(<Planner name="Other tab's leave" />));
-      await act(async () => { pending.splice(0).forEach((run) => run()); });
-      await act(async () => {
-        container.querySelector("button")!.click();
-        otherContainer.querySelector("button")!.click();
-      });
-      await act(async () => { pending.splice(0).forEach((run) => run()); });
-      expect(JSON.parse(localStorage.getItem(key)!)).toEqual(replacement);
-      expect(container.querySelector('[role="status"]')?.textContent).toBe("saved");
-      expect(otherContainer.querySelector('[role="status"]')?.textContent).toBe("disabled");
-      expect(otherContainer.textContent).toContain("Other tab's leave");
-      expect(otherContainer.querySelector('[role="alert"]')?.textContent).toContain("Export a backup");
-    } finally {
-      await act(async () => otherRoot.unmount());
-      Reflect.deleteProperty(navigator, "locks");
-    }
-  });
-
-  it("ignores unrelated storage and stale notifications without writing back", async () => {
-    await mount();
-    const setItem = vi.spyOn(Storage.prototype, "setItem");
-    await act(async () => {
-      window.dispatchEvent(new StorageEvent("storage", { key: "hima.settings.v1", storageArea: localStorage }));
-      window.dispatchEvent(new StorageEvent("storage", { key, newValue: "old value", storageArea: localStorage }));
-      window.dispatchEvent(new StorageEvent("storage", { key, storageArea: sessionStorage }));
-    });
-    expect(container.querySelector('[role="status"]')?.textContent).toBe("saved");
-    expect(setItem).not.toHaveBeenCalled();
-  });
-
-  it.each(["QuotaExceededError", "SecurityError"])("reports %s, retains edits and recovers on the next successful save", async (error) => {
-    const original = JSON.stringify(emptyStore());
-    localStorage.setItem(key, original);
-    const setItem = vi.spyOn(Storage.prototype, "setItem").mockImplementation(() => {
-      throw new DOMException("Cannot save", error);
-    });
-    expect(saveStore(replacement)).toBe(false);
-    await mount();
-    expect(container.querySelector('[role="status"]')?.textContent).toBe("failed");
-    await changePlanner();
-    expect(container.textContent).toContain("New leave");
-    expect(container.querySelector('[role="status"]')?.textContent).toBe("failed");
-    expect(localStorage.getItem(key)).toBe(original);
-    setItem.mockRestore();
-    await changePlanner();
-    expect(container.querySelector('[role="status"]')?.textContent).toBe("saved");
-    expect(JSON.parse(localStorage.getItem(key)!)).toEqual(replacement);
-    expect(saveStore(replacement)).toBe(true);
-  });
-
-  it("shows failed saves in the app header and exports the in-memory planner", async () => {
-    localStorage.setItem(key, JSON.stringify(replacement));
-    vi.spyOn(Storage.prototype, "setItem").mockImplementation(() => {
-      throw new DOMException("Storage full", "QuotaExceededError");
-    });
-    const createObjectURL = vi.fn<(blob: Blob) => string>(() => "blob:backup");
-    vi.stubGlobal("URL", { createObjectURL, revokeObjectURL: vi.fn() });
-    const click = vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(() => {});
-    await act(async () => root.render(<StrictMode><App /></StrictMode>));
-    expect(container.querySelector('header [role="status"]')?.textContent).toBe("Save failed");
-    expect(container.querySelector('[role="alert"]')?.textContent).toContain("Export a backup");
-    expect(container.textContent).not.toContain("Saved on this device");
-    const exportButton = [...container.querySelectorAll("header button")].find((button) => button.textContent === "Export backup") as HTMLButtonElement;
-    await act(async () => exportButton.click());
-    expect(click).toHaveBeenCalledOnce();
-    const blob = createObjectURL.mock.calls[0]?.[0];
-    if (!blob) throw new Error("Missing exported backup");
-    const json = await new Promise<string>((resolve) => {
-      const reader = new FileReader();
-      reader.onload = () => resolve(reader.result as string);
-      reader.readAsText(blob);
-    });
-    expect(JSON.parse(json)).toEqual({
-      ...replacement,
-      settings: { firstDayOfWeek: "Monday", ignoreWeekends: false, defaultTimeline: "±6 month" },
-    });
-  });
-
-  it("never claims saving succeeded when storage reads disable saving", async () => {
-    vi.spyOn(Storage.prototype, "getItem").mockImplementation(() => {
-      throw new DOMException("Access denied", "SecurityError");
-    });
-    await act(async () => root.render(<StrictMode><App /></StrictMode>));
-    expect(container.querySelector('header [role="status"]')?.textContent).toBe("Saving disabled");
-    expect(container.textContent).not.toContain("Saved on this device");
-    expect(container.querySelector("header")?.textContent).toContain("Export backup");
-  });
-
-  it("shows the recovery warning in the actual app without overwriting saved data", async () => {
-    const raw = '{"pools":[{"name":"Recover me"}';
-    localStorage.setItem(key, raw);
-    await act(async () => root.render(<StrictMode><App /></StrictMode>));
-    expect(container.querySelector('[role="alert"]')?.textContent).toContain(backup);
-    expect(localStorage.getItem(key)).toBe(raw);
-    expect(localStorage.getItem(backup)).toBe(raw);
-  });
-
-  it.each(['{"pools":[{"name":"Recover me"}', "", "null", "[]", '{"pools":[]}'])(
-    "preserves unreadable data byte-for-byte through StrictMode mount and edits: %s", async (raw) => {
-      localStorage.setItem(key, raw);
-      await mount();
-      expect(localStorage.getItem(key)).toBe(raw);
-      expect(localStorage.getItem(backup)).toBe(raw);
-      expect(container.querySelector('[role="alert"]')?.textContent).toContain(backup);
-      expect(localStorage.length).toBe(2);
-      await changePlanner();
-      expect(JSON.parse(localStorage.getItem(key)!)).toEqual(replacement);
-      expect(localStorage.getItem(backup)).toBe(raw);
-      await act(async () => root.unmount());
-      root = createRoot(container);
-      await mount();
-      expect(container.textContent).toContain("New leave");
-      expect(container.querySelector('[role="alert"]')).toBeNull();
-      expect(localStorage.getItem(backup)).toBe(raw);
-    },
-  );
-
-  it("keeps earlier backups and reuses the recovery copy on reload", async () => {
-    localStorage.setItem(backup, "earlier damaged data");
-    localStorage.setItem(key, "new damaged data");
-    await mount();
-    expect(localStorage.getItem(backup)).toBe("earlier damaged data");
-    expect(localStorage.getItem(`${backup}.1`)).toBe("new damaged data");
-    expect(loadStore().warning).toContain(`${backup}.1`);
-    expect(localStorage.length).toBe(3);
-    expect(localStorage.getItem(key)).toBe("new damaged data");
-  });
-
-  it("does not overwrite the original even after edits when backup storage is full", async () => {
-    localStorage.setItem(key, "recoverable raw data");
-    const setItem = vi.spyOn(Storage.prototype, "setItem").mockImplementation(() => {
-      throw new DOMException("Storage full", "QuotaExceededError");
-    });
-    await mount();
-    expect(container.querySelector('[role="alert"]')?.textContent).toContain("Saving is disabled");
-    expect(localStorage.getItem(key)).toBe("recoverable raw data");
-    setItem.mockRestore();
-    await changePlanner();
-    expect(localStorage.getItem(key)).toBe("recoverable raw data");
-    expect(localStorage.getItem(backup)).toBeNull();
-  });
-
-  it("disables saving if reading storage fails", async () => {
-    const original = JSON.stringify({ ...replacement, next_id: 100 });
-    localStorage.setItem(key, original);
-    const getItem = vi.spyOn(Storage.prototype, "getItem").mockImplementation(() => {
-      throw new DOMException("Access denied", "SecurityError");
-    });
-    await mount();
-    expect(container.querySelector('[role="alert"]')?.textContent).toContain("could not be read");
-    getItem.mockRestore();
-    await changePlanner();
-    expect(localStorage.getItem(key)).toBe(original);
-  });
-
-  it.each([null, JSON.stringify(replacement)])("continues saving for healthy storage: %s", async (raw) => {
-    if (raw !== null) localStorage.setItem(key, raw);
-    await mount();
-    expect(container.querySelector('[role="alert"]')).toBeNull();
-    expect(JSON.parse(localStorage.getItem(key)!)).toEqual(raw === null ? emptyStore() : replacement);
-    await changePlanner();
-    expect(JSON.parse(localStorage.getItem(key)!)).toEqual(replacement);
-    expect(localStorage.getItem(backup)).toBeNull();
-  });
+it("ignores a backup file read completed after account switching", async () => {
+  await act(async () => root.render(<App />));
+  const input = container.querySelector<HTMLInputElement>('input[type="file"]')!;
+  let finish!: (text: string) => void;
+  Object.defineProperty(input, "files", { configurable: true, value: [{ text: () => new Promise<string>((resolve) => { finish = resolve; }) }] });
+  const confirm = vi.spyOn(window, "confirm").mockReturnValue(true);
+  await act(async () => input.dispatchEvent(new Event("change", { bubbles: true })));
+  vi.mocked(plannerApi.session).mockResolvedValue({ user_id: 2, csrf_token: "b" });
+  vi.mocked(plannerApi.load).mockResolvedValue({ document: null, revision: 0, updated_at: null });
+  await act(async () => window.dispatchEvent(new Event("focus")));
+  await act(async () => finish(JSON.stringify(remote))); await tick();
+  expect(confirm).not.toHaveBeenCalled(); expect(plannerApi.save).not.toHaveBeenCalled();
+  expect(container.textContent).not.toContain("Remote leave");
 });
