@@ -163,7 +163,7 @@ describe("saved planner recovery", () => {
     vi.spyOn(Storage.prototype, "setItem").mockImplementation(() => {
       throw new DOMException("Storage full", "QuotaExceededError");
     });
-    const createObjectURL = vi.fn((_blob: Blob) => "blob:backup");
+    const createObjectURL = vi.fn<(blob: Blob) => string>(() => "blob:backup");
     vi.stubGlobal("URL", { createObjectURL, revokeObjectURL: vi.fn() });
     const click = vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(() => {});
     await act(async () => root.render(<StrictMode><App /></StrictMode>));
