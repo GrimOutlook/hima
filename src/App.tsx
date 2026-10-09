@@ -20,17 +20,17 @@ import {
   type PoolCapFormData,
 } from "./Modals";
 import {
-  allocateIds,
+  reduceStore,
+  storeActionError,
+  type StoreAction,
   balanceHistoryDates,
   balanceHistoryForDates,
-  capRangesOverlap,
   dayLabel,
   eventDateRangeLabel,
   eventTotalHours,
   formatHours,
   freshEventDays,
   monthLabel,
-  parseHours,
   poolTotalsOn,
   prettyDate,
   recurringScheduleDescription,
@@ -39,7 +39,6 @@ import {
   type EventDayInput,
   type LeaveDay,
   type LeaveEvent,
-  type OneTimeAddition,
   type Pool,
   type Store,
 } from "./model";
@@ -64,6 +63,12 @@ function App() {
   const [ignoreWeekends, setIgnoreWeekends] = useState(loadIgnoreWeekends);
   const [defaultTimeline, setDefaultTimeline] = useState(loadDefaultTimeline);
   const { store, setStore, storageWarning, saveStatus } = useStoredPlanner();
+  function dispatch(action: StoreAction): string | null {
+    const error = storeActionError(store, action);
+    if (error) return error;
+    setStore((current) => reduceStore(current, action));
+    return null;
+  }
   const [draggedPoolId, setDraggedPoolId] = useState<number | null>(null);
   const draggedPool = store.pools.find((pool) => pool.id === draggedPoolId);
   const poolDragSensors = useSensors(
@@ -162,15 +167,7 @@ function App() {
   }
 
   function reorderPool(poolId: number, targetId: number) {
-    setStore((current) => {
-      const from = current.pools.findIndex((pool) => pool.id === poolId);
-      const to = current.pools.findIndex((pool) => pool.id === targetId);
-      if (from < 0 || to < 0 || from === to) return current;
-      const pools = [...current.pools];
-      const [pool] = pools.splice(from, 1);
-      pools.splice(to, 0, pool);
-      return { ...current, pools };
-    });
+    dispatch({ type: "reorder-pool", poolId, targetId });
   }
 
   function poolCardProps(pool: Pool): PoolCardProps {
@@ -254,38 +251,13 @@ function App() {
 
   function removePool(poolId: number, poolName: string) {
     if (!window.confirm(`Remove ‘${poolName}’ and event days assigned to it?`)) return;
-    setStore((current) => {
-      const events = current.events
-        .map((event) => ({
-          ...event,
-          days: event.days
-            .map((day) => ({
-              ...day,
-              allocations: day.allocations.filter((allocation) => allocation.pool_id !== poolId),
-            }))
-            .filter((day) => day.allocations.length > 0),
-        }))
-        .filter((event) => event.days.length > 0);
-      return {
-        ...current,
-        pools: current.pools.filter((pool) => pool.id !== poolId),
-        events,
-      };
-    });
+    dispatch({ type: "remove-pool", poolId });
     setModal(null);
   }
 
   function removeAddition(poolId: number, additionId: number, recurring: boolean) {
     if (!window.confirm(recurring ? "Remove this recurring addition?" : "Remove this one-time addition?")) return;
-    setStore((current) => ({
-      ...current,
-      pools: current.pools.map((pool) => {
-        if (pool.id !== poolId) return pool;
-        return recurring
-          ? { ...pool, recurring: pool.recurring.filter((rule) => rule.id !== additionId) }
-          : { ...pool, additions: pool.additions.filter((addition) => addition.id !== additionId) };
-      }),
-    }));
+    dispatch({ type: "remove-addition", poolId, additionId, recurring });
     setModal({ type: "pool-info", poolId });
   }
 
@@ -298,56 +270,19 @@ function App() {
     color?: string,
     newAdditionsExpireSameDay = false,
   ): string | null {
-    if (selectedModal?.type === "edit-pool") {
-      if (!store.pools.some((pool) => pool.id === selectedModal.poolId)) return "This pool no longer exists.";
-      setStore((current) => {
-        return {
-          ...current,
-          pools: current.pools.map((pool) =>
-            pool.id === selectedModal.poolId ? { ...pool, name, color, hidden_from_graph: hiddenFromGraph, hidden_from_total: hiddenFromTotal, new_additions_expire_same_day: newAdditionsExpireSameDay || undefined } : pool,
-          ),
-        };
-      });
-    } else {
-      const initialAmount = openingAmount.trim() === "" ? 0 : parseHours(openingAmount, true);
-      if (initialAmount === null) return "Enter a starting balance with up to two decimal places.";
-      setStore((current) => {
-        const openingAdditionCount = initialAmount > 0 ? 1 : 0;
-        const currentIds = allocateIds(current, 1 + openingAdditionCount);
-        const additions: OneTimeAddition[] = initialAmount > 0
-          ? [{ id: currentIds.firstId + 1, amount: initialAmount, date: openingDate, expires_same_day: newAdditionsExpireSameDay || undefined }]
-          : [];
-        return {
-          ...current,
-          next_id: currentIds.nextId,
-          pools: [...current.pools, { id: currentIds.firstId, name, additions, recurring: [], caps: [], hidden_from_graph: hiddenFromGraph, hidden_from_total: hiddenFromTotal, new_additions_expire_same_day: newAdditionsExpireSameDay || undefined }],
-        };
-      });
-    }
+    const error = dispatch({ type: "save-pool", poolId: selectedModal?.type === "edit-pool" ? selectedModal.poolId : undefined,
+      name, openingAmount, openingDate, hiddenFromGraph, hiddenFromTotal, color, newAdditionsExpireSameDay });
+    if (error) return error;
     setModal(null);
     return null;
   }
 
   function saveCap(cap: PoolCapFormData): string | null {
     if (selectedModal?.type !== "add-time" && selectedModal?.type !== "edit-cap") return "This pool is no longer available.";
-    const pool = store.pools.find((pool) => pool.id === selectedModal.poolId);
-    if (!pool) return "This pool no longer exists.";
     const capId = selectedModal.type === "edit-cap" ? selectedModal.capId : undefined;
-    if (capId !== undefined && !pool.caps.some((existing) => existing.id === capId)) return "This cap no longer exists.";
-    if (capRangesOverlap([...pool.caps.filter((existing) => existing.id !== capId), cap])) return "Cap date ranges must not overlap.";
-    setStore((current) => {
-      const ids = capId === undefined ? allocateIds(current) : { firstId: capId, nextId: current.next_id };
-      return {
-        ...current,
-        next_id: ids.nextId,
-        pools: current.pools.map((candidate) => candidate.id === pool.id
-          ? { ...candidate, caps: capId === undefined
-            ? [...candidate.caps, { ...cap, id: ids.firstId }]
-            : candidate.caps.map((existing) => existing.id === capId ? { ...cap, id: capId } : existing) }
-          : candidate),
-      };
-    });
-    setModal(capId === undefined ? null : { type: "pool-info", poolId: pool.id });
+    const error = dispatch({ type: "save-cap", poolId: selectedModal.poolId, capId, cap });
+    if (error) return error;
+    setModal(capId === undefined ? null : { type: "pool-info", poolId: selectedModal.poolId });
     return null;
   }
 
@@ -360,121 +295,17 @@ function App() {
       return "This addition is no longer available.";
     }
     const poolId = selectedModal.poolId;
-    if (!store.pools.some((pool) => pool.id === poolId)) return "This pool no longer exists.";
-    if (
-      selectedModal.type === "edit-addition" &&
-      !store.pools.some((pool) =>
-        pool.id === poolId && pool.additions.some((addition) => addition.id === selectedModal.additionId),
-      )
-    ) return "This addition no longer exists.";
-    if (
-      selectedModal.type === "edit-recurring" &&
-      !store.pools.some((pool) =>
-        pool.id === poolId && pool.recurring.some((rule) => rule.id === selectedModal.ruleId),
-      )
-    ) return "This addition no longer exists.";
-
-    setStore((current) => {
-      if (selectedModal.type === "add-time") {
-        const entries = [{ amount: form.amount, date: form.date }, ...(!form.recurring && !form.reset ? form.additionalEntries ?? [] : [])];
-        const ids = allocateIds(current, entries.length);
-        return {
-          ...current,
-          next_id: ids.nextId,
-          pools: current.pools.map((pool) => {
-            if (pool.id !== poolId) return pool;
-            return form.recurring
-              ? {
-                  ...pool,
-                  recurring: [
-                    ...pool.recurring,
-                    {
-                      id: ids.firstId,
-                      amount: form.amount,
-                      reset: form.reset || undefined,
-                      expires_same_day: !form.reset && pool.new_additions_expire_same_day || undefined,
-                      cadence: form.cadence,
-                      start_date: form.date,
-                      ...(form.endDate ? { end_date: form.endDate } : {}),
-                      ...(form.cadence === "YearlyNthWeekday"
-                        ? {
-                            month: form.month,
-                            nth_weekday: form.nthWeekday,
-                            weekday: form.weekday,
-                          }
-                        : {}),
-                    },
-                  ],
-                }
-              : {
-                  ...pool,
-                  additions: [...pool.additions, ...entries.map((entry, index) => ({ id: ids.firstId + index, amount: entry.amount, date: entry.date, reset: form.reset || undefined, expires_same_day: !form.reset && pool.new_additions_expire_same_day || undefined }))],
-                };
-          }),
-        };
-      }
-      if (selectedModal.type === "edit-addition") {
-        if (!current.pools.some((pool) =>
-          pool.id === poolId && pool.additions.some((addition) => addition.id === selectedModal.additionId),
-        )) return current;
-        return {
-          ...current,
-          pools: current.pools.map((pool) => pool.id !== poolId ? pool : {
-            ...pool,
-            additions: pool.additions.map((addition) =>
-              addition.id === selectedModal.additionId
-                ? { ...addition, amount: form.amount, date: form.date, reset: form.reset || undefined, expires_same_day: !form.reset && form.expiresSameDay || undefined }
-                : addition,
-            ),
-          }),
-        };
-      }
-      if (!current.pools.some((pool) =>
-        pool.id === poolId && pool.recurring.some((rule) => rule.id === selectedModal.ruleId),
-      )) return current;
-      return {
-        ...current,
-        pools: current.pools.map((pool) => pool.id !== poolId ? pool : {
-          ...pool,
-          recurring: pool.recurring.map((rule) =>
-              rule.id === selectedModal.ruleId
-                ? {
-                    ...rule,
-                    amount: form.amount,
-                    reset: form.reset || undefined,
-                    expires_same_day: !form.reset && form.expiresSameDay || undefined,
-                    cadence: form.cadence,
-                    start_date: form.date,
-                    end_date: form.endDate,
-                    month: form.cadence === "YearlyNthWeekday" ? form.month : undefined,
-                    nth_weekday: form.cadence === "YearlyNthWeekday" ? form.nthWeekday : undefined,
-                    weekday: form.cadence === "YearlyNthWeekday" ? form.weekday : undefined,
-                  }
-                : rule,
-          ),
-        }),
-      };
-    });
+    const target = selectedModal.type === "edit-addition" ? { type: "one-time" as const, id: selectedModal.additionId }
+      : selectedModal.type === "edit-recurring" ? { type: "recurring" as const, id: selectedModal.ruleId } : undefined;
+    const error = dispatch({ type: "save-addition", poolId, target, form });
+    if (error) return error;
     setModal(null);
     return null;
   }
 
   function saveEvent(name: string, days: LeaveDay[]): string | null {
-    if (selectedModal?.type === "edit-event") {
-      if (!store.events.some((event) => event.id === selectedModal.eventId)) return "This event no longer exists.";
-      setStore((current) => ({
-        ...current,
-        events: current.events.map((event) =>
-          event.id === selectedModal.eventId ? { ...event, name, days } : event,
-        ),
-      }));
-    } else {
-      setStore((current) => {
-        const ids = allocateIds(current);
-        const event: LeaveEvent = { id: ids.firstId, name, days };
-        return { ...current, next_id: ids.nextId, events: [...current.events, event] };
-      });
-    }
+    const error = dispatch({ type: "save-event", eventId: selectedModal?.type === "edit-event" ? selectedModal.eventId : undefined, name, days });
+    if (error) return error;
     setModal(null);
     return null;
   }
@@ -575,12 +406,7 @@ function App() {
             setBalanceDate(ignoreWeekends ? nextWeekday(chartHistoryEnd) : chartHistoryEnd);
           }}
           pools={store.pools}
-          onPoolVisibilityChange={(poolId, visible) => setStore((current) => ({
-            ...current,
-            pools: current.pools.map((pool) => pool.id === poolId
-              ? { ...pool, hidden_from_graph: !visible }
-              : pool),
-          }))}
+          onPoolVisibilityChange={(poolId, visible) => { dispatch({ type: "set-pool-visibility", poolId, visible }); }}
           poolHistories={poolHistories}
           selectedEvent={selectedEvent}
           zoomEvent={zoomEvent}
@@ -836,8 +662,7 @@ function App() {
           mode="edit-cap"
           onDelete={() => {
             if (!window.confirm("Remove this balance cap?")) return;
-            setStore((current) => ({ ...current, pools: current.pools.map((candidate) => candidate.id === pool.id
-              ? { ...candidate, caps: candidate.caps.filter((item) => item.id !== cap.id) } : candidate) }));
+            dispatch({ type: "remove-cap", poolId: pool.id, capId: cap.id });
             setModal({ type: "pool-info", poolId: pool.id });
           }}
           initialAmount={String(cap.max_balance)}
@@ -872,7 +697,7 @@ function App() {
           eventId={selectedModal.type === "edit-event" ? selectedModal.eventId : undefined}
           onDelete={selectedModal.type === "edit-event" ? () => {
             if (!window.confirm("Remove this event?")) return;
-            setStore((current) => ({ ...current, events: current.events.filter((event) => event.id !== selectedModal.eventId) }));
+            dispatch({ type: "remove-event", eventId: selectedModal.eventId });
             setModal(null);
           } : undefined}
           initialName={selectedModal.type === "edit-event" ? selectedModal.name : ""}

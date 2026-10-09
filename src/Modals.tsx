@@ -18,6 +18,8 @@ import {
   todayDate,
   WEEKDAYS,
   type Cadence,
+  type AdditionFormData,
+  type PoolCapFormData,
   type EventDayInput,
   type LeaveDay,
   type LeaveEvent,
@@ -26,6 +28,8 @@ import {
   type Store,
   type Weekday,
 } from "./model";
+
+export type { AdditionFormData, PoolCapFormData } from "./model";
 
 interface ModalFrameProps {
   icon: string;
@@ -202,13 +206,6 @@ interface PoolModalProps {
   initialNewAdditionsExpireSameDay?: boolean;
   onClose: () => void;
   onSave: (name: string, openingAmount: string, openingDate: string, hiddenFromGraph: boolean, hiddenFromTotal: boolean, color?: string, newAdditionsExpireSameDay?: boolean) => string | null;
-}
-
-export interface PoolCapFormData {
-  id?: number;
-  max_balance: number;
-  start_date: string;
-  end_date?: string;
 }
 
 export function PoolModal({
@@ -437,20 +434,6 @@ export function PoolUsageModal({ pool, events, onClose }: PoolUsageModalProps) {
       </div>
     </ModalFrame>
   );
-}
-
-export interface AdditionFormData {
-  additionalEntries?: { amount: number; date: string }[];
-  reset: boolean;
-  expiresSameDay?: boolean;
-  amount: number;
-  date: string;
-  recurring: boolean;
-  cadence: Cadence;
-  endDate?: string;
-  month?: number;
-  nthWeekday?: NthWeekday;
-  weekday?: Weekday;
 }
 
 interface AdditionModalProps {
