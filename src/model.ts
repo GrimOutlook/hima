@@ -325,12 +325,46 @@ export function parseStoreJson(json: string): Store {
   return normalizeStore(source);
 }
 
-export function loadStore(): Store {
+export interface StoreLoadResult {
+  store: Store;
+  warning: string | null;
+  canSave: boolean;
+}
+
+export function loadStore(): StoreLoadResult {
+  let saved: string | null;
   try {
-    const saved = window.localStorage.getItem(STORAGE_KEY);
-    return saved ? normalizeStore(JSON.parse(saved) as unknown) : emptyStore();
+    saved = window.localStorage.getItem(STORAGE_KEY);
   } catch {
-    return emptyStore();
+    return { store: emptyStore(), canSave: false, warning: "Browser storage could not be read. Saving is disabled for this session; export any changes to keep them." };
+  }
+  if (saved === null) return { store: emptyStore(), warning: null, canSave: true };
+  try {
+    return { store: parseStoreJson(saved), warning: null, canSave: true };
+  } catch {
+    try {
+      // Never replace an earlier recovery copy. Reuse an identical copy on
+      // remount (including StrictMode), otherwise choose the next unused key.
+      let backupKey = `${STORAGE_KEY}.backup`;
+      for (let suffix = 1; ; suffix += 1) {
+        const existing = window.localStorage.getItem(backupKey);
+        if (existing === saved) break;
+        if (existing === null) {
+          window.localStorage.setItem(backupKey, saved);
+          break;
+        }
+        backupKey = `${STORAGE_KEY}.backup.${suffix}`;
+      }
+      return {
+        store: emptyStore(), canSave: true,
+        warning: `Saved data could not be loaded. The original has been preserved in browser storage under ${backupKey}. An empty planner is shown; new changes will replace the active saved data but keep that recovery copy.`,
+      };
+    } catch {
+      return {
+        store: emptyStore(), canSave: false,
+        warning: "Saved data could not be loaded or backed up. The original has not been overwritten. Saving is disabled for this session; export any changes to keep them.",
+      };
+    }
   }
 }
 

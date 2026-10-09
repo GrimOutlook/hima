@@ -5,6 +5,7 @@ import { CSS } from "@dnd-kit/utilities";
 import { BalanceChart } from "./BalanceChart";
 import { CalendarPicker } from "./CalendarPicker";
 import { poolColor } from "./poolColors";
+import { useStoredPlanner } from "./useStoredPlanner";
 import { FirstDayOfWeekContext, IgnoreWeekendsContext, loadDefaultTimeline, loadFirstDayOfWeek, loadIgnoreWeekends, nextWeekday, saveSettings } from "./settings";
 import {
   AdditionModal,
@@ -28,7 +29,6 @@ import {
   eventTotalHours,
   formatHours,
   freshEventDays,
-  loadStore,
   monthLabel,
   parseHours,
   parseStoreJson,
@@ -36,7 +36,6 @@ import {
   poolTotalsOn,
   prettyDate,
   recurringScheduleDescription,
-  saveStore,
   serializeStoreJson,
   todayDate,
   totalsOn,
@@ -65,7 +64,7 @@ function App() {
   const [firstDayOfWeek, setFirstDayOfWeek] = useState(loadFirstDayOfWeek);
   const [ignoreWeekends, setIgnoreWeekends] = useState(loadIgnoreWeekends);
   const [defaultTimeline, setDefaultTimeline] = useState(loadDefaultTimeline);
-  const [store, setStore] = useState<Store>(loadStore);
+  const { store, setStore, storageWarning } = useStoredPlanner();
   const [draggedPoolId, setDraggedPoolId] = useState<number | null>(null);
   const draggedPool = store.pools.find((pool) => pool.id === draggedPoolId);
   const poolDragSensors = useSensors(
@@ -128,10 +127,6 @@ function App() {
   const informationPool = selectedModal?.type === "pool-info"
     ? store.pools.find((pool) => pool.id === selectedModal.poolId)
     : undefined;
-
-  useEffect(() => {
-    saveStore(store);
-  }, [store]);
 
   useEffect(() => {
     saveSettings(firstDayOfWeek, ignoreWeekends, defaultTimeline);
@@ -527,6 +522,7 @@ function App() {
           />
         </div>
       </header>
+      {storageWarning && <p role="alert">{storageWarning}</p>}
 
       <main id="top" className="page-content">
         <section className="page-intro">
