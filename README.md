@@ -27,6 +27,14 @@ npm run build
 
 The generated site is written to `dist/`. Run `npm run preview` to serve the production build locally.
 
+### Build with Nix
+
+With Nix flakes enabled, run `nix build` to build the production site using the pinned Node.js and npm dependencies. The static site is available in `result/dist/`, ready to serve with a static web server. Package outputs support `x86_64-linux` and `aarch64-linux`.
+
+Run `nix develop` for the Node.js development shell, or `nix run` to start the development server after installing dependencies with `npm ci`.
+
+When updating `package-lock.json`, also update `npmDepsHash` in `flake.nix` using the hash printed by `nix shell nixpkgs#prefetch-npm-deps --command prefetch-npm-deps package-lock.json`.
+
 Tests use Node for pure model, settings, and store mutation checks. Component and hook test files opt into jsdom with `@vitest-environment jsdom`. Regression coverage includes fractional-hour balances, shared per-pool history dates, independent graph visibility and total exclusion, modal validation and focus, and calendar selection and keyboard navigation. Run a focused suite with, for example, `npm test -- src/App.test.tsx src/CalendarPicker.test.tsx`.
 
 The app does not need an account or a server. Pools and events are stored in this browser's local storage; existing `hima.store.v1` data is retained and older event formats are migrated when loaded.
