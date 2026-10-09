@@ -575,7 +575,7 @@ export function totalsOn(store: Store, date: string): { accrued: number; used: n
   const accrued = ledgers.reduce((total, ledger) => total + (ledger?.accrued ?? 0), 0);
   const used = ledgers.reduce((total, ledger) => total + (ledger?.used ?? 0), 0);
   const balance = ledgers.reduce((total, ledger, index) => total + (store.pools[index].hidden_from_total ? 0 : ledger?.balance ?? 0), 0);
-  return { accrued, used, balance };
+  return { accrued: roundHours(accrued), used: roundHours(used), balance: roundHours(balance) };
 }
 
 export function poolBalanceOn(store: Store, poolId: number, date: string): number {
@@ -689,7 +689,7 @@ export function balanceHistory(store: Store, today: string, poolId?: number): Ba
   const ledgers = pools.map((pool) => poolLedgerForDates(pool, store.events, dates));
   return dates.map((date, index) => ({
     date,
-    balance: ledgers.reduce((total, ledger) => total + (ledger[index]?.balance ?? 0), 0),
+    balance: roundHours(ledgers.reduce((total, ledger) => total + (ledger[index]?.balance ?? 0), 0)),
     projected: date > today,
   }));
 }
@@ -698,6 +698,12 @@ interface PoolLedgerSnapshot {
   accrued: number;
   used: number;
   balance: number;
+}
+
+// Hours have hundredth-hour precision. Normalize arithmetic before balances
+// reach comparisons, and avoid exposing negative zero to callers.
+function roundHours(hours: number): number {
+  return Math.round(hours * 100) / 100 || 0;
 }
 
 interface PoolDailyActions {
@@ -723,7 +729,7 @@ function poolLedgerForDates(pool: Pool, events: LeaveEvent[], dates: string[]): 
         (total, event) => total + eventHoursFromPoolThrough(event, pool.id, date),
         0,
       );
-      return { accrued, used, balance: accrued - used };
+      return { accrued: roundHours(accrued), used: roundHours(used), balance: roundHours(accrued - used) };
     });
   }
 
@@ -815,7 +821,7 @@ function poolLedgerForDates(pool: Pool, events: LeaveEvent[], dates: string[]): 
     while (actionIndex < orderedActions.length && orderedActions[actionIndex]![0] <= date) {
       const [actionDate, daily] = orderedActions[actionIndex]!;
       // Only the unused portion of the previous day's temporary credit expires.
-      balance -= expiringBalance;
+      balance = roundHours(balance - expiringBalance);
       expiringBalance = 0;
       const activeCap = pool.caps.find(
         (cap) => cap.start_date <= actionDate && (!cap.end_date || actionDate <= cap.end_date),
@@ -824,12 +830,12 @@ function poolLedgerForDates(pool: Pool, events: LeaveEvent[], dates: string[]): 
       const acceptedAccrual = activeCap
         ? Math.min(daily.accrued, Math.max(0, activeCap.max_balance - balance))
         : daily.accrued;
-      balance += acceptedAccrual - daily.used;
+      balance = roundHours(balance + acceptedAccrual - daily.used);
       // Permanent credits are posted first when a cap limits same-day accrual.
       const acceptedExpiring = Math.max(0, acceptedAccrual - (daily.accrued - (daily.expiring ?? 0)));
-      expiringBalance = Math.max(0, acceptedExpiring - daily.used);
-      accrued += acceptedAccrual;
-      used += daily.used;
+      expiringBalance = roundHours(Math.max(0, acceptedExpiring - daily.used));
+      accrued = roundHours(accrued + acceptedAccrual);
+      used = roundHours(used + daily.used);
       // Reset dates replace the remaining balance at the end of the day.
       if (daily.reset !== undefined) {
         balance = daily.reset;
