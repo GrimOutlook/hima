@@ -9,7 +9,7 @@ pub static MIGRATOR: sqlx::migrate::Migrator = sqlx::migrate!("./migrations");
 
 #[derive(Clone)]
 pub struct Database {
-    pool: PgPool,
+    pub(crate) pool: PgPool,
 }
 
 #[derive(Debug, sqlx::FromRow, Serialize, PartialEq)]

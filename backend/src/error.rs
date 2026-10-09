@@ -23,6 +23,13 @@ struct ErrorDetail {
 }
 
 impl ApiError {
+    pub fn auth(status: StatusCode, code: &'static str, message: &'static str) -> Self {
+        Self {
+            status,
+            code,
+            message,
+        }
+    }
     pub fn not_found() -> Self {
         Self {
             status: StatusCode::NOT_FOUND,

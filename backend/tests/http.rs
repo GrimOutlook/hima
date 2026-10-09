@@ -12,6 +12,18 @@ async fn health_and_api_error_contract() {
         ("GET", "/health", StatusCode::OK, json!({"status":"ok"})),
         (
             "GET",
+            "/api/me",
+            StatusCode::UNAUTHORIZED,
+            json!({"error":{"code":"unauthenticated","message":"Sign in to access this endpoint."}}),
+        ),
+        (
+            "GET",
+            "/auth/login",
+            StatusCode::SERVICE_UNAVAILABLE,
+            json!({"error":{"code":"auth_unavailable","message":"Authentication is not configured."}}),
+        ),
+        (
+            "GET",
             "/missing?token=secret",
             StatusCode::NOT_FOUND,
             json!({"error":{"code":"not_found","message":"The requested endpoint does not exist."}}),
