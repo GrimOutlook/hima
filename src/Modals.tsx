@@ -69,10 +69,14 @@ export function ModalFrame({
     }
     if (!card.contains(document.activeElement)) focusInside();
     function handleFocus(event: FocusEvent) {
+      const popup = (event.target as Element).closest?.('[role="dialog"][id]');
+      if (popup && Array.from(card!.querySelectorAll('[aria-controls]')).some((control) => control.getAttribute("aria-controls") === popup.id)) return;
       if (!card!.contains(event.target as Node)) focusInside();
     }
     function handleKeyDown(event: KeyboardEvent) {
       if (event.defaultPrevented) return;
+      const popup = (event.target as Element).closest?.('[role="dialog"][id]');
+      if (popup && Array.from(card!.querySelectorAll('[aria-controls]')).some((control) => control.getAttribute("aria-controls") === popup.id)) return;
       if (event.key === "Escape") {
         event.preventDefault();
         onCloseRef.current();
