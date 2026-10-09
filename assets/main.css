@@ -193,8 +193,8 @@ button:focus-visible, input:focus-visible, select:focus-visible, a:focus-visible
 .pool-card:hover { border-color: #d3ded4; box-shadow: 0 4px 15px rgba(35, 45, 39, .07); }
 .pool-card.pool-card-selected { border-color: #8eaa94; box-shadow: 0 0 0 2px rgba(110, 146, 117, .14); }
 .pool-card-header { display: flex; align-items: center; justify-content: space-between; }
-.pool-card-draggable { cursor: grab; touch-action: none; user-select: none; }
-.pool-card-draggable:active { cursor: grabbing; }
+.pool-drag-handle { cursor: grab; touch-action: none; user-select: none; }
+.pool-drag-handle:active { cursor: grabbing; }
 .pool-card.pool-card-dragging { position: relative; z-index: 10; border-color: #8eaa94; box-shadow: 0 14px 32px rgba(35, 45, 39, .2); cursor: grabbing; will-change: transform; }
 .pool-actions { display: flex; align-items: center; gap: 3px; flex-shrink: 0; }
 .pool-title-group { display: flex; align-items: center; gap: 11px; min-width: 0; flex: 1; }
