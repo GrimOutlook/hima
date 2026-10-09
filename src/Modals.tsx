@@ -60,6 +60,7 @@ export function ModalFrame({
 
   useEffect(() => {
     const card = cardRef.current;
+    const opener = openerRef.current;
     if (!card) return;
     function controls() {
       return Array.from(card!.querySelectorAll<HTMLElement>(
@@ -100,7 +101,7 @@ export function ModalFrame({
     return () => {
       document.removeEventListener("keydown", handleKeyDown);
       document.removeEventListener("focusin", handleFocus);
-      if (openerRef.current?.isConnected) openerRef.current.focus();
+      if (opener?.isConnected) opener.focus();
     };
   }, []);
 

@@ -33,15 +33,16 @@ export function SettingTooltip({ id, label, children }: { id: string; label: str
   }, [open]);
 
   return <span
+    role="group" aria-label={label}
     ref={trigger}
     className="setting-tooltip"
     onMouseEnter={() => { setHovered(true); setDismissed(false); }}
     onMouseLeave={() => setHovered(false)}
     onFocus={() => { setFocused(true); setDismissed(false); }}
     onBlur={() => setFocused(false)}
-    onKeyDown={(event) => { if (event.key === "Escape") { event.stopPropagation(); setDismissed(true); } }}
   >
-    <button type="button" className="icon-button" aria-label={label} aria-describedby={open ? id : undefined}>ⓘ</button>
+    <button type="button" className="icon-button" aria-label={label} aria-describedby={open ? id : undefined}
+      onKeyDown={(event) => { if (event.key === "Escape") { event.stopPropagation(); setDismissed(true); } }}>ⓘ</button>
     {open && createPortal(
       <span ref={bubble} className="setting-tooltip-content" id={id} role="tooltip" style={position}>{children}</span>,
       document.body,

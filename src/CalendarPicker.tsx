@@ -260,6 +260,8 @@ export function CalendarPicker({ value, onChange, label = "BALANCE ON", variant 
         </svg>
       </button>
       {isOpen && createPortal(
+        // The dialog handles Tab to keep focus within its native controls.
+        // eslint-disable-next-line jsx-a11y/no-noninteractive-element-interactions
         <div
           className="date-picker-calendar"
           id={calendarId}

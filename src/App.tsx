@@ -535,6 +535,8 @@ function App() {
                         .reduce((sum, allocation) => sum + allocation.hours, 0), 0),
                     })).filter((share) => share.hours > 0);
                     return (
+                      // The title button provides keyboard selection; the row click is a pointer shortcut.
+                      // eslint-disable-next-line jsx-a11y/click-events-have-key-events, jsx-a11y/no-noninteractive-element-interactions
                       <article className={`event-row${selectedEvent?.id === event.id ? " event-row-selected" : ""}`} key={event.id}
                         data-event-id={event.id}
                         onClick={(click) => {
@@ -749,6 +751,8 @@ function PoolCardContent({
     .reduce((sum, allocation) => sum + allocation.hours, 0), 0) ?? 0;
   const eventTotal = selectedEvent ? eventTotalHours(selectedEvent) : 0;
   return (
+    // The title button provides keyboard selection; the card click is a pointer shortcut.
+    // eslint-disable-next-line jsx-a11y/click-events-have-key-events, jsx-a11y/no-noninteractive-element-interactions
     <article
       ref={sortable?.setNodeRef}
       style={{

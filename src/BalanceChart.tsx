@@ -332,7 +332,10 @@ export function BalanceChart({
           {pools.length > 0 && (
             <div className="history-pool-filter">
               <span>Show</span>
+              {/* Escape from any child control closes this group. */}
+              {/* eslint-disable-next-line jsx-a11y/no-noninteractive-element-interactions */}
               <div className={`history-pool-dropdown${poolMenuOpen ? " is-open" : ""}`}
+                role="group" aria-label="Graph pool selection"
                 onBlur={(event) => {
                   if (!event.currentTarget.contains(event.relatedTarget)) setPoolMenuOpen(false);
                 }}
@@ -379,7 +382,10 @@ export function BalanceChart({
       </div>
       {selectedPools.length === 0 && <p className="history-pool-visibility">Select a pool to show its balance in the graph.</p>}
       <div className="history-timeline-actions">
+      {/* Escape from any child control closes this group. */}
+      {/* eslint-disable-next-line jsx-a11y/no-noninteractive-element-interactions */}
       <div className={`history-timeline-dropdown${timelineMenuOpen ? " is-open" : ""}`}
+        role="group" aria-label="Graph timeline selection"
         onBlur={(event) => {
           if (!event.currentTarget.contains(event.relatedTarget)) setTimelineMenuOpen(false);
         }}
