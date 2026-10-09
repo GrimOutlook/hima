@@ -686,6 +686,7 @@ export function AdditionModal({
 }
 
 interface EventModalProps {
+  eventId?: number;
   onDelete?: () => void;
   pools: Pool[];
   store: Store;
@@ -697,6 +698,7 @@ interface EventModalProps {
 }
 
 export function EventModal({
+  eventId,
   onDelete,
   pools,
   store,
@@ -814,7 +816,7 @@ export function EventModal({
       savedDays.push({ date: day.date, allocations });
     }
 
-    if (!editing && step === 2) {
+    if ((editing && step === 1) || (!editing && step === 2)) {
       setReviewDays(sortDays(savedDays));
       setError("");
       setStep(3);
@@ -834,7 +836,7 @@ export function EventModal({
     ]);
   }
 
-  const warnings = step === 3 && !editing ? eventBalanceWarnings(store, reviewDays).map((warning) =>
+  const warnings = step === 3 ? eventBalanceWarnings(store, reviewDays, editing ? eventId : undefined).map((warning) =>
     `${pools.find((pool) => pool.id === warning.poolId)?.name} is projected to have ${formatHours(warning.balance)} h on ${prettyDate(warning.date)}, including this event and other planned leave.`,
   ) : [];
 
@@ -845,7 +847,7 @@ export function EventModal({
       title={editing ? "Edit planned leave" : "Plan some leave"}
       description={
         editing
-          ? "Update dates, hours, or the source pool for any day."
+          ? step === 3 ? "Review your changes and their projected impact before saving." : "Update dates, hours, or the source pool for any day."
           : step === 1 ? "Name your event and choose its dates."
           : step === 2 ? "Choose the hours and source pools for each date."
           : "Review your event and its projected impact before adding it."
@@ -857,7 +859,7 @@ export function EventModal({
         {!editing && <ol className="event-wizard-steps" aria-label="Event creation progress">
           {["Name & dates", "Hours & pools", "Overview"].map((title, index) => <li key={title} aria-current={step === index + 1 ? "step" : undefined} className={step === index + 1 ? "is-active" : ""}>{index + 1}. {title}</li>)}
         </ol>}
-        {(editing || step === 1) && <>
+        {step === 1 && <>
         <label className="field-label">
           Event name
           <input
@@ -893,7 +895,7 @@ export function EventModal({
           </div>
           <p className="wizard-hint">Defaults apply to each selected date. You can adjust individual days in Hours &amp; pools; split allocations keep their own values.</p>
         </>}
-        {(editing || step === 2) && <>
+        {((editing && step === 1) || step === 2) && <>
         <div className="event-days-editor">
           <div className="event-days-heading">
             <span>Days covered</span>
@@ -995,7 +997,7 @@ export function EventModal({
           </button>}
         </div>
         </>}
-        {!editing && step === 3 && <section className="event-review" aria-label="Event overview">
+        {step === 3 && <section className="event-review" aria-label="Event overview">
           <h3>{name.trim()}</h3>
           <p>{reviewDays.length} {reviewDays.length === 1 ? "day" : "days"} · {formatHours(reviewDays.reduce((total, day) => total + day.allocations.reduce((sum, allocation) => sum + allocation.hours, 0), 0))} hours total</p>
           {reviewDays.map((day) => <div className="event-day-card" key={day.date}>
@@ -1004,16 +1006,16 @@ export function EventModal({
           </div>)}
           <div className={warnings.length ? "event-review-warnings" : "event-review-clear"}>
             <strong>{warnings.length ? "Balance warnings" : "No negative pool balances projected"}</strong>
-            {warnings.length > 0 && <><ul>{warnings.map((warning) => <li key={warning}>{warning}</li>)}</ul><p>You can still add this event, or go back to adjust the allocations.</p></>}
+            {warnings.length > 0 && <><ul>{warnings.map((warning) => <li key={warning}>{warning}</li>)}</ul><p>You can still {editing ? "save these changes" : "add this event"}, or go back to adjust the allocations.</p></>}
           </div>
         </section>}
         {error && <p className="form-error" role="alert">{error}</p>}
         <div className="modal-actions">
           {editing && onDelete && <DeleteButton label="Delete event" onDelete={onDelete} />}
           <button className="button button-quiet" type="button" onClick={onClose}>Cancel</button>
-          {!editing && step > 1 && <button className="button button-quiet" type="button" onClick={() => { setStep(step - 1); setError(""); }}>Back</button>}
+          {step > 1 && <button className="button button-quiet" type="button" onClick={() => { setStep(editing ? 1 : step - 1); setError(""); }}>Back</button>}
           <button className="button button-primary" type="submit">
-            {editing ? "Save changes" : step === 1 ? "Next: hours & pools" : step === 2 ? "Review event" : "Add to plan"}
+            {editing ? step === 3 ? "Save changes" : "Review changes" : step === 1 ? "Next: hours & pools" : step === 2 ? "Review event" : "Add to plan"}
           </button>
         </div>
       </form>

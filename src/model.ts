@@ -87,7 +87,7 @@ export interface BalancePoint {
   projected: boolean;
 }
 
-const STORAGE_KEY = "hima.store.v1";
+export const STORAGE_KEY = "hima.store.v1";
 
 export function emptyStore(): Store {
   return { pools: [], events: [], next_id: 1 };
@@ -325,20 +325,56 @@ export function parseStoreJson(json: string): Store {
   return normalizeStore(source);
 }
 
-export function loadStore(): Store {
+export interface StoreLoadResult {
+  store: Store;
+  warning: string | null;
+  canSave: boolean;
+}
+
+export function loadStore(): StoreLoadResult {
+  let saved: string | null;
   try {
-    const saved = window.localStorage.getItem(STORAGE_KEY);
-    return saved ? normalizeStore(JSON.parse(saved) as unknown) : emptyStore();
+    saved = window.localStorage.getItem(STORAGE_KEY);
   } catch {
-    return emptyStore();
+    return { store: emptyStore(), canSave: false, warning: "Browser storage could not be read. Saving is disabled for this session; export any changes to keep them." };
+  }
+  if (saved === null) return { store: emptyStore(), warning: null, canSave: true };
+  try {
+    return { store: parseStoreJson(saved), warning: null, canSave: true };
+  } catch {
+    try {
+      // Never replace an earlier recovery copy. Reuse an identical copy on
+      // remount (including StrictMode), otherwise choose the next unused key.
+      let backupKey = `${STORAGE_KEY}.backup`;
+      for (let suffix = 1; ; suffix += 1) {
+        const existing = window.localStorage.getItem(backupKey);
+        if (existing === saved) break;
+        if (existing === null) {
+          window.localStorage.setItem(backupKey, saved);
+          break;
+        }
+        backupKey = `${STORAGE_KEY}.backup.${suffix}`;
+      }
+      return {
+        store: emptyStore(), canSave: true,
+        warning: `Saved data could not be loaded. The original has been preserved in browser storage under ${backupKey}. An empty planner is shown; new changes will replace the active saved data but keep that recovery copy.`,
+      };
+    } catch {
+      return {
+        store: emptyStore(), canSave: false,
+        warning: "Saved data could not be loaded or backed up. The original has not been overwritten. Saving is disabled for this session; export any changes to keep them.",
+      };
+    }
   }
 }
 
-export function saveStore(store: Store): void {
+export function saveStore(store: Store): boolean {
   try {
     window.localStorage.setItem(STORAGE_KEY, JSON.stringify(store));
+    return true;
   } catch {
     // Keep the planner usable when browser storage is unavailable or full.
+    return false;
   }
 }
 
@@ -571,11 +607,13 @@ export function eventHoursFromPoolThrough(event: LeaveEvent, poolId: number, dat
 }
 
 export function totalsOn(store: Store, date: string): { accrued: number; used: number; balance: number } {
-  const ledgers = store.pools.map((pool) => poolLedgerForDates(pool, store.events, [date])[0]);
+  const ledgers = store.pools
+    .filter((pool) => !pool.hidden_from_total)
+    .map((pool) => poolLedgerForDates(pool, store.events, [date])[0]);
   const accrued = ledgers.reduce((total, ledger) => total + (ledger?.accrued ?? 0), 0);
   const used = ledgers.reduce((total, ledger) => total + (ledger?.used ?? 0), 0);
-  const balance = ledgers.reduce((total, ledger, index) => total + (store.pools[index].hidden_from_total ? 0 : ledger?.balance ?? 0), 0);
-  return { accrued, used, balance };
+  const balance = ledgers.reduce((total, ledger) => total + (ledger?.balance ?? 0), 0);
+  return { accrued: roundHours(accrued), used: roundHours(used), balance: roundHours(balance) };
 }
 
 export function poolBalanceOn(store: Store, poolId: number, date: string): number {
@@ -597,10 +635,10 @@ export function sortDays(days: LeaveDay[]): LeaveDay[] {
   return [...days].sort((left, right) => left.date.localeCompare(right.date));
 }
 
-export function eventBalanceWarnings(store: Store, days: LeaveDay[]): Array<{ poolId: number; date: string; balance: number }> {
+export function eventBalanceWarnings(store: Store, days: LeaveDay[], replacingEventId?: number): Array<{ poolId: number; date: string; balance: number }> {
   const firstDate = sortDays(days)[0]?.date;
   if (!firstDate) return [];
-  const events = [...store.events, { id: store.next_id, name: "Event preview", days }];
+  const events = [...store.events.filter((event) => event.id !== replacingEventId), { id: store.next_id, name: "Event preview", days }];
   const affectedPoolIds = new Set(days.flatMap((day) => day.allocations.map((allocation) => allocation.pool_id)));
   const dates = [...new Set(events.flatMap((event) => event.days.map((day) => day.date)))].filter((date) => date >= firstDate).sort();
   return store.pools.filter((pool) => affectedPoolIds.has(pool.id)).flatMap((pool) => {
@@ -686,10 +724,20 @@ export function balanceHistory(store: Store, today: string, poolId?: number): Ba
   for (let date = start; date <= end; date = addDays(date, 1)) {
     dates.push(date);
   }
+  return balanceHistoryForDates(store, today, dates, poolId);
+}
+
+// Chart series must replay their ledgers over the same dates, even when a
+// different pool supplies the earliest opening balance or latest leave event.
+export function balanceHistoryForDates(store: Store, today: string, dates: string[], poolId?: number): BalancePoint[] {
+  if (!isValidDate(today)) return [];
+  const pools = poolId === undefined
+    ? store.pools.filter((pool) => !pool.hidden_from_graph)
+    : store.pools.filter((pool) => pool.id === poolId);
   const ledgers = pools.map((pool) => poolLedgerForDates(pool, store.events, dates));
   return dates.map((date, index) => ({
     date,
-    balance: ledgers.reduce((total, ledger) => total + (ledger[index]?.balance ?? 0), 0),
+    balance: roundHours(ledgers.reduce((total, ledger) => total + (ledger[index]?.balance ?? 0), 0)),
     projected: date > today,
   }));
 }
@@ -698,6 +746,12 @@ interface PoolLedgerSnapshot {
   accrued: number;
   used: number;
   balance: number;
+}
+
+// Hours have hundredth-hour precision. Normalize arithmetic before balances
+// reach comparisons, and avoid exposing negative zero to callers.
+function roundHours(hours: number): number {
+  return Math.round(hours * 100) / 100 || 0;
 }
 
 interface PoolDailyActions {
@@ -723,7 +777,7 @@ function poolLedgerForDates(pool: Pool, events: LeaveEvent[], dates: string[]): 
         (total, event) => total + eventHoursFromPoolThrough(event, pool.id, date),
         0,
       );
-      return { accrued, used, balance: accrued - used };
+      return { accrued: roundHours(accrued), used: roundHours(used), balance: roundHours(accrued - used) };
     });
   }
 
@@ -815,7 +869,7 @@ function poolLedgerForDates(pool: Pool, events: LeaveEvent[], dates: string[]): 
     while (actionIndex < orderedActions.length && orderedActions[actionIndex]![0] <= date) {
       const [actionDate, daily] = orderedActions[actionIndex]!;
       // Only the unused portion of the previous day's temporary credit expires.
-      balance -= expiringBalance;
+      balance = roundHours(balance - expiringBalance);
       expiringBalance = 0;
       const activeCap = pool.caps.find(
         (cap) => cap.start_date <= actionDate && (!cap.end_date || actionDate <= cap.end_date),
@@ -824,12 +878,12 @@ function poolLedgerForDates(pool: Pool, events: LeaveEvent[], dates: string[]): 
       const acceptedAccrual = activeCap
         ? Math.min(daily.accrued, Math.max(0, activeCap.max_balance - balance))
         : daily.accrued;
-      balance += acceptedAccrual - daily.used;
+      balance = roundHours(balance + acceptedAccrual - daily.used);
       // Permanent credits are posted first when a cap limits same-day accrual.
       const acceptedExpiring = Math.max(0, acceptedAccrual - (daily.accrued - (daily.expiring ?? 0)));
-      expiringBalance = Math.max(0, acceptedExpiring - daily.used);
-      accrued += acceptedAccrual;
-      used += daily.used;
+      expiringBalance = roundHours(Math.max(0, acceptedExpiring - daily.used));
+      accrued = roundHours(accrued + acceptedAccrual);
+      used = roundHours(used + daily.used);
       // Reset dates replace the remaining balance at the end of the day.
       if (daily.reset !== undefined) {
         balance = daily.reset;

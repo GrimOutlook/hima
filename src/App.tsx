@@ -6,6 +6,7 @@ import { BalanceChart } from "./BalanceChart";
 import { CalendarPicker } from "./CalendarPicker";
 import { poolColor } from "./poolColors";
 import { parseBackupJson, serializeBackupJson } from "./backup";
+import { useStoredPlanner } from "./useStoredPlanner";
 import { FirstDayOfWeekContext, IgnoreWeekendsContext, loadDefaultTimeline, loadFirstDayOfWeek, loadIgnoreWeekends, nextWeekday, saveSettings } from "./settings";
 import {
   AdditionModal,
@@ -22,20 +23,19 @@ import {
   addDays,
   allocateIds,
   balanceHistory,
+  balanceHistoryForDates,
   capRangesOverlap,
   dayLabel,
   eventDateRangeLabel,
   eventTotalHours,
   formatHours,
   freshEventDays,
-  loadStore,
   monthLabel,
   parseHours,
   poolBalanceOn,
   poolTotalsOn,
   prettyDate,
   recurringScheduleDescription,
-  saveStore,
   todayDate,
   totalsOn,
   type EventDayInput,
@@ -63,7 +63,7 @@ function App() {
   const [firstDayOfWeek, setFirstDayOfWeek] = useState(loadFirstDayOfWeek);
   const [ignoreWeekends, setIgnoreWeekends] = useState(loadIgnoreWeekends);
   const [defaultTimeline, setDefaultTimeline] = useState(loadDefaultTimeline);
-  const [store, setStore] = useState<Store>(loadStore);
+  const { store, setStore, storageWarning, saveStatus } = useStoredPlanner();
   const [draggedPoolId, setDraggedPoolId] = useState<number | null>(null);
   const draggedPool = store.pools.find((pool) => pool.id === draggedPoolId);
   const poolDragSensors = useSensors(
@@ -97,8 +97,11 @@ function App() {
     [store, chartHistoryEnd],
   );
   const poolHistories = useMemo(
-    () => Object.fromEntries(store.pools.map((pool) => [pool.id, balanceHistory(store, chartHistoryEnd, pool.id)])),
-    [store, chartHistoryEnd],
+    () => {
+      const dates = history.map((point) => point.date);
+      return Object.fromEntries(store.pools.map((pool) => [pool.id, balanceHistoryForDates(store, chartHistoryEnd, dates, pool.id)]));
+    },
+    [store, chartHistoryEnd, history],
   );
   const firstPoolId = store.pools[0]?.id;
   const timeline = [...store.events].sort((left, right) =>
@@ -124,10 +127,6 @@ function App() {
   const informationPool = selectedModal?.type === "pool-info"
     ? store.pools.find((pool) => pool.id === selectedModal.poolId)
     : undefined;
-
-  useEffect(() => {
-    saveStore(store);
-  }, [store]);
 
   useEffect(() => {
     saveSettings(firstDayOfWeek, ignoreWeekends, defaultTimeline);
@@ -510,10 +509,11 @@ function App() {
           <span className="brand-name">hima</span>
         </a>
         <div className="topbar-right">
-          <span className="privacy-note">
-            <span className="privacy-dot" />
-            Saved on this device
+          <span className="privacy-note" role="status">
+            {saveStatus === "saved" && <span className="privacy-dot" />}
+            {saveStatus === "saved" ? "Saved on this device" : saveStatus === "disabled" ? "Saving disabled" : saveStatus === "failed" ? "Save failed" : "Not yet saved"}
           </span>
+          {(saveStatus === "failed" || saveStatus === "disabled") && <button className="button" type="button" onClick={exportData}>Export backup</button>}
           <button ref={settingsButtonRef} className="icon-button" type="button" title="Settings" aria-label="Open settings" aria-haspopup="dialog" onClick={() => setModal({ type: "settings" })}>
             <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
               <path d="m9 3-.5 2-2 1.2-2-.6-2 3.5L4 10.5v3l-1.5 1.4 2 3.5 2-.6 2 1.2.5 2h6l.5-2 2-1.2 2 .6 2-3.5-1.5-1.4v-3l1.5-1.4-2-3.5-2 .6-2-1.2L15 3Z" />
@@ -530,6 +530,8 @@ function App() {
           />
         </div>
       </header>
+      {storageWarning && <p role="alert">{storageWarning}</p>}
+      {saveStatus === "failed" && <p role="alert">Changes could not be saved on this device. Browser storage may be full or unavailable. Export a backup to keep your changes before closing this page.</p>}
 
       <main id="top" className="page-content">
         <section className="page-intro">
@@ -579,6 +581,12 @@ function App() {
             setBalanceDate(ignoreWeekends ? nextWeekday(chartHistoryEnd) : chartHistoryEnd);
           }}
           pools={store.pools}
+          onPoolVisibilityChange={(poolId, visible) => setStore((current) => ({
+            ...current,
+            pools: current.pools.map((pool) => pool.id === poolId
+              ? { ...pool, hidden_from_graph: !visible }
+              : pool),
+          }))}
           poolHistories={poolHistories}
           selectedEvent={selectedEvent}
           zoomEvent={zoomEvent}
@@ -866,7 +874,9 @@ function App() {
           key={selectedModal.type === "new-event" ? "new-event" : `edit-event-${selectedModal.eventId}`}
           pools={store.pools}
           editing={selectedModal.type === "edit-event"}
+          eventId={selectedModal.type === "edit-event" ? selectedModal.eventId : undefined}
           onDelete={selectedModal.type === "edit-event" ? () => {
+            if (!window.confirm("Remove this event?")) return;
             setStore((current) => ({ ...current, events: current.events.filter((event) => event.id !== selectedModal.eventId) }));
             setModal(null);
           } : undefined}

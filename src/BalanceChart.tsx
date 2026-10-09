@@ -16,6 +16,8 @@ import {
   type TooltipContentProps,
 } from "recharts";
 import { addMonths, formatHours, formatSignedHours, prettyDate, type BalancePoint, type LeaveEvent, type Pool } from "./model";
+import { poolColor } from "./poolColors";
+import { chartRangeDates, chartRangeIndices, type ChartIndexRange } from "./chartRange";
 
 interface BalanceChartProps {
   defaultTimeline: TimelinePreset;
@@ -25,6 +27,7 @@ interface BalanceChartProps {
   onDateChange: (date: string) => void;
   onToday: () => void;
   pools: Pool[];
+  onPoolVisibilityChange: (poolId: number, visible: boolean) => void;
   poolHistories: Record<number, BalancePoint[]>;
   selectedEvent?: LeaveEvent;
   zoomEvent?: LeaveEvent;
@@ -148,6 +151,7 @@ export function BalanceChart({
   onDateChange,
   onToday,
   pools,
+  onPoolVisibilityChange,
   poolHistories,
   selectedEvent,
   zoomEvent,
@@ -156,7 +160,6 @@ export function BalanceChart({
   widenSelectedEvent,
 }: BalanceChartProps) {
   const ignoreWeekends = useContext(IgnoreWeekendsContext);
-  const [poolSelections, setPoolSelections] = useState<Record<number, boolean>>({});
   const [combinedTotals, setCombinedTotals] = useState(false);
   const [timelineMenuOpen, setTimelineMenuOpen] = useState(false);
   const [poolMenuOpen, setPoolMenuOpen] = useState(false);
@@ -167,13 +170,13 @@ export function BalanceChart({
     : null, [selectedEvent]);
   const selectedPools = useMemo(() => pools.filter((pool) => eventPoolIds
     ? eventPoolIds.has(pool.id)
-    : poolSelections[pool.id] ?? !pool.hidden_from_graph), [pools, poolSelections, eventPoolIds]);
+    : !pool.hidden_from_graph), [pools, eventPoolIds]);
   const selectedPool = selectedPools.length === 1 ? selectedPools[0] : undefined;
   const series = combinedTotals && selectedPools.length > 0
     ? [{ key: "combined", name: "Combined Totals", color: ACTUAL_COLOR }]
-    : selectedPools.map((pool, index) => ({
+    : selectedPools.map((pool) => ({
       key: `pool_${pool.id}`, name: pool.name,
-      color: pool.color || [ACTUAL_COLOR, PROJECTED_COLOR, "#547eaa", "#9b6dad", "#ad913e"][index % 5],
+      color: poolColor(pool.id, pool.color),
     }));
   const fullHistory = useMemo(() => {
     const balances = new Map<string, number>();
@@ -193,20 +196,25 @@ export function BalanceChart({
   const selectedIndex = history.findIndex((point) => point.date === selectedDate);
   const lastIndex = Math.max(0, history.length - 1);
   const [selectedPreset, setSelectedPreset] = useState<TimelinePreset | null>(defaultTimeline);
-  const [brushRange, setBrushRange] = useState(() =>
-    timelineRange(defaultTimeline, history, today, todayIndex, lastIndex),
+  const [brushDates, setBrushDates] = useState(() =>
+    chartRangeDates(history, timelineRange(defaultTimeline, history, today, todayIndex, lastIndex)),
   );
+  const brushRange = chartRangeIndices(history, brushDates);
+  const setBrushRange = (range: ChartIndexRange | ((current: ChartIndexRange) => ChartIndexRange)) => {
+    setBrushDates((current) => chartRangeDates(history,
+      typeof range === "function" ? range(chartRangeIndices(history, current)) : range));
+  };
   const selectedPresetRef = useRef<TimelinePreset | null>(defaultTimeline);
-  const previousSelectedIndex = useRef(selectedIndex);
+  const previousSelectedDate = useRef(selectedDate);
   useEffect(() => {
     const activePreset = selectedPresetRef.current;
-    setBrushRange(activePreset
-      ? timelineRange(activePreset, history, today, todayIndex, lastIndex)
-      : { startIndex: 0, endIndex: lastIndex });
-  }, [history[0]?.date, today, todayIndex, lastIndex]);
+    if (activePreset) {
+      setBrushRange(timelineRange(activePreset, history, today, todayIndex, lastIndex));
+    }
+  }, [history, today, todayIndex, lastIndex]);
   useEffect(() => {
-    if (previousSelectedIndex.current === selectedIndex) return;
-    previousSelectedIndex.current = selectedIndex;
+    if (previousSelectedDate.current === selectedDate) return;
+    previousSelectedDate.current = selectedDate;
     if (
       selectedIndex < 0 ||
       (selectedIndex >= brushRange.startIndex && selectedIndex <= brushRange.endIndex)
@@ -216,7 +224,7 @@ export function BalanceChart({
     setBrushRange({ startIndex, endIndex: Math.min(lastIndex, startIndex + rangeSize) });
     selectedPresetRef.current = null;
     setSelectedPreset(null);
-  }, [selectedIndex, lastIndex]);
+  }, [selectedDate, selectedIndex, lastIndex]);
   const eventIndices = [...new Set(selectedEvent?.days.map((day) =>
     history.findIndex((point) => point.date === day.date)) ?? [])].filter((index) => index >= 0).sort((a, b) => a - b);
   const highlightedStart = eventIndices[0];
@@ -329,8 +337,6 @@ export function BalanceChart({
             <div className="history-pool-filter">
               <span>Show</span>
               <div className={`history-pool-dropdown${poolMenuOpen ? " is-open" : ""}`}
-                onMouseEnter={() => setPoolMenuOpen(true)}
-                onMouseLeave={() => setPoolMenuOpen(false)}
                 onBlur={(event) => {
                   if (!event.currentTarget.contains(event.relatedTarget)) setPoolMenuOpen(false);
                 }}
@@ -348,7 +354,7 @@ export function BalanceChart({
                     <label key={pool.id}>
                       <input type="checkbox" checked={selectedPools.some((selected) => selected.id === pool.id)}
                         disabled={eventPoolIds !== null}
-                        onChange={(event) => setPoolSelections((current) => ({ ...current, [pool.id]: event.target.checked }))} />
+                        onChange={(event) => onPoolVisibilityChange(pool.id, event.target.checked)} />
                       {pool.name}
                     </label>
                   ))}
@@ -377,8 +383,6 @@ export function BalanceChart({
       </div>
       {selectedPools.length === 0 && <p className="history-pool-visibility">Select a pool to show its balance in the graph.</p>}
       <div className={`history-timeline-dropdown${timelineMenuOpen ? " is-open" : ""}`}
-        onMouseEnter={() => setTimelineMenuOpen(true)}
-        onMouseLeave={() => setTimelineMenuOpen(false)}
         onBlur={(event) => {
           if (!event.currentTarget.contains(event.relatedTarget)) setTimelineMenuOpen(false);
         }}

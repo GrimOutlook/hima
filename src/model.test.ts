@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   allocateIds,
   balanceHistory,
+  balanceHistoryForDates,
   capRangesOverlap,
   emptyStore,
   eventBalanceWarnings,
@@ -31,6 +32,64 @@ function recurring(
 ): RecurringAddition {
   return { id: 1, amount, cadence, start_date, ...(end_date ? { end_date } : {}) };
 }
+
+describe("shared chart timeline", () => {
+  it.each([false, true])("preserves balances beyond another pool's last event (capped: %s)", (capped) => {
+    const store = { ...emptyStore(), pools: [100, 50].map((amount, index): Pool => ({
+      id: index + 1, name: `Pool ${index + 1}`, recurring: [],
+      additions: [{ id: index + 3, date: index === 0 ? "2026-01-01" : "2020-01-01", amount }],
+      caps: capped ? [{ id: index + 5, max_balance: 200, start_date: "2020-01-01" }] : [],
+    })), events: [{ id: 7, name: "Future leave", days: [{
+      date: "2029-06-01", allocations: [{ pool_id: 2, hours: 10 }],
+    }] }] };
+    const today = "2026-10-06";
+    const combined = balanceHistory(store, today);
+    const dates = combined.map((point) => point.date);
+    const histories = store.pools.map((pool) => balanceHistoryForDates(store, today, dates, pool.id));
+
+    expect(dates[0]).toBe("2020-01-01");
+    expect(dates.at(-1)).toBe("2029-06-08");
+    for (const history of histories) {
+      expect(history.map((point) => point.date)).toEqual(dates);
+      expect(history.at(-1)?.projected).toBe(true);
+    }
+    expect(histories[0][0]?.balance).toBe(0);
+    expect(histories[0].find((point) => point.date === "2028-01-01")?.balance).toBe(100);
+    expect(histories[0].at(-1)?.balance).toBe(100);
+    expect(histories[1].at(-1)?.balance).toBe(40);
+    expect(combined.at(-1)?.balance).toBe(140);
+  });
+});
+
+describe("fractional hour balances", () => {
+  it.each([false, true])("does not warn for fully used weekly accruals (capped: %s)", (capped) => {
+    const pool: Pool = {
+      id: 1, name: "Leave", additions: [],
+      recurring: [recurring("Weekly", "2026-01-01", 7.6, "2026-01-15")],
+      caps: capped ? [{ id: 3, max_balance: 100, start_date: "2026-01-01" }] : [],
+    };
+    const days = [{ date: "2026-01-15", allocations: [{ pool_id: 1, hours: 22.8 }] }];
+    const store = { ...emptyStore(), pools: [pool] };
+    expect(eventBalanceWarnings(store, days)).toEqual([]);
+    store.events = [{ id: 4, name: "Leave", days }];
+    expect(poolTotalsOn(store, 1, "2026-01-15")).toEqual({ accrued: 22.8, used: 22.8, balance: 0 });
+    expect(totalsOn(store, "2026-01-15").balance).toBe(0);
+    expect(balanceHistory(store, "2026-01-15", 1).find((point) => point.date === "2026-01-15")?.balance).toBe(0);
+
+    store.events = [];
+    expect(eventBalanceWarnings(store, [{ ...days[0], allocations: [{ pool_id: 1, hours: 22.81 }] }]))
+      .toEqual([{ poolId: 1, date: "2026-01-15", balance: -0.01 }]);
+  });
+
+  it("normalizes combined totals and history across pools", () => {
+    const store = { ...emptyStore(), pools: [0.1, 0.2].map((amount, index): Pool => ({
+      id: index + 1, name: "Leave", caps: [], recurring: [],
+      additions: [{ id: index + 3, date: "2026-01-01", amount }],
+    })) };
+    expect(totalsOn(store, "2026-01-01")).toEqual({ accrued: 0.3, used: 0, balance: 0.3 });
+    expect(balanceHistory(store, "2026-01-01").find((point) => point.date === "2026-01-01")?.balance).toBe(0.3);
+  });
+});
 
 describe("holiday hours", () => {
   const pool: Pool = {
@@ -129,6 +188,19 @@ describe("event balance preview", () => {
     const store = { ...emptyStore(), pools: [pool], events: [{ id: 3, name: "Later leave", days: [{ date: "2026-02-01", allocations: [{ pool_id: 1, hours: 8 }] }] }] };
     expect(eventBalanceWarnings(store, [{ date: "2026-01-02", allocations: [{ pool_id: 1, hours: 4 }] }]))
       .toEqual([{ poolId: 1, date: "2026-02-01", balance: -2 }]);
+  });
+
+  it("replaces the edited event without double-counting and preserves other planned leave", () => {
+    const original = { id: 3, name: "Edited leave", days: [{ date: "2026-01-02", allocations: [{ pool_id: 1, hours: 8 }] }] };
+    const later = { id: 4, name: "Later leave", days: [{ date: "2026-02-01", allocations: [{ pool_id: 1, hours: 2 }] }] };
+    const store = { ...emptyStore(), next_id: 5, pools: [pool], events: [original, later] };
+    expect(eventBalanceWarnings(store, original.days, original.id)).toEqual([]);
+    expect(eventBalanceWarnings(store, [{ date: "2026-01-03", allocations: [{ pool_id: 1, hours: 9 }] }], original.id))
+      .toEqual([{ poolId: 1, date: "2026-02-01", balance: -1 }]);
+    expect(eventBalanceWarnings(store, [{ date: "2026-01-03", allocations: [{ pool_id: 1, hours: 11 }] }], original.id))
+      .toEqual([{ poolId: 1, date: "2026-01-03", balance: -1 }]);
+    expect(store.events).toEqual([original, later]);
+    expect(poolBalanceOn(store, 1, "2026-02-01")).toBe(0);
   });
 
   it("accounts for accruals, caps and resets and excludes untouched pools", () => {
@@ -609,14 +681,15 @@ describe("balance chart", () => {
     expect(restored.pools[1]?.hidden_from_graph).toBe(true);
     expect(balanceHistory(restored, "2026-01-02").at(-1)?.balance).toBe(8);
     expect(balanceHistory(restored, "2026-01-02", 2).at(-1)?.balance).toBe(17);
-    expect(totalsOn(restored, "2026-01-02").balance).toBe(25);
+    expect(totalsOn(restored, "2026-01-02")).toEqual({ accrued: 30, used: 5, balance: 25 });
     restored.pools[1].hidden_from_total = true;
     const hiddenTotalStore = normalizeStore(JSON.parse(JSON.stringify(restored)));
     expect(hiddenTotalStore.pools[1].hidden_from_total).toBe(true);
-    expect(totalsOn(hiddenTotalStore, "2026-01-02")).toEqual({ accrued: 30, used: 5, balance: 8 });
+    expect(totalsOn(hiddenTotalStore, "2026-01-02")).toEqual({ accrued: 10, used: 2, balance: 8 });
+    expect(poolTotalsOn(hiddenTotalStore, 2, "2026-01-02")).toEqual({ accrued: 20, used: 3, balance: 17 });
     expect(balanceHistory(hiddenTotalStore, "2026-01-02", 2).at(-1)?.balance).toBe(17);
     hiddenTotalStore.pools[0].hidden_from_total = true;
-    expect(totalsOn(hiddenTotalStore, "2026-01-02").balance).toBe(0);
+    expect(totalsOn(hiddenTotalStore, "2026-01-02")).toEqual({ accrued: 0, used: 0, balance: 0 });
 
     restored.pools[0].hidden_from_graph = true;
     const emptyHistory = balanceHistory(restored, "2026-01-02");
