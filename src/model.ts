@@ -66,6 +66,7 @@ export interface LeaveEvent {
 }
 
 export interface Store {
+  version: typeof STORE_VERSION;
   pools: Pool[];
   events: LeaveEvent[];
   next_id: number;
@@ -88,9 +89,10 @@ export interface BalancePoint {
 }
 
 export const STORAGE_KEY = "hima.store.v1";
+export const STORE_VERSION = 1;
 
 export function emptyStore(): Store {
-  return { pools: [], events: [], next_id: 1 };
+  return { version: STORE_VERSION, pools: [], events: [], next_id: 1 };
 }
 
 function record(value: unknown): Record<string, unknown> {
@@ -157,40 +159,40 @@ function normalizeAllocation(value: unknown, fallbackPoolId: number): PoolAlloca
   return poolId > 0 && hours > 0 ? { pool_id: poolId, hours } : null;
 }
 
-function normalizeDay(value: unknown, legacyPoolId: number, poolIds: Set<number>, warnings: string[]): LeaveDay | null {
+function normalizeDay(value: unknown, legacyPoolId: number, poolIds: Set<number>, warnings: string[], legacy: boolean): LeaveDay | null {
   const day = record(value);
   const date = stringValue(day.date);
   if (!isValidDate(date)) return null;
 
-  const dayPoolId = numberValue(day.pool_id, legacyPoolId) || legacyPoolId;
+  const dayPoolId = legacy ? numberValue(day.pool_id, legacyPoolId) || legacyPoolId : 0;
   const rawAllocations = Array.isArray(day.allocations) ? day.allocations : [];
   const allocations = rawAllocations.length
     ? normalizeEntries(rawAllocations, (value) => {
         const allocation = normalizeAllocation(value, dayPoolId);
         return allocation && poolIds.has(allocation.pool_id) ? [allocation] : [];
       }, "allocations (invalid or missing pool)", warnings)
-    : amountValue(day.hours) > 0 && poolIds.has(dayPoolId)
+    : legacy && amountValue(day.hours) > 0 && poolIds.has(dayPoolId)
       ? [{ pool_id: dayPoolId, hours: amountValue(day.hours) }]
       : [];
 
   return allocations.length ? { date, allocations } : null;
 }
 
-function normalizeEvent(value: unknown, poolIds: Set<number>, warnings: string[]): LeaveEvent | null {
+function normalizeEvent(value: unknown, poolIds: Set<number>, warnings: string[], legacy: boolean): LeaveEvent | null {
   const event = record(value);
   const id = numberValue(event.id);
   const name = stringValue(event.name).trim();
   if (!id || !name) return null;
 
-  const legacyPoolId = numberValue(event.pool_id);
+  const legacyPoolId = legacy ? numberValue(event.pool_id) : 0;
   let days = Array.isArray(event.days)
     ? normalizeEntries(event.days, (value) => {
-        const day = normalizeDay(value, legacyPoolId, poolIds, warnings);
+        const day = normalizeDay(value, legacyPoolId, poolIds, warnings, legacy);
         return day ? [day] : [];
       }, "event days", warnings)
     : [];
 
-  if (!Array.isArray(event.days) && isValidDate(stringValue(event.date)) && amountValue(event.amount) > 0 && poolIds.has(legacyPoolId)) {
+  if (legacy && !Array.isArray(event.days) && isValidDate(stringValue(event.date)) && amountValue(event.amount) > 0 && poolIds.has(legacyPoolId)) {
     days = [
       {
         date: stringValue(event.date),
@@ -223,6 +225,12 @@ function normalizeEntries<T>(values: unknown[], normalize: (value: unknown) => T
 
 export function normalizeStore(value: unknown, warnings: string[] = []): Store {
   const source = record(value);
+  // Unversioned saves include all historical event shapes. Only that schema
+  // uses the legacy fallbacks; versioned data uses explicit day allocations.
+  const legacy = source.version === undefined;
+  if (!legacy && source.version !== STORE_VERSION) {
+    throw new Error(`Unsupported data schema version: ${String(source.version)}. This app supports version ${STORE_VERSION}.`);
+  }
   const pools = Array.isArray(source.pools)
     ? normalizeEntries(source.pools, (value): Pool[] => {
         const pool = record(value);
@@ -307,7 +315,7 @@ export function normalizeStore(value: unknown, warnings: string[] = []): Store {
   const poolIds = new Set(pools.map((pool) => pool.id));
   const events = Array.isArray(source.events)
     ? normalizeEntries(source.events, (value) => {
-        const event = normalizeEvent(value, poolIds, warnings);
+        const event = normalizeEvent(value, poolIds, warnings, legacy);
         return event ? [event] : [];
       }, "events", warnings)
     : [];
@@ -323,7 +331,7 @@ export function normalizeStore(value: unknown, warnings: string[] = []): Store {
   ].reduce((largest, id) => Math.max(largest, id), 0);
   const storedNextId = numberValue(source.next_id, 1);
 
-  return { pools, events, next_id: Math.max(storedNextId, largestId + 1, 1) };
+  return { version: STORE_VERSION, pools, events, next_id: Math.max(storedNextId, largestId + 1, 1) };
 }
 
 export function serializeStoreJson(store: Store): string {
