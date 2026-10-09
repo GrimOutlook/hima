@@ -330,8 +330,6 @@ export function BalanceChart({
             <div className="history-pool-filter">
               <span>Show</span>
               <div className={`history-pool-dropdown${poolMenuOpen ? " is-open" : ""}`}
-                onMouseEnter={() => setPoolMenuOpen(true)}
-                onMouseLeave={() => setPoolMenuOpen(false)}
                 onBlur={(event) => {
                   if (!event.currentTarget.contains(event.relatedTarget)) setPoolMenuOpen(false);
                 }}
@@ -378,8 +376,6 @@ export function BalanceChart({
       </div>
       {selectedPools.length === 0 && <p className="history-pool-visibility">Select a pool to show its balance in the graph.</p>}
       <div className={`history-timeline-dropdown${timelineMenuOpen ? " is-open" : ""}`}
-        onMouseEnter={() => setTimelineMenuOpen(true)}
-        onMouseLeave={() => setTimelineMenuOpen(false)}
         onBlur={(event) => {
           if (!event.currentTarget.contains(event.relatedTarget)) setTimelineMenuOpen(false);
         }}
