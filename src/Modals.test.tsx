@@ -2,7 +2,43 @@
 import { act, StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 import { expect, it, vi } from "vitest";
-import { ModalFrame, SettingsModal } from "./Modals";
+import { EventModal, ModalFrame, SettingsModal } from "./Modals";
+import { emptyStore } from "./model";
+
+it("preserves surviving event day and allocation controls when earlier rows are removed", async () => {
+  vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
+  const container = document.createElement("div");
+  document.body.append(container);
+  const root = createRoot(container);
+  const pools = [1, 2].map((id) => ({ id, name: `Pool ${id}`, additions: [], recurring: [], caps: [] }));
+  const save = vi.fn();
+  try {
+    await act(async () => root.render(<StrictMode><EventModal editing pools={pools} store={emptyStore()}
+      initialName="Trip" initialDays={[
+        { date: "2026-01-10", allocations: [{ pool_id: 1, hours: "1" }] },
+        { date: "2026-06-10", allocations: [{ pool_id: 1, hours: "2" }, { pool_id: 2, hours: "3" }] },
+      ]} onClose={vi.fn()} onSave={save} /></StrictMode>));
+    const survivor = container.querySelectorAll<HTMLElement>(".event-day-card")[1];
+    const allocation = survivor.querySelectorAll<HTMLElement>(".event-allocation-row")[1];
+    const hours = allocation.querySelector("input")!;
+    await act(async () => container.querySelector<HTMLButtonElement>('[aria-label="Remove event day"]')!.click());
+    expect(container.querySelector(".event-day-card")).toBe(survivor);
+    await act(async () => survivor.querySelector<HTMLButtonElement>('[aria-label="Remove pool allocation"]')!.click());
+    expect(survivor.querySelector(".event-allocation-row")).toBe(allocation);
+    expect(allocation.querySelector("input")).toBe(hours);
+    expect(hours.value).toBe("3");
+    await act(async () => survivor.querySelector<HTMLButtonElement>('.date-picker-trigger')!.click());
+    expect(document.querySelector<HTMLSelectElement>('[aria-label="Choose month"]')!.value).toBe("6");
+    await act(async () => document.activeElement!.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true, cancelable: true })));
+    await act(async () => container.querySelector("form")!.dispatchEvent(new Event("submit", { bubbles: true, cancelable: true })));
+    await act(async () => container.querySelector("form")!.dispatchEvent(new Event("submit", { bubbles: true, cancelable: true })));
+    expect(save).toHaveBeenCalledWith("Trip", [{ date: "2026-06-10", allocations: [{ pool_id: 2, hours: 3 }] }]);
+  } finally {
+    await act(async () => root.unmount());
+    container.remove();
+    vi.unstubAllGlobals();
+  }
+});
 
 it("contains focus, uses current close handler, and restores the opener on unmount", async () => {
   vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
