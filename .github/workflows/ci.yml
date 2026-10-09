@@ -41,7 +41,35 @@ jobs:
       - run: cargo clippy --locked --all-targets -- -D warnings
       - run: cargo test --locked
       - run: cargo test --locked --test postgres -- --ignored
-      - run: cargo test --locked --test auth -- --ignored
+      - name: Set up pnpm for proxy integration
+        uses: pnpm/action-setup@v4
+      - name: Set up Node.js for proxy integration
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - name: Install frontend dependencies
+        working-directory: .
+        run: pnpm install --frozen-lockfile
+      - name: Test OIDC and sessions through Vite
+        working-directory: .
+        run: |
+          pnpm run dev > "$RUNNER_TEMP/hima-vite.log" 2>&1 &
+          vite_pid=$!
+          trap 'kill "$vite_pid"' EXIT
+          ready=false
+          for attempt in {1..30}; do
+            if curl --fail --silent http://127.0.0.1:5173/ > /dev/null; then
+              ready=true
+              break
+            fi
+            sleep 1
+          done
+          if [ "$ready" != true ]; then
+            cat "$RUNNER_TEMP/hima-vite.log"
+            exit 1
+          fi
+          HIMA_TEST_VITE_PROXY=1 cargo test --locked --manifest-path backend/Cargo.toml --test auth -- --ignored
       - run: cargo build --locked
   checks:
     name: Lint, typecheck, test, and build
