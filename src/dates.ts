@@ -69,10 +69,10 @@ export function addMonths(value: string, months: number): string {
   return dateString(firstOfTarget);
 }
 
-export function prettyDate(value: string): string {
+export function prettyDate(value: string, options: Intl.DateTimeFormatOptions = {}): string {
   const date = dateFromParts(value);
   return date ? new Intl.DateTimeFormat("en-US", {
-    month: "short", day: "2-digit", year: "numeric", timeZone: "UTC",
+    month: "short", day: "2-digit", year: "numeric", timeZone: "UTC", ...options,
   }).format(date) : value;
 }
 
