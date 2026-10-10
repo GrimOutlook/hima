@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { emptyStore, reduceStore, storeActionError, type AdditionFormData, type Store, type StoreAction } from "./model";
+import { validateDocument } from "./plannerPersistence";
 
 function freeze<T>(value: T): T {
   if (value && typeof value === "object") {
@@ -37,6 +38,33 @@ const poolAction: StoreAction & { type: "save-pool" } = {
 const form: AdditionFormData = { amount: 1.25, date: "2026-04-01", recurring: false, reset: false, cadence: "Monthly" };
 
 describe("pure store mutations", () => {
+  it("keeps ordinary pool and addition edits valid before JSON serialization", () => {
+    let store = emptyStore();
+    const apply = (action: StoreAction) => {
+      store = reduceStore(store, action);
+      expect(() => validateDocument(store)).not.toThrow();
+    };
+    apply({ ...poolAction, newAdditionsExpireSameDay: false });
+    const poolId = store.pools[0]!.id;
+    expect(store.pools[0]).not.toHaveProperty("new_additions_expire_same_day");
+    expect(store.pools[0]!.additions[0]).not.toHaveProperty("expires_same_day");
+    apply({ ...poolAction, poolId, newAdditionsExpireSameDay: true, color: "#123456" });
+    apply({ ...poolAction, poolId, newAdditionsExpireSameDay: false });
+    expect(store.pools[0]).not.toHaveProperty("color");
+    expect(store.pools[0]).not.toHaveProperty("new_additions_expire_same_day");
+    apply({ type: "save-addition", poolId, form });
+    const additionId = store.pools[0]!.additions[1]!.id;
+    apply({ type: "save-addition", poolId, target: { type: "one-time", id: additionId }, form: { ...form, reset: true } });
+    apply({ type: "save-addition", poolId, target: { type: "one-time", id: additionId }, form });
+    expect(store.pools[0]!.additions[1]).not.toHaveProperty("reset");
+    apply({ type: "save-addition", poolId, form: { ...form, recurring: true, cadence: "YearlyNthWeekday", month: 5, nthWeekday: "Last", weekday: "Monday", endDate: "2029-12-31" } });
+    const recurringId = store.pools[0]!.recurring[0]!.id;
+    apply({ type: "save-addition", poolId, target: { type: "recurring", id: recurringId }, form: { ...form, recurring: true, cadence: "Weekly" } });
+    for (const field of ["end_date", "month", "nth_weekday", "weekday", "reset", "expires_same_day"]) {
+      expect(store.pools[0]!.recurring[0]).not.toHaveProperty(field);
+    }
+  });
+
   it("allocates collision-free IDs for a pool and its optional opening balance", () => {
     const store = fixture();
     const result = reduceStore(store, poolAction);
