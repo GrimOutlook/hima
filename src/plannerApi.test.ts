@@ -6,6 +6,12 @@ import { defaultSettings, validateDocument } from "./plannerPersistence";
 afterEach(() => vi.unstubAllGlobals());
 const signal = new AbortController().signal;
 const session = { user_id: 1, csrf_token: "session-bound-token" };
+it("revokes every session through a cookie-authenticated CSRF-protected request", async () => {
+  const fetch = vi.fn().mockResolvedValue(new Response("<html></html>"));
+  vi.stubGlobal("fetch", fetch);
+  await plannerApi.logout(session, signal, true);
+  expect(fetch).toHaveBeenCalledWith("/auth/logout-all", expect.objectContaining({ method: "POST", credentials: "same-origin", headers: { "X-CSRF-Token": session.csrf_token } }));
+});
 it("uses relative cookie-authenticated no-store requests and session-bound CSRF mutations", async () => {
   const document = { ...emptyStore(), settings: defaultSettings };
   const fetch = vi.fn().mockResolvedValueOnce(Response.json(session))

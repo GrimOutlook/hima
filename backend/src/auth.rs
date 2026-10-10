@@ -246,7 +246,9 @@ impl Auth {
     }
     pub(crate) async fn session(&self, headers: &HeaderMap) -> Result<Session, ApiError> {
         let token = self.read_cookie(headers, false).ok_or_else(unauthorized)?;
-        sqlx::query_as::<_, Session>("SELECT user_id, csrf_token FROM sessions WHERE token_hash = $1 AND expires_at > clock_timestamp()") .bind(hash(token)).fetch_optional(&self.db.pool).await.map_err(|_| unavailable())?.ok_or_else(unauthorized)
+        // Check and touch atomically: expired sessions cannot be revived by activity.
+        // Updating activity never extends the absolute expiration set at login.
+        sqlx::query_as::<_, Session>("UPDATE sessions SET last_seen_at = clock_timestamp() WHERE token_hash = $1 AND expires_at > clock_timestamp() AND last_seen_at > clock_timestamp() - interval '24 hours' RETURNING user_id, csrf_token") .bind(hash(token)).fetch_optional(&self.db.pool).await.map_err(|_| unavailable())?.ok_or_else(unauthorized)
     }
 }
 
@@ -488,6 +490,7 @@ pub(crate) fn router(auth: Arc<Auth>) -> Router {
         .route("/auth/login", get(login))
         .route("/auth/callback", get(callback))
         .route("/auth/logout", post(logout))
+        .route("/auth/logout-all", post(logout_all))
         .route("/api/me", get(me))
         .with_state(auth)
 }
@@ -518,7 +521,7 @@ async fn login(State(auth): State<Arc<Auth>>) -> Result<Response, ApiError> {
         .execute(&auth.db.pool)
         .await
         .map_err(|_| unavailable())?;
-    sqlx::query("DELETE FROM sessions WHERE expires_at <= clock_timestamp()")
+    sqlx::query("DELETE FROM sessions WHERE expires_at <= clock_timestamp() OR last_seen_at <= clock_timestamp() - interval '24 hours'")
         .execute(&auth.db.pool)
         .await
         .map_err(|_| unavailable())?;
@@ -646,6 +649,19 @@ async fn logout(State(auth): State<Arc<Auth>>, headers: HeaderMap) -> Result<Res
     Ok(response(&auth, "/", &[(false, "", 0), (true, "", 0)]))
 }
 
+async fn logout_all(
+    State(auth): State<Arc<Auth>>,
+    headers: HeaderMap,
+) -> Result<Response, ApiError> {
+    let session = auth.session(&headers).await?;
+    sqlx::query("DELETE FROM sessions WHERE user_id=$1")
+        .bind(session.user_id)
+        .execute(&auth.db.pool)
+        .await
+        .map_err(|_| unavailable())?;
+    Ok(response(&auth, "/", &[(false, "", 0), (true, "", 0)]))
+}
+
 /// Applied to every unsafe API request, including subsequently added planner routes.
 pub(crate) async fn protect(
     State(auth): State<Arc<Auth>>,
@@ -653,7 +669,8 @@ pub(crate) async fn protect(
     next: Next,
 ) -> Result<Response, ApiError> {
     if request.method().is_safe()
-        || !(request.uri().path().starts_with("/api/") || request.uri().path() == "/auth/logout")
+        || !(request.uri().path().starts_with("/api/")
+            || matches!(request.uri().path(), "/auth/logout" | "/auth/logout-all"))
     {
         return Ok(next.run(request).await);
     }

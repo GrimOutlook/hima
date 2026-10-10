@@ -20,6 +20,7 @@ pub fn router() -> Router {
         .route("/auth/login", get(disabled))
         .route("/auth/callback", get(disabled))
         .route("/auth/logout", post(unauthenticated))
+        .route("/auth/logout-all", post(unauthenticated))
         .route("/api/me", get(unauthenticated))
         .route("/api/planner", get(unauthenticated).put(unauthenticated))
         .layer(middleware::from_fn(no_store))

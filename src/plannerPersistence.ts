@@ -10,7 +10,7 @@ export interface PlannerPersistence {
   session(signal: AbortSignal): Promise<PlannerSession>;
   load(signal: AbortSignal): Promise<StoredPlanner>;
   save(document: PlannerDocument, revision: number, session: PlannerSession, signal: AbortSignal): Promise<StoredPlanner>;
-  logout(session: PlannerSession, signal: AbortSignal): Promise<void>;
+  logout(session: PlannerSession, signal: AbortSignal, everywhere?: boolean): Promise<void>;
 }
 
 export class PersistenceError extends Error {

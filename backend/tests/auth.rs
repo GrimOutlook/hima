@@ -46,6 +46,144 @@ async fn planner_http_contract(app: &Router, pool: &PgPool) {
             .bind(hex::encode(Sha256::digest(token.as_bytes()))).bind(user).execute(pool).await.unwrap();
     }
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    // Check-and-touch renews activity, never the absolute cap.
+    sqlx::query(
+        "UPDATE sessions SET last_seen_at=clock_timestamp()-interval '23 hours' WHERE user_id=$1",
+    )
+    .bind(users[0])
+    .execute(pool)
+    .await
+    .unwrap();
+    let expiration: chrono::DateTime<chrono::Utc> =
+        sqlx::query_scalar("SELECT expires_at FROM sessions WHERE user_id=$1")
+            .bind(users[0])
+            .fetch_one(pool)
+            .await
+            .unwrap();
+    assert_eq!(
+        request(
+            app,
+            "GET",
+            "/api/me",
+            &format!("__Host-hima-session={}", tokens[0]),
+            &[]
+        )
+        .await
+        .status(),
+        StatusCode::OK
+    );
+    let (unchanged, fresh): (bool, bool) = sqlx::query_as("SELECT expires_at=$2, last_seen_at > clock_timestamp()-interval '1 minute' FROM sessions WHERE user_id=$1").bind(users[0]).bind(expiration).fetch_one(pool).await.unwrap();
+    assert!(unchanged && fresh);
+    sqlx::query(
+        "UPDATE sessions SET last_seen_at=clock_timestamp()-interval '24 hours' WHERE user_id=$1",
+    )
+    .bind(users[2])
+    .execute(pool)
+    .await
+    .unwrap();
+    for path in ["/api/me", "/api/planner"] {
+        assert_eq!(
+            request(
+                app,
+                "GET",
+                path,
+                &format!("__Host-hima-session={}", tokens[2]),
+                &[]
+            )
+            .await
+            .status(),
+            StatusCode::UNAUTHORIZED
+        );
+    }
+    assert_eq!(
+        request(
+            app,
+            "POST",
+            "/auth/logout-all",
+            &format!("__Host-hima-session={}", tokens[2]),
+            &[
+                ("origin", "https://app.example"),
+                ("x-csrf-token", "planner-csrf")
+            ]
+        )
+        .await
+        .status(),
+        StatusCode::UNAUTHORIZED
+    );
+    // Two devices for one account; revocation must leave another account intact.
+    let extra_token = "d".repeat(43);
+    sqlx::query("INSERT INTO sessions (token_hash,user_id,csrf_token,expires_at) VALUES ($1,$2,'planner-csrf',clock_timestamp()+interval '1 hour')").bind(hex::encode(Sha256::digest(extra_token.as_bytes()))).bind(users[2]).execute(pool).await.unwrap();
+    sqlx::query("UPDATE sessions SET last_seen_at=clock_timestamp() WHERE user_id=$1")
+        .bind(users[2])
+        .execute(pool)
+        .await
+        .unwrap();
+    let device = format!("__Host-hima-session={}", tokens[2]);
+    assert_eq!(
+        request(app, "GET", "/auth/logout-all", &device, &[])
+            .await
+            .status(),
+        StatusCode::METHOD_NOT_ALLOWED
+    );
+    for headers in [
+        vec![],
+        vec![
+            ("origin", "https://evil.example"),
+            ("x-csrf-token", "planner-csrf"),
+        ],
+        vec![("origin", "https://app.example"), ("x-csrf-token", "bad")],
+    ] {
+        assert_eq!(
+            request(app, "POST", "/auth/logout-all", &device, &headers)
+                .await
+                .status(),
+            StatusCode::FORBIDDEN
+        );
+    }
+    let response = request(
+        app,
+        "POST",
+        "/auth/logout-all",
+        &device,
+        &[
+            ("origin", "https://app.example"),
+            ("x-csrf-token", "planner-csrf"),
+        ],
+    )
+    .await;
+    assert_eq!(response.status(), StatusCode::SEE_OTHER);
+    assert!(
+        response.headers()["set-cookie"]
+            .to_str()
+            .unwrap()
+            .contains("Max-Age=0")
+    );
+    for token in [&tokens[2], &extra_token] {
+        assert_eq!(
+            request(
+                app,
+                "GET",
+                "/api/me",
+                &format!("__Host-hima-session={token}"),
+                &[]
+            )
+            .await
+            .status(),
+            StatusCode::UNAUTHORIZED
+        );
+    }
+    assert_eq!(
+        request(
+            app,
+            "GET",
+            "/api/me",
+            &format!("__Host-hima-session={}", tokens[1]),
+            &[]
+        )
+        .await
+        .status(),
+        StatusCode::OK
+    );
     let url = format!("http://{}/api/planner", listener.local_addr().unwrap());
     let service = app.clone();
     let task = tokio::spawn(async move { axum::serve(listener, service).await.unwrap() });

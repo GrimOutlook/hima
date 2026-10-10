@@ -124,7 +124,7 @@ export function ModalFrame({
   );
 }
 
-export function SettingsModal({ firstDayOfWeek, onChange, ignoreWeekends, onIgnoreWeekendsChange, defaultTimeline, onDefaultTimelineChange, onExport, onImport, onClose }: {
+export function SettingsModal({ firstDayOfWeek, onChange, ignoreWeekends, onIgnoreWeekendsChange, defaultTimeline, onDefaultTimelineChange, onExport, onImport, onLogoutEverywhere, onClose }: {
   firstDayOfWeek: Weekday;
   onChange: (day: Weekday) => void;
   ignoreWeekends: boolean;
@@ -133,6 +133,7 @@ export function SettingsModal({ firstDayOfWeek, onChange, ignoreWeekends, onIgno
   onDefaultTimelineChange: (preset: TimelinePreset) => void;
   onExport: () => void;
   onImport: (importSettings: boolean) => void;
+  onLogoutEverywhere?: () => void;
   onClose: () => void;
 }) {
   const [importSettings, setImportSettings] = useState(false);
@@ -181,6 +182,11 @@ export function SettingsModal({ firstDayOfWeek, onChange, ignoreWeekends, onIgno
           setShowImportOptions(true);
         }}>Import JSON</button>
       </div>
+      {onLogoutEverywhere && <>
+        <div className="field-label">Account sessions</div>
+        <p className="wizard-hint">End all hima sessions, including this browser and other devices. Your provider’s SSO session stays signed in.</p>
+        <button className="button button-outline" type="button" onClick={onLogoutEverywhere}>Sign out everywhere</button>
+      </>}
       <div className="modal-actions">
         <button className="button button-primary" type="button" onClick={onClose}>Done</button>
       </div>
