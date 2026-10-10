@@ -3,10 +3,11 @@
 
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
+    crane.url = "github:ipetkov/crane";
   };
 
   outputs =
-    { nixpkgs, ... }:
+    { nixpkgs, crane, ... }:
     let
       systems = [ "x86_64-linux" "aarch64-linux" ];
       forAllSystems = f: nixpkgs.lib.genAttrs systems (system: f (import nixpkgs {
@@ -47,19 +48,26 @@
     in
     {
       packages = forAllSystems (pkgs:
-        rec {
-          default = frontend;
-          backend = pkgs.rustPlatform.buildRustPackage {
+        let
+          craneLib = crane.mkLib pkgs;
+          backendArgs = {
             pname = "hima-api";
             version = "0.1.0";
             src = pkgs.lib.cleanSource ./backend;
-            cargoLock.lockFile = ./backend/Cargo.lock;
+            strictDeps = true;
             nativeBuildInputs = [ pkgs.pkg-config ];
             buildInputs = [ pkgs.openssl ];
             # CI runs the test suite in the backend job; skip the second release-mode test build.
             doCheck = false;
-            meta.description = "hima API and embedded PostgreSQL migration executable";
           };
+        in
+        rec {
+          default = frontend;
+          backend = craneLib.buildPackage (backendArgs // {
+            # Dependencies build as their own derivation, so it is reused until Cargo.lock changes.
+            cargoArtifacts = craneLib.buildDepsOnly backendArgs;
+            meta.description = "hima API and embedded PostgreSQL migration executable";
+          });
           frontend = pkgs.stdenv.mkDerivation (finalAttrs: {
             pname = "hima";
             version = "1.0.0";
