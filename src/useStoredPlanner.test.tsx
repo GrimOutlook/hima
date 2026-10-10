@@ -28,12 +28,18 @@ afterEach(async () => {
   vi.restoreAllMocks(); vi.useRealTimers(); vi.unstubAllGlobals();
 });
 const tick = async () => { await act(async () => { await vi.advanceTimersByTimeAsync(500); }); };
+const waitForText = async (text: string) => {
+  await vi.waitFor(async () => {
+    await act(async () => { await vi.advanceTimersByTimeAsync(50); });
+    expect(container.textContent).toContain(text);
+  });
+};
 it.each([true, false])("offers removal only after a confirmed upload (remove=%s)", async (remove) => {
   const original = JSON.stringify(emptyStore());
   localStorage.setItem("hima.store.v1", original);
   localStorage.setItem("hima.store.v1.backup.1", original);
   vi.spyOn(window, "confirm").mockReturnValue(true);
-  await act(async () => root.render(<App />)); await tick();
+  await act(async () => root.render(<App />)); await waitForText("Choose your planner for account 1");
   expect(container.textContent).not.toContain("Your local planner was saved");
   await act(async () => [...container.querySelectorAll("button")].find((button) => button.textContent === "Upload local planner and settings")!.click());
   expect(container.textContent).toContain("Your local planner was saved");
@@ -42,7 +48,8 @@ it.each([true, false])("offers removal only after a confirmed upload (remove=%s)
   expect(localStorage.getItem("hima.store.v1")).toBe(remove ? null : original);
   expect(localStorage.getItem("hima.store.v1.backup.1")).toBe(remove ? null : original);
   vi.mocked(plannerApi.session).mockResolvedValue({ user_id: 2, csrf_token: "b" });
-  await act(async () => window.dispatchEvent(new Event("focus"))); await tick();
+  await act(async () => window.dispatchEvent(new Event("focus")));
+  await waitForText(remove ? "Remote leave" : "Choose your planner for account 2");
   expect(container.textContent?.includes("Choose your planner for account 2")).toBe(!remove);
 });
 it("keeps browser copies and does not offer removal after a failed upload", async () => {
@@ -51,7 +58,7 @@ it("keeps browser copies and does not offer removal after a failed upload", asyn
   localStorage.setItem("hima.store.v1.backup", original);
   vi.mocked(plannerApi.save).mockRejectedValue(new Error("Offline"));
   vi.spyOn(window, "confirm").mockReturnValue(true);
-  await act(async () => root.render(<App />)); await tick();
+  await act(async () => root.render(<App />)); await waitForText("Choose your planner for account 1");
   await act(async () => [...container.querySelectorAll("button")].find((button) => button.textContent === "Upload local planner and settings")!.click());
   expect(container.textContent).toContain("Offline");
   expect(container.querySelector('[aria-label="Remove migrated browser data"]')).toBeNull();
@@ -64,7 +71,7 @@ it("offers both-copy backups and preserves originals when migration confirmation
   localStorage.setItem("hima.store.v1", original);
   vi.spyOn(window, "confirm").mockReturnValue(false);
   await act(async () => root.render(<App />));
-  await tick();
+  await waitForText("Choose your planner for account 1");
   expect(container.textContent).toContain("also has a remote planner");
   expect(container.textContent).toContain("Export original local backup");
   expect(container.textContent).toContain("Export remote backup");
