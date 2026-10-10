@@ -52,6 +52,21 @@ The generated site is written to `dist/`. Run `pnpm run preview` to serve the pr
 
 ## Architecture and production hosting
 
+The frontend ledger indexes validated event days by pool once per events-array
+revision. Each pool's immutable inputs and that events array key a weak cache of
+sorted actions and running snapshots through the supported maximum date (2200).
+Charts, totals and pool cards use binary-search queries against those snapshots;
+card starting balances are recorded during the same replay, including caps,
+holiday expiration and resets. Model callers must replace changed pools/events
+immutably rather than mutate cached inputs. Old planners are garbage-collectable.
+The ledger tests check invalidation and assert that repeated queries do not
+rescan event days or expand recurrence.
+The first query pays the full expansion cost; subsequent date changes reuse it.
+Run `pnpm exec vitest run src/ledger-performance.test.ts --silent=false --reporter=verbose`
+for informational cold-build and warm totals/card/history timings on synthetic
+4/8/20-pool planners. Timing values are machine-dependent; regression assertions
+use work counts and balance correctness rather than fragile wall-clock limits.
+
 React serves the planner UI from static `dist/` assets. Relative `/api` and `/auth`
 requests go to the Rust Axum service under the same HTTPS origin. PostgreSQL 17
 stores account identities, revision-checked planner documents, login transactions,
