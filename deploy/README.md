@@ -143,7 +143,9 @@ if appropriate. Missing secrets or invalid configuration will appear in the
 journal and must be fixed before restarting.
 
 Install [`nginx.conf`](nginx.conf) inside nginx's `http` configuration context;
-replace domain and certificate paths. Check and reload:
+replace domain and certificate paths. Use nginx **1.25.1 or newer**, built with
+`--with-http_v2_module` (check `nginx -V`); the TLS server uses `http2 on`.
+Check and reload:
 
 ```sh
 sudo nginx -t
@@ -163,6 +165,35 @@ HTML and do not receive that cache policy. The unhashed `/assets/favicon.svg`
 is an exact-match exception using `no-cache`. Keep future unhashed files outside
 `/assets/` or add an explicit revalidation exception for them.
 
+### Compression and HTTP/2
+
+TLS clients negotiate HTTP/2 through ALPN; HTTP/1.1 remains available. Gzip
+compresses HTML, JavaScript, CSS, JSON and SVG responses when clients accept it,
+using level 5 and a 1 KiB minimum for responses with a known length. Already
+compressed images/fonts are not selected. `gzip_vary on` adds
+`Vary: Accept-Encoding` so caches distinguish representations; `gzip_proxied any`
+also permits compression for API requests arriving through a proxy with `Via`.
+This compresses response bodies, not planner upload requests or their size limit.
+
+`/api/me` (including query strings) explicitly disables gzip because its JSON
+contains the session CSRF token. TLS compression of a secret-bearing response
+can expose it through BREACH-style length attacks. nginx strips `Accept-Encoding`
+on all API/auth upstream requests, ensuring the upstream cannot independently
+compress this exception. The nested location inherits the existing proxy headers,
+rate limits, cache/log policy and security headers. Planner JSON remains eligible
+for gzip; future endpoints carrying secrets need the same review and exclusion.
+
+Precompressed hashed assets were considered and are deferred: runtime gzip works
+with both current native and Nix release artifacts without adding `.gz` build
+outputs or requiring the optional `gzip_static` module. Brotli likewise requires
+an additional module and build/deployment coordination. Neither is enabled by this
+recipe; if adopted later, generate sidecars only for hashed assets, verify content
+negotiation and preserve the `/api/me` exception and existing cache policy.
+
+The database-independent regression test below also checks gzip negotiation and
+round-trip bodies for JS/CSS/SVG and planner JSON, identity responses, the CSRF
+exception with queries, upstream encoding suppression, and HTTP/2 ALPN.
+
 The file's `map` and `limit_req_zone` directives belong directly in the **http
 context**, outside either `server` block. Two 10 MiB shared-memory zones track
 the binary client address across nginx workers. Auth routes share a 6 requests/minute
@@ -181,11 +212,14 @@ explicitly trusted proxy addresses before using this recipe; otherwise all users
 behind that proxy share a budget. Keep the Rust port private so requests cannot
 bypass nginx's limits.
 
-Run the database-independent rate-limit regression test with nginx, openssl and
+Run the database-independent rate-limit/compression regression test with nginx
+1.25.1+, HTTP/2-capable curl, openssl and
 Python 3 on PATH:
 
 ```sh
 python3 deploy/test_rate_limits.py
+# Or use the lockfile-pinned nginx and curl, as CI does:
+nix shell --inputs-from . nixpkgs#nginx nixpkgs#curl --command python3 deploy/test_rate_limits.py
 ```
 
 It exercises the shipped configuration over HTTPS, verifies rejected requests

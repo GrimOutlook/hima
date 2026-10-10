@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Exercise production nginx rate limits against a counting HTTP upstream."""
 from concurrent.futures import ThreadPoolExecutor
+import gzip
 import http.client
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
@@ -15,6 +16,7 @@ import time
 root = Path(__file__).resolve().parent.parent
 count = 0
 lock = Lock()
+json_body = b'{"document":"' + b'planner data ' * 1000 + b'"}'
 
 
 class Upstream(BaseHTTPRequestHandler):
@@ -23,8 +25,13 @@ class Upstream(BaseHTTPRequestHandler):
         with lock:
             count += 1
         self.send_response(200)
+        body = json_body if self.path.startswith("/api/") else b"upstream"
+        self.send_header("Content-Type", "application/json")
+        self.send_header("Content-Length", str(len(body)))
+        self.send_header("X-Upstream-Accept-Encoding", self.headers.get("Accept-Encoding", "absent"))
+        self.send_header("X-Upstream-CSRF", self.headers.get("X-CSRF-Token", "absent"))
         self.end_headers()
-        self.wfile.write(b"upstream")
+        self.wfile.write(body)
 
     def log_message(self, *args):
         pass
@@ -36,6 +43,13 @@ with tempfile.TemporaryDirectory(prefix="hima-rate-limits-") as directory:
     (tmp / "assets").mkdir()
     for asset in ("index-abc123.js", "index-abc123.css", "font-abc123.woff2", "favicon.svg"):
         (tmp / "assets" / asset).write_text(asset)
+    compressed_assets = {
+        "large-abc123.js": b"console.log('hima');\n" * 1000,
+        "large-abc123.css": b"body { color: blue; }\n" * 1000,
+        "large-abc123.svg": b'<svg xmlns="http://www.w3.org/2000/svg">' + b"<path/>" * 1000 + b"</svg>",
+    }
+    for name, body in compressed_assets.items():
+        (tmp / "assets" / name).write_bytes(body)
     cert, key = tmp / "cert.pem", tmp / "key.pem"
     subprocess.run([
         "openssl", "req", "-x509", "-newkey", "rsa:2048", "-nodes", "-days", "1",
@@ -101,6 +115,48 @@ with tempfile.TemporaryDirectory(prefix="hima-rate-limits-") as directory:
         else:
             raise RuntimeError("nginx did not become ready")
 
+        # Verify real HTTP/2 requests, not just a configured directive.
+        version = subprocess.check_output([
+            "curl", "--silent", "--show-error", "--fail", "--http2",
+            "--cacert", str(cert), "--output", "/dev/null", "--write-out", "%{http_version}",
+            f"https://127.0.0.1:{port}/",
+        ], text=True)
+        assert version == "2", version
+        for name, original in compressed_assets.items():
+            path = f"/assets/{name}"
+            status, body, headers = request(path, headers={"Accept-Encoding": "gzip"}, metadata=True)
+            assert status == 200
+            assert headers["Content-Encoding"] == "gzip"
+            assert "Accept-Encoding" in headers["Vary"]
+            assert gzip.decompress(body) == original
+            assert len(body) < len(original)
+            status, body, headers = request(path, metadata=True)
+            assert (status, body) == (200, original)
+            assert "Content-Encoding" not in headers
+            status, body, headers = request(path, headers={"Accept-Encoding": "gzip;q=0"}, metadata=True)
+            assert (status, body) == (200, original)
+            assert "Content-Encoding" not in headers
+        status, body, headers = request("/assets/index-abc123.js", headers={"Accept-Encoding": "gzip"}, metadata=True)
+        assert (status, body) == (200, b"index-abc123.js")
+        assert "Content-Encoding" not in headers, "Small assets should not be compressed"
+        for path in ("/api/planner", "/api/me", "/api/me?compression=1"):
+            status, body, headers = request(path, client="127.0.0.5", headers={
+                "Accept-Encoding": "gzip", "Via": "1.1 test-proxy", "X-CSRF-Token": "test-token",
+            }, metadata=True)
+            assert status == 200, (path, status, body)
+            assert headers["X-Upstream-Accept-Encoding"] == "absent"
+            assert headers["X-Upstream-CSRF"] == "test-token"
+            if path == "/api/planner":
+                assert headers["Content-Encoding"] == "gzip"
+                assert "Accept-Encoding" in headers["Vary"]
+                assert gzip.decompress(body) == json_body
+            else:
+                assert "Content-Encoding" not in headers
+                assert body == json_body
+        status, body, headers = request("/api/planner", client="127.0.0.5", metadata=True)
+        assert (status, body) == (200, json_body)
+        assert "Content-Encoding" not in headers
+
         for asset in ("index-abc123.js", "index-abc123.css", "font-abc123.woff2"):
             path = f"/assets/{asset}"
             status, body, headers = request(path, metadata=True)
@@ -149,7 +205,7 @@ with tempfile.TemporaryDirectory(prefix="hima-rate-limits-") as directory:
         assert request("/auth/login")[0] == 200, "Auth budget did not recover"
         assert request("/api/me", client="127.0.0.3")[0] == 200
         assert (tmp / "api-error.log").read_text() == ""
-        print("HTTPS asset caching, rate limits, upstream exclusion, independent budgets, recovery and headers passed")
+        print("HTTP/2, gzip negotiation, CSRF compression exclusion, HTTPS asset caching, rate limits, independent budgets, recovery and headers passed")
     finally:
         proxy.terminate()
         proxy.wait(timeout=10)
