@@ -9,9 +9,9 @@ function historyPools(store: Store, poolId?: number): Pool[] {
   return store.pools.filter((pool) => poolId === undefined ? !pool.hidden_from_graph : pool.id === poolId);
 }
 
-export function balanceHistoryDates(store: Store, today: string, poolId?: number): string[] {
+export function balanceHistoryDates(store: Store, today: string, poolId?: number, includeHidden = false): string[] {
   if (!isValidDate(today)) return [];
-  const pools = historyPools(store, poolId);
+  const pools = includeHidden && poolId === undefined ? store.pools : historyPools(store, poolId);
   const poolIds = new Set(pools.map((pool) => pool.id));
   const eventDates = store.events.flatMap((event) => event.days
     .filter((day) => day.allocations.some((allocation) => poolIds.has(allocation.pool_id)))

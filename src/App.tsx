@@ -13,6 +13,7 @@ import { formatPercent, pluralize, selectOnRowClick } from "./presentation";
 import { useStoredPlanner } from "./useStoredPlanner";
 import { clearBrowserData, exportRawBrowserData } from "./localPersistence";
 import { usePoolCardFigures } from "./usePoolCardFigures";
+import { createChartHistorySelector } from "./chartHistory";
 import { FirstDayOfWeekContext, IgnoreWeekendsContext, nextWeekday } from "./settings";
 import {
   AdditionModal,
@@ -31,8 +32,6 @@ import {
   reduceStore,
   storeActionError,
   type StoreAction,
-  balanceHistoryDates,
-  balanceHistoryForDates,
   compareDated,
   compareDates,
   compareStartDates,
@@ -162,16 +161,8 @@ function Planner({ planner }: { planner: ReturnType<typeof useStoredPlanner> }) 
     dispatch({ type: "set-pool-visibility", poolId, visible });
   }, [dispatch]);
   const balance = totalsOn(store, balanceDate);
-  const historyDates = useMemo(
-    () => balanceHistoryDates({ ...store, pools: store.pools.map((pool) => ({ ...pool, hidden_from_graph: false })) }, chartHistoryEnd),
-    [store, chartHistoryEnd],
-  );
-  const poolHistories = useMemo(
-    () => {
-      return Object.fromEntries(store.pools.map((pool) => [pool.id, balanceHistoryForDates(store, chartHistoryEnd, historyDates, pool.id)]));
-    },
-    [store, chartHistoryEnd, historyDates],
-  );
+  const [selectChartHistory] = useState(createChartHistorySelector);
+  const { historyDates, poolHistories } = selectChartHistory(store, chartHistoryEnd);
   const firstPoolId = store.pools[0]?.id;
   const timeline = useMemo(() => [...store.events].sort((left, right) =>
     left.days[0] ? compareDates(left.days[0].date, right.days[0]?.date ?? "") : 0,

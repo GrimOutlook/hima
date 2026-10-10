@@ -433,6 +433,17 @@ also exercises the planner over actual TCP HTTP, including concurrent first save
 and updates, cross-user isolation, invalid-write preservation, session expiry,
 and CSRF enforcement.
 
+## Chart history caching
+
+Chart date selection includes hidden pools directly, without cloning the document.
+Each planner retains chart series by pool ID and the immutable additions, recurring
+rules, caps and event-array identities. Pool names, colours, visibility, ordering
+and settings do not invalidate balance histories. Ledger edits refresh the affected
+series; event edits, a changed shared date range or a new current date refresh all
+series. Removed pools are evicted, and imported documents with new ledger arrays
+are recalculated. Reducer updates must preserve untouched ledger-array identities
+and replace arrays when their contents change.
+
 ## License
 
 hima is licensed under the [MIT License](LICENSE). Third-party dependencies, including the bundled fonts, retain their own licenses.
