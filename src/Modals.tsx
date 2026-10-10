@@ -2,6 +2,7 @@ import { useEffect, useRef, useState, type FormEvent, type ReactNode } from "rea
 import { HexColorInput, HexColorPicker } from "react-colorful";
 import { CalendarPicker } from "./CalendarPicker";
 import { SettingTooltip } from "./SettingTooltip";
+import { useFocusTrap } from "./useFocusTrap";
 import { POOL_COLORS } from "./poolColors";
 import { pluralize } from "./presentation";
 import { TIMELINE_PRESETS, type BackupSettings, type TimelinePreset } from "./settings";
@@ -57,6 +58,7 @@ export function ModalFrame({
   children,
 }: ModalFrameProps) {
   const cardRef = useRef<HTMLElement>(null);
+  const { controls, handleTabKeyDown } = useFocusTrap(cardRef);
   // Capture before React commits any autoFocus controls inside the dialog.
   const openerRef = useRef(document.activeElement instanceof HTMLElement ? document.activeElement : null);
   const onCloseRef = useRef(onClose);
@@ -66,13 +68,6 @@ export function ModalFrame({
     const card = cardRef.current;
     const opener = openerRef.current;
     if (!card) return;
-    function controls() {
-      return Array.from(card!.querySelectorAll<HTMLElement>(
-        'button, select, input:not([type="hidden"]), textarea, a[href], [tabindex]',
-      )).filter((element) => element.tabIndex >= 0 && !element.matches(":disabled") &&
-        !element.closest('[hidden], [inert], [aria-hidden="true"]') &&
-        getComputedStyle(element).display !== "none" && getComputedStyle(element).visibility !== "hidden");
-    }
     function focusInside() {
       (controls()[0] ?? card)?.focus();
     }
@@ -92,15 +87,7 @@ export function ModalFrame({
         event.preventDefault();
         onCloseRef.current();
       }
-      if (event.key !== "Tab") return;
-      const elements = controls();
-      const first = elements[0];
-      const last = elements[elements.length - 1];
-      if (!first || !card!.contains(document.activeElement) || document.activeElement === card ||
-        (event.shiftKey ? document.activeElement === first : document.activeElement === last)) {
-        event.preventDefault();
-        (event.shiftKey ? last ?? card : first ?? card)?.focus();
-      }
+      handleTabKeyDown(event);
     }
     document.addEventListener("keydown", handleKeyDown);
     document.addEventListener("focusin", handleFocus);
@@ -109,7 +96,7 @@ export function ModalFrame({
       document.removeEventListener("focusin", handleFocus);
       if (opener?.isConnected) opener.focus();
     };
-  }, []);
+  }, [controls, handleTabKeyDown]);
 
   return (
     <div className="modal-backdrop">

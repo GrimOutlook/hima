@@ -2,6 +2,8 @@ import { createPortal } from "react-dom";
 import { useCallback, useContext, useEffect, useId, useLayoutEffect, useRef, useState } from "react";
 import { addDays, addMonths, formatDateParts, isValidDate, MIN_YEAR, MAX_YEAR, MONTH_NAMES, prettyDate, todayDate, WEEKDAYS } from "./model";
 import { FirstDayOfWeekContext, IgnoreWeekendsContext, isWeekend, nextWeekday } from "./settings";
+import { useAnchoredPopup } from "./useAnchoredPopup";
+import { useFocusTrap } from "./useFocusTrap";
 
 interface CalendarPickerProps {
   value: string;
@@ -13,12 +15,6 @@ interface CalendarPickerProps {
   min?: string;
   selectedDates?: string[];
   onDatesChange?: (dates: string[]) => void;
-}
-
-interface CalendarPosition {
-  top: number;
-  left: number;
-  width: number;
 }
 
 const CALENDAR_WIDTH = 312;
@@ -51,7 +47,9 @@ export function CalendarPicker({ value, onChange, label = "BALANCE ON", variant 
     if (restoreFocus) triggerRef.current?.focus();
   }, []);
   const [error, setError] = useState("");
-  const [position, setPosition] = useState<CalendarPosition>({ top: 0, left: 0, width: CALENDAR_WIDTH });
+  const position = useAnchoredPopup({ open: isOpen, anchorRef: triggerRef, popupRef: calendarRef,
+    placement: "below", gap: 8, width: CALENDAR_WIDTH, height: CALENDAR_HEIGHT });
+  const { handleTabKeyDown } = useFocusTrap(calendarRef);
   const dragRef = useRef<{ pointerId: number; start: string; initial: string[]; removing: boolean; dates: string[] } | null>(null);
   const [dragDates, setDragDates] = useState<string[] | null>(null);
   const suppressPointerClick = useRef(false);
@@ -96,22 +94,6 @@ export function CalendarPicker({ value, onChange, label = "BALANCE ON", variant 
     if (!isOpen) resetDrag();
   }, [isOpen, resetDrag]);
 
-  const updatePosition = useCallback(() => {
-    const trigger = triggerRef.current;
-    if (!trigger) return;
-    const rect = trigger.getBoundingClientRect();
-    const width = Math.min(CALENDAR_WIDTH, window.innerWidth - 16);
-    const left = Math.max(8, Math.min(rect.right - width, window.innerWidth - width - 8));
-    const top = rect.bottom + CALENDAR_HEIGHT + 8 <= window.innerHeight
-      ? rect.bottom + 8
-      : Math.max(8, rect.top - CALENDAR_HEIGHT - 8);
-    setPosition((current) =>
-      current.top === top && current.left === left && current.width === width
-        ? current
-        : { top, left, width },
-    );
-  }, []);
-
   useEffect(() => {
     if (isValidDate(value)) {
       lastValidDate.current = value;
@@ -121,11 +103,6 @@ export function CalendarPicker({ value, onChange, label = "BALANCE ON", variant 
       onChange(fallback);
     }
   }, [variant, onChange, value]);
-
-  useLayoutEffect(() => {
-    if (!isOpen) return;
-    updatePosition();
-  }, [isOpen, updatePosition]);
 
   useLayoutEffect(() => {
     if (!isOpen || !focusDayPending.current) return;
@@ -159,16 +136,12 @@ export function CalendarPicker({ value, onChange, label = "BALANCE ON", variant 
     document.addEventListener("pointerdown", closeOnOutsidePointer);
     document.addEventListener("keydown", closeOnEscape, true);
     document.addEventListener("focusin", containFocus);
-    window.addEventListener("resize", updatePosition);
-    window.addEventListener("scroll", updatePosition, true);
     return () => {
       document.removeEventListener("pointerdown", closeOnOutsidePointer);
       document.removeEventListener("keydown", closeOnEscape, true);
       document.removeEventListener("focusin", containFocus);
-      window.removeEventListener("resize", updatePosition);
-      window.removeEventListener("scroll", updatePosition, true);
     };
-  }, [isOpen, updatePosition, closeCalendar]);
+  }, [isOpen, closeCalendar]);
 
   const monthParts = viewMonth.split("-").map(Number);
   const year = monthParts[0] ?? 0;
@@ -195,7 +168,6 @@ export function CalendarPicker({ value, onChange, label = "BALANCE ON", variant 
     focusDayPending.current = true;
     setViewMonth(startOfMonth(initialDate));
     setError("");
-    updatePosition();
     setIsOpen(true);
   }
 
@@ -281,16 +253,7 @@ export function CalendarPicker({ value, onChange, label = "BALANCE ON", variant 
           aria-modal="true"
           tabIndex={-1}
           aria-label={`Choose ${label.toLowerCase()}`}
-          onKeyDown={(event) => {
-            if (event.key !== "Tab") return;
-            const controls = Array.from(calendarRef.current?.querySelectorAll<HTMLElement>('button:not(:disabled), select, [tabindex="0"]') ?? []).filter((control) => control.tabIndex >= 0);
-            const first = controls[0];
-            const last = controls[controls.length - 1];
-            if (event.shiftKey ? document.activeElement === first : document.activeElement === last) {
-              event.preventDefault();
-              (event.shiftKey ? last : first)?.focus();
-            }
-          }}
+          onKeyDown={handleTabKeyDown}
           style={{ top: position.top, left: position.left, width: position.width }}
         >
           <button className="calendar-footer-button calendar-clear-button calendar-top-today" type="button" disabled={Boolean(min && todaySelection < min)} onClick={() => selectDate(todaySelection)}>
