@@ -1,4 +1,5 @@
-import { parseStoreJson, type Store } from "./model";
+import type { Store } from "./model";
+import { parseStoreValue } from "./normalize";
 import { isValidSettings, type BackupSettings } from "./settings";
 
 export function serializeBackupJson(store: Store, settings: BackupSettings): string {
@@ -6,8 +7,14 @@ export function serializeBackupJson(store: Store, settings: BackupSettings): str
 }
 
 export function parseBackupJson(json: string, warnings: string[] = []): { store: Store; settings?: BackupSettings } {
-  const store = parseStoreJson(json, warnings);
-  const source = JSON.parse(json) as Record<string, unknown>;
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(json) as unknown;
+  } catch {
+    throw new Error("The selected file is not valid JSON.");
+  }
+  const store = parseStoreValue(parsed, warnings);
+  const source = parsed as Record<string, unknown>;
   if (!("settings" in source)) return { store };
 
   const value = source.settings;

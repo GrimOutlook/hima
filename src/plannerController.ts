@@ -1,4 +1,5 @@
 import { emptyStore } from "./model";
+import { errorMessage } from "./errors";
 import type { LocalMigration, LocalSource } from "./localMigration";
 import {
   PersistenceError,
@@ -26,8 +27,8 @@ export type PlannerSnapshot = {
 };
 const sameSession = (a: PlannerSession | null, b: PlannerSession) =>
   a?.user_id === b.user_id && a.csrf_token === b.csrf_token;
-const message = (error: unknown) =>
-  error instanceof Error ? error.message : "The server could not be reached.";
+const message = (error: unknown) => errorMessage(error, "The server could not be reached.");
+export const SAVE_DEBOUNCE_MS = 500;
 const canonical = (value: unknown): string =>
   JSON.stringify(value, (_key, entry) =>
     entry && typeof entry === "object" && !Array.isArray(entry)
@@ -59,7 +60,7 @@ export class PlannerController {
 
   constructor(
     private persistence: PlannerPersistence,
-    private debounceMs = 500,
+    private debounceMs = SAVE_DEBOUNCE_MS,
     private local?: LocalSource,
   ) {}
   getSnapshot = () => this.state;

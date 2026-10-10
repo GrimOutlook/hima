@@ -198,6 +198,10 @@ export function parseStoreJson(json: string, warnings: string[] = []): Store {
   } catch {
     throw new Error("The selected file is not valid JSON.");
   }
+  return parseStoreValue(value, warnings);
+}
+
+export function parseStoreValue(value: unknown, warnings: string[] = []): Store {
   if (value === null || typeof value !== "object" || Array.isArray(value)) {
     throw new Error("This file does not contain a hima data export.");
   }
