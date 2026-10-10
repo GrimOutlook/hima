@@ -5,6 +5,20 @@ use std::{collections::HashSet, fmt};
 
 const MAX_ID: u64 = 9_007_199_254_740_991;
 const MAX_HOURS: f64 = 1_000_000.0;
+const MAX_POOL_NAME_LENGTH: usize = 48;
+const MAX_EVENT_NAME_LENGTH: usize = 64;
+const MAX_POOLS_AND_ALLOCATIONS: usize = 100;
+const MAX_RECURRING_AND_CAPS: usize = 1000;
+const MAX_EVENT_DAYS: usize = 3660;
+const MAX_COLLECTION_ENTRIES: usize = 10_000;
+const CADENCES: &[&str] = &[
+    "Weekly",
+    "Fortnightly",
+    "Monthly",
+    "Yearly",
+    "YearlyNthWeekday",
+];
+const NTH_WEEKDAYS: &[&str] = &["First", "Second", "Third", "Fourth", "Fifth", "Last"];
 const WEEKDAYS: &[&str] = &[
     "Sunday",
     "Monday",
@@ -43,48 +57,53 @@ type Result<T> = std::result::Result<T, ValidationError>;
 fn invalid(message: &str) -> ValidationError {
     ValidationError(message.into())
 }
-fn object<'a>(v: &'a Value, fields: &[&str]) -> Result<&'a Map<String, Value>> {
-    let o = v.as_object().ok_or_else(|| invalid("Expected an object"))?;
-    if o.keys().any(|k| !fields.contains(&k.as_str())) {
+fn object<'a>(value: &'a Value, fields: &[&str]) -> Result<&'a Map<String, Value>> {
+    let fields_map = value
+        .as_object()
+        .ok_or_else(|| invalid("Expected an object"))?;
+    if fields_map.keys().any(|key| !fields.contains(&key.as_str())) {
         return Err(invalid("Unknown document field"));
     }
-    Ok(o)
+    Ok(fields_map)
 }
-fn array<'a>(o: &'a Map<String, Value>, key: &str) -> Result<&'a Vec<Value>> {
-    let values = o
+fn array<'a>(fields: &'a Map<String, Value>, key: &str) -> Result<&'a Vec<Value>> {
+    let values = fields
         .get(key)
         .and_then(Value::as_array)
         .ok_or_else(|| invalid(&format!("{key} must be an array")))?;
     let limit = match key {
-        "pools" | "allocations" => 100,
-        "recurring" | "caps" => 1000,
-        "days" => 3660,
-        _ => 10_000,
+        "pools" | "allocations" => MAX_POOLS_AND_ALLOCATIONS,
+        "recurring" | "caps" => MAX_RECURRING_AND_CAPS,
+        "days" => MAX_EVENT_DAYS,
+        _ => MAX_COLLECTION_ENTRIES,
     };
     if values.len() > limit {
         return Err(invalid(&format!("{key} exceeds its collection limit")));
     }
     Ok(values)
 }
-fn text<'a>(o: &'a Map<String, Value>, key: &str) -> Result<&'a str> {
-    o.get(key)
+fn text<'a>(fields: &'a Map<String, Value>, key: &str) -> Result<&'a str> {
+    fields
+        .get(key)
         .and_then(Value::as_str)
         .ok_or_else(|| invalid(&format!("{key} must be a string")))
 }
-fn id(o: &Map<String, Value>, key: &str) -> Result<u64> {
-    o.get(key)
+fn id(fields: &Map<String, Value>, key: &str) -> Result<u64> {
+    fields
+        .get(key)
         .and_then(Value::as_u64)
-        .filter(|n| *n > 0 && *n <= MAX_ID)
+        .filter(|value| *value > 0 && *value <= MAX_ID)
         .ok_or_else(|| invalid("IDs must be positive JavaScript-safe integers"))
 }
-fn entry_id(o: &Map<String, Value>, ids: &mut HashSet<u64>) -> Result<()> {
-    if !ids.insert(id(o, "id")?) {
+fn entry_id(entry: &Map<String, Value>, ids: &mut HashSet<u64>) -> Result<u64> {
+    let entry_id = id(entry, "id")?;
+    if !ids.insert(entry_id) {
         return Err(invalid("Duplicate ID within collection"));
     }
-    Ok(())
+    Ok(entry_id)
 }
-fn name(o: &Map<String, Value>, limit: usize) -> Result<()> {
-    let value = text(o, "name")?;
+fn name(fields: &Map<String, Value>, limit: usize) -> Result<()> {
+    let value = text(fields, "name")?;
     if value.trim().is_empty() || value.encode_utf16().count() > limit {
         return Err(invalid(
             "Names must be nonblank and within their length limit",
@@ -92,37 +111,37 @@ fn name(o: &Map<String, Value>, limit: usize) -> Result<()> {
     }
     Ok(())
 }
-fn flags(o: &Map<String, Value>, keys: &[&str]) -> Result<()> {
+fn flags(fields: &Map<String, Value>, keys: &[&str]) -> Result<()> {
     if keys
         .iter()
-        .any(|k| o.get(*k).is_some_and(|v| !v.is_boolean()))
+        .any(|key| fields.get(*key).is_some_and(|value| !value.is_boolean()))
     {
         return Err(invalid("Flags must be booleans"));
     }
     Ok(())
 }
-fn date<'a>(o: &'a Map<String, Value>, key: &str) -> Result<&'a str> {
-    let s = text(o, key)?;
-    if s.len() != 10
-        || s.as_bytes()[4] != b'-'
-        || s.as_bytes()[7] != b'-'
-        || !s
+fn date<'a>(fields: &'a Map<String, Value>, key: &str) -> Result<&'a str> {
+    let value = text(fields, key)?;
+    if value.len() != 10
+        || value.as_bytes()[4] != b'-'
+        || value.as_bytes()[7] != b'-'
+        || !value
             .bytes()
             .enumerate()
-            .all(|(i, b)| i == 4 || i == 7 || b.is_ascii_digit())
-        || !(1900..=2200).contains(&s[..4].parse::<u32>().unwrap_or(0))
-        || NaiveDate::parse_from_str(s, "%Y-%m-%d").is_err()
+            .all(|(index, byte)| index == 4 || index == 7 || byte.is_ascii_digit())
+        || !(1900..=2200).contains(&value[..4].parse::<u32>().unwrap_or(0))
+        || NaiveDate::parse_from_str(value, "%Y-%m-%d").is_err()
     {
         return Err(invalid(
             "Dates must be real YYYY-MM-DD dates (years 1900–2200)",
         ));
     }
-    Ok(s)
+    Ok(value)
 }
-fn range(o: &Map<String, Value>, ordered: bool) -> Result<(&str, Option<&str>)> {
-    let start = date(o, "start_date")?;
-    let end = if o.contains_key("end_date") {
-        Some(date(o, "end_date")?)
+fn range(fields: &Map<String, Value>, ordered: bool) -> Result<(&str, Option<&str>)> {
+    let start = date(fields, "start_date")?;
+    let end = if fields.contains_key("end_date") {
+        Some(date(fields, "end_date")?)
     } else {
         None
     };
@@ -131,16 +150,16 @@ fn range(o: &Map<String, Value>, ordered: bool) -> Result<(&str, Option<&str>)> 
     }
     Ok((start, end))
 }
-fn amount(o: &Map<String, Value>, key: &str, zero: bool) -> Result<()> {
-    let n = o
+fn amount(fields: &Map<String, Value>, key: &str, zero: bool) -> Result<()> {
+    let hours = fields
         .get(key)
         .and_then(Value::as_f64)
         .ok_or_else(|| invalid("Hours must be numbers"))?;
-    let cents = n * 100.0;
+    let cents = hours * 100.0;
     if !cents.is_finite()
-        || n > MAX_HOURS
-        || n < 0.0
-        || (!zero && n == 0.0)
+        || hours > MAX_HOURS
+        || hours < 0.0
+        || (!zero && hours == 0.0)
         || (cents - cents.round()).abs() > 1e-7
     {
         return Err(invalid(
@@ -149,180 +168,209 @@ fn amount(o: &Map<String, Value>, key: &str, zero: bool) -> Result<()> {
     }
     Ok(())
 }
-fn choice(o: &Map<String, Value>, key: &str, choices: &[&str]) -> Result<()> {
-    if !choices.contains(&text(o, key)?) {
+fn choice(fields: &Map<String, Value>, key: &str, choices: &[&str]) -> Result<()> {
+    if !choices.contains(&text(fields, key)?) {
         return Err(invalid(&format!("Unsupported {key}")));
     }
     Ok(())
 }
 
-pub fn validate_document(v: &Value) -> Result<()> {
-    let o = object(v, &["version", "pools", "events", "next_id", "settings"])?;
-    if o.get("version").and_then(Value::as_u64) != Some(1) {
+pub fn validate_document(document: &Value) -> Result<()> {
+    let document = object(
+        document,
+        &["version", "pools", "events", "next_id", "settings"],
+    )?;
+    if document.get("version").and_then(Value::as_u64) != Some(1) {
         return Err(invalid("Unsupported document schema version; expected 1"));
     }
-    let next = id(o, "next_id")?;
+    let next = id(document, "next_id")?;
     let mut largest = 0;
     let mut pool_ids = HashSet::new();
-    for p in array(o, "pools")? {
-        let p = object(
-            p,
-            &[
-                "id",
-                "name",
-                "additions",
-                "recurring",
-                "caps",
-                "new_additions_expire_same_day",
-                "color",
-                "hidden_from_graph",
-                "hidden_from_total",
-            ],
-        )?;
-        entry_id(p, &mut pool_ids)?;
-        largest = largest.max(id(p, "id")?);
-        name(p, 48)?;
-        flags(
-            p,
-            &[
-                "new_additions_expire_same_day",
-                "hidden_from_graph",
-                "hidden_from_total",
-            ],
-        )?;
-        if p.contains_key("color") {
-            let c = text(p, "color")?;
-            if c.len() != 7 || !c.starts_with('#') || !c[1..].bytes().all(|b| b.is_ascii_hexdigit())
-            {
-                return Err(invalid("Color must be #RRGGBB"));
-            }
-        }
-        for (key, recurring) in [("additions", false), ("recurring", true)] {
-            let mut ids = HashSet::new();
-            for a in array(p, key)? {
-                let fields: &[&str] = if recurring {
-                    &[
-                        "id",
-                        "amount",
-                        "reset",
-                        "expires_same_day",
-                        "cadence",
-                        "start_date",
-                        "end_date",
-                        "month",
-                        "nth_weekday",
-                        "weekday",
-                    ]
-                } else {
-                    &["id", "amount", "reset", "expires_same_day", "date"]
-                };
-                let a = object(a, fields)?;
-                entry_id(a, &mut ids)?;
-                largest = largest.max(id(a, "id")?);
-                flags(a, &["reset", "expires_same_day"])?;
-                let reset = a.get("reset") == Some(&Value::Bool(true));
-                amount(a, "amount", reset)?;
-                if reset && a.get("expires_same_day") == Some(&Value::Bool(true)) {
-                    return Err(invalid("Resets cannot expire"));
-                }
-                if recurring {
-                    range(a, false)?;
-                    choice(
-                        a,
-                        "cadence",
-                        &[
-                            "Weekly",
-                            "Fortnightly",
-                            "Monthly",
-                            "Yearly",
-                            "YearlyNthWeekday",
-                        ],
-                    )?;
-                    if text(a, "cadence")? == "YearlyNthWeekday" {
-                        if !a
-                            .get("month")
-                            .and_then(Value::as_u64)
-                            .is_some_and(|m| (1..=12).contains(&m))
-                        {
-                            return Err(invalid("Month must be 1–12"));
-                        }
-                        choice(
-                            a,
-                            "nth_weekday",
-                            &["First", "Second", "Third", "Fourth", "Fifth", "Last"],
-                        )?;
-                        choice(a, "weekday", WEEKDAYS)?;
-                    } else if ["month", "nth_weekday", "weekday"]
-                        .iter()
-                        .any(|k| a.contains_key(*k))
-                    {
-                        return Err(invalid("Nth-weekday fields require YearlyNthWeekday"));
-                    }
-                } else {
-                    date(a, "date")?;
-                }
-            }
-        }
-        let mut ids = HashSet::new();
-        let mut ranges = Vec::new();
-        for c in array(p, "caps")? {
-            let c = object(c, &["id", "max_balance", "start_date", "end_date"])?;
-            entry_id(c, &mut ids)?;
-            largest = largest.max(id(c, "id")?);
-            amount(c, "max_balance", true)?;
-            ranges.push(range(c, true)?);
-        }
-        ranges.sort_unstable();
-        if ranges
-            .windows(2)
-            .any(|w| w[0].1.is_none_or(|end| end >= w[1].0))
-        {
-            return Err(invalid("Cap ranges overlap"));
-        }
+    for pool in array(document, "pools")? {
+        validate_pool(pool, &mut pool_ids, &mut largest)?;
     }
-    let mut ids = HashSet::new();
-    for e in array(o, "events")? {
-        let e = object(e, &["id", "name", "days"])?;
-        entry_id(e, &mut ids)?;
-        largest = largest.max(id(e, "id")?);
-        name(e, 64)?;
-        let days = array(e, "days")?;
-        if days.is_empty() {
-            return Err(invalid("Events require days"));
-        }
-        let mut dates = HashSet::new();
-        for d in days {
-            let d = object(d, &["date", "allocations"])?;
-            if !dates.insert(date(d, "date")?) {
-                return Err(invalid("Duplicate date within event"));
-            }
-            let allocations = array(d, "allocations")?;
-            if allocations.is_empty() {
-                return Err(invalid("Days require allocations"));
-            }
-            let mut allocated_pools = HashSet::new();
-            for a in allocations {
-                let a = object(a, &["pool_id", "hours"])?;
-                if !pool_ids.contains(&id(a, "pool_id")?) {
-                    return Err(invalid("Allocation references a missing pool"));
-                }
-                if !allocated_pools.insert(id(a, "pool_id")?) {
-                    return Err(invalid("Duplicate pool allocation within day"));
-                }
-                amount(a, "hours", false)?;
-            }
-        }
+    let mut event_ids = HashSet::new();
+    for event in array(document, "events")? {
+        validate_event(event, &pool_ids, &mut event_ids, &mut largest)?;
     }
     if next <= largest {
         return Err(invalid("next_id must exceed every entity ID"));
     }
-    if let Some(s) = o.get("settings") {
-        let s = object(s, &["firstDayOfWeek", "ignoreWeekends", "defaultTimeline"])?;
-        choice(s, "firstDayOfWeek", WEEKDAYS)?;
-        choice(s, "defaultTimeline", TIMELINES)?;
-        if !s.get("ignoreWeekends").is_some_and(Value::is_boolean) {
-            return Err(invalid("ignoreWeekends must be a boolean"));
+    if let Some(settings) = document.get("settings") {
+        validate_settings(settings)?;
+    }
+    Ok(())
+}
+
+fn validate_pool(value: &Value, pool_ids: &mut HashSet<u64>, largest: &mut u64) -> Result<()> {
+    let pool = object(
+        value,
+        &[
+            "id",
+            "name",
+            "additions",
+            "recurring",
+            "caps",
+            "new_additions_expire_same_day",
+            "color",
+            "hidden_from_graph",
+            "hidden_from_total",
+        ],
+    )?;
+    *largest = (*largest).max(entry_id(pool, pool_ids)?);
+    name(pool, MAX_POOL_NAME_LENGTH)?;
+    flags(
+        pool,
+        &[
+            "new_additions_expire_same_day",
+            "hidden_from_graph",
+            "hidden_from_total",
+        ],
+    )?;
+    if pool.contains_key("color") {
+        let color = text(pool, "color")?;
+        if color.len() != 7
+            || !color.starts_with('#')
+            || !color[1..].bytes().all(|byte| byte.is_ascii_hexdigit())
+        {
+            return Err(invalid("Color must be #RRGGBB"));
         }
+    }
+    for (key, recurring) in [("additions", false), ("recurring", true)] {
+        let mut ids = HashSet::new();
+        for addition in array(pool, key)? {
+            validate_addition(addition, recurring, &mut ids, largest)?;
+        }
+    }
+    validate_caps(pool, largest)?;
+    Ok(())
+}
+
+fn validate_addition(
+    value: &Value,
+    recurring: bool,
+    ids: &mut HashSet<u64>,
+    largest: &mut u64,
+) -> Result<()> {
+    let fields: &[&str] = if recurring {
+        &[
+            "id",
+            "amount",
+            "reset",
+            "expires_same_day",
+            "cadence",
+            "start_date",
+            "end_date",
+            "month",
+            "nth_weekday",
+            "weekday",
+        ]
+    } else {
+        &["id", "amount", "reset", "expires_same_day", "date"]
+    };
+    let addition = object(value, fields)?;
+    *largest = (*largest).max(entry_id(addition, ids)?);
+    flags(addition, &["reset", "expires_same_day"])?;
+    let reset = addition.get("reset") == Some(&Value::Bool(true));
+    amount(addition, "amount", reset)?;
+    if reset && addition.get("expires_same_day") == Some(&Value::Bool(true)) {
+        return Err(invalid("Resets cannot expire"));
+    }
+    if recurring {
+        range(addition, false)?;
+        choice(addition, "cadence", CADENCES)?;
+        if text(addition, "cadence")? == "YearlyNthWeekday" {
+            if !addition
+                .get("month")
+                .and_then(Value::as_u64)
+                .is_some_and(|month| (1..=12).contains(&month))
+            {
+                return Err(invalid("Month must be 1–12"));
+            }
+            choice(addition, "nth_weekday", NTH_WEEKDAYS)?;
+            choice(addition, "weekday", WEEKDAYS)?;
+        } else if ["month", "nth_weekday", "weekday"]
+            .iter()
+            .any(|key| addition.contains_key(*key))
+        {
+            return Err(invalid("Nth-weekday fields require YearlyNthWeekday"));
+        }
+    } else {
+        date(addition, "date")?;
+    }
+    Ok(())
+}
+
+fn validate_caps(pool: &Map<String, Value>, largest: &mut u64) -> Result<()> {
+    let mut ids = HashSet::new();
+    let mut ranges = Vec::new();
+    for cap in array(pool, "caps")? {
+        let cap = object(cap, &["id", "max_balance", "start_date", "end_date"])?;
+        *largest = (*largest).max(entry_id(cap, &mut ids)?);
+        amount(cap, "max_balance", true)?;
+        ranges.push(range(cap, true)?);
+    }
+    ranges.sort_unstable();
+    if ranges
+        .windows(2)
+        .any(|window| window[0].1.is_none_or(|end| end >= window[1].0))
+    {
+        return Err(invalid("Cap ranges overlap"));
+    }
+    Ok(())
+}
+
+fn validate_event(
+    value: &Value,
+    pool_ids: &HashSet<u64>,
+    ids: &mut HashSet<u64>,
+    largest: &mut u64,
+) -> Result<()> {
+    let event = object(value, &["id", "name", "days"])?;
+    *largest = (*largest).max(entry_id(event, ids)?);
+    name(event, MAX_EVENT_NAME_LENGTH)?;
+    let days = array(event, "days")?;
+    if days.is_empty() {
+        return Err(invalid("Events require days"));
+    }
+    let mut dates = HashSet::new();
+    for day in days {
+        let day = object(day, &["date", "allocations"])?;
+        if !dates.insert(date(day, "date")?) {
+            return Err(invalid("Duplicate date within event"));
+        }
+        let allocations = array(day, "allocations")?;
+        if allocations.is_empty() {
+            return Err(invalid("Days require allocations"));
+        }
+        let mut allocated_pools = HashSet::new();
+        for allocation in allocations {
+            let allocation = object(allocation, &["pool_id", "hours"])?;
+            let pool_id = id(allocation, "pool_id")?;
+            if !pool_ids.contains(&pool_id) {
+                return Err(invalid("Allocation references a missing pool"));
+            }
+            if !allocated_pools.insert(pool_id) {
+                return Err(invalid("Duplicate pool allocation within day"));
+            }
+            amount(allocation, "hours", false)?;
+        }
+    }
+    Ok(())
+}
+
+fn validate_settings(value: &Value) -> Result<()> {
+    let settings = object(
+        value,
+        &["firstDayOfWeek", "ignoreWeekends", "defaultTimeline"],
+    )?;
+    choice(settings, "firstDayOfWeek", WEEKDAYS)?;
+    choice(settings, "defaultTimeline", TIMELINES)?;
+    if !settings
+        .get("ignoreWeekends")
+        .is_some_and(Value::is_boolean)
+    {
+        return Err(invalid("ignoreWeekends must be a boolean"));
     }
     Ok(())
 }
