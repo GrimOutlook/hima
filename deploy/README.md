@@ -27,7 +27,8 @@ use `nix copy --to ssh://HOST .#frontend .#backend` when building elsewhere, and
 create GC-rooted output links on the host. Copying only the executable is not
 sufficient for a Nix package's runtime libraries.
 
-Without Nix, install Node 22.13+, pnpm 12.10.1, and stable Rust with edition 2024
+Without Nix, install Node 22.22.2+ (22.x), 24.15.0+ (24.x), or 26+, pnpm 12.10.1,
+and stable Rust 1.94+ with edition 2024
 support, pkg-config and OpenSSL development headers. Record their exact versions
 in your release record; Nix pins the toolchain as well as the dependencies.
 

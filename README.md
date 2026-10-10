@@ -31,7 +31,7 @@ gh api -X POST repos/GrimOutlook/hima/pages -f build_type=workflow
 
 ## Run locally
 
-Install Node.js 22.13+ and pnpm 12.10.1 (the version declared in `package.json`), then install the dependencies and start the development server. This project uses pnpm; `pnpm-lock.yaml` is the dependency lockfile to keep committed when updating dependencies. The Nix development shell includes both Node.js and pnpm.
+Install Node.js 22.22.2+ (22.x), 24.15.0+ (24.x), or 26+, and pnpm 12.10.1 (the version declared in `package.json`), then install the dependencies and start the development server. These Node ranges match jsdom 30's requirements. This project uses pnpm; `pnpm-lock.yaml` is the dependency lockfile to keep committed when updating dependencies. The Nix development shell includes both Node.js and pnpm.
 
 TypeScript stays on the latest 6.0 release because `typescript-eslint` does not yet support TypeScript 7.
 
@@ -257,7 +257,7 @@ through Vite with a controlled signing provider and an isolated SQLx database.
 
 ### Backend service details
 
-The independent Axum/Tokio service lives in `backend/`. Install stable Rust (edition 2024 support required), or enter `nix develop`, then run in a second terminal alongside `pnpm run dev`:
+The independent Axum/Tokio service lives in `backend/`. Install stable Rust 1.94+ (SQLx 0.9's minimum), or enter `nix develop`, then run in a second terminal alongside `pnpm run dev`:
 
 ```sh
 cargo run --locked --manifest-path backend/Cargo.toml
@@ -293,6 +293,23 @@ cargo build --manifest-path backend/Cargo.toml --locked
 ```
 
 Commit `backend/Cargo.lock` when changing Rust dependencies. CI runs these checks alongside the frontend checks.
+
+Dependabot security updates are enabled in the repository settings; verify with
+`gh api repos/GrimOutlook/hima/automated-security-fixes` (`enabled: true`,
+`paused: false`). Weekly version updates group frontend and Actions minor/patch
+changes. Cargo groups patches only, because a 0.x minor release can break APIs.
+Major updates remain individually reviewable, and security updates remain
+independent of the version-update groups. Refresh the `fetchPnpmDeps` hash in
+`flake.nix` whenever the frontend lockfile changes, and require every CI job
+before merging an upgrade.
+
+The SQLx 0.9 upgrade retains bound request values; its `AssertSqlSafe` uses are
+limited to audited constant column projections and the test's validated role
+identifier. Upgrade tests use the public `Migrator::with_migrations` constructor
+and still verify persisted data and rejection of changed migration checksums.
+Production hashing uses sha2 0.11. The OIDC test provider uses RSA's re-exported
+SHA-256 and OS RNG to match RSA 0.9's digest/rand-core traits, eliminating the
+redundant direct `rand` dependency; SQLx uses rand 0.10 transitively.
 
 ### PostgreSQL storage
 

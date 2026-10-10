@@ -634,7 +634,7 @@ async fn token(
     let header = B64.encode(br#"{"alg":"RS256","kid":"test-key","typ":"JWT"}"#);
     let payload = B64.encode(serde_json::to_vec(&claims).unwrap());
     let input = format!("{header}.{payload}");
-    let mut signature = SigningKey::<Sha256>::new(p.key.clone())
+    let mut signature = SigningKey::<rsa::sha2::Sha256>::new(p.key.clone())
         .sign(input.as_bytes())
         .to_vec();
     if mode == "signature" {
@@ -895,7 +895,7 @@ async fn oidc_and_persistent_browser_sessions(pool: PgPool) {
     let issuer = format!("http://{}", listener.local_addr().unwrap());
     let provider = Arc::new(Provider {
         issuer: issuer.clone(),
-        key: RsaPrivateKey::new(&mut rand::thread_rng(), 2048).unwrap(),
+        key: RsaPrivateKey::new(&mut rsa::rand_core::OsRng, 2048).unwrap(),
         codes: Mutex::new(HashMap::new()),
     });
     let discovery = json!({"issuer":issuer,"authorization_endpoint":format!("{issuer}/authorize"),"token_endpoint":format!("{issuer}/token"),"jwks_uri":format!("{issuer}/jwks"),"response_types_supported":["code"],"subject_types_supported":["public"],"id_token_signing_alg_values_supported":["RS256"],"code_challenge_methods_supported":["S256"]});
