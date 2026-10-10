@@ -1,6 +1,6 @@
 import { createPortal } from "react-dom";
 import { useCallback, useContext, useEffect, useId, useLayoutEffect, useRef, useState } from "react";
-import { addDays, addMonths, isValidDate, MIN_YEAR, MAX_YEAR, MONTH_NAMES, prettyDate, todayDate, validDateOrFallback, WEEKDAYS } from "./model";
+import { addDays, addMonths, formatDateParts, isValidDate, MIN_YEAR, MAX_YEAR, MONTH_NAMES, prettyDate, todayDate, WEEKDAYS } from "./model";
 import { FirstDayOfWeekContext, IgnoreWeekendsContext, isWeekend, nextWeekday } from "./settings";
 
 interface CalendarPickerProps {
@@ -166,7 +166,7 @@ export function CalendarPicker({ value, onChange, label = "BALANCE ON", variant 
   const calendarDays = Array.from({ length: 42 }, (_, index) => {
     const day = index - firstWeekday + 1;
     if (day < 1 || day > daysInMonth) return null;
-    return `${viewMonth.slice(0, 7)}-${String(day).padStart(2, "0")}`;
+    return formatDateParts(year, month, day);
   });
 
   function openCalendar() {
@@ -219,22 +219,21 @@ export function CalendarPicker({ value, onChange, label = "BALANCE ON", variant 
       setError(`Choose a date on or after ${prettyDate(min)}.`);
       return false;
     }
-    const resolvedDate = validDateOrFallback(candidate, lastValidDate.current);
-    if (resolvedDate !== candidate) {
-      const fallback = resolvedDate;
+    if (!isValidDate(candidate)) {
+      const fallback = lastValidDate.current;
       setError(`Invalid date. Reverted to ${prettyDate(fallback)}.`);
       return false;
     }
-    lastValidDate.current = resolvedDate;
-    setViewMonth(startOfMonth(resolvedDate));
+    lastValidDate.current = candidate;
+    setViewMonth(startOfMonth(candidate));
     setError("");
     if (selectedDates && onDatesChange) {
-      onDatesChange(selectedDates.includes(resolvedDate)
-        ? selectedDates.filter((date) => date !== resolvedDate)
-        : [...selectedDates, resolvedDate].sort());
+      onDatesChange(selectedDates.includes(candidate)
+        ? selectedDates.filter((date) => date !== candidate)
+        : [...selectedDates, candidate].sort());
       return true;
     }
-    onChange(resolvedDate);
+    onChange(candidate);
     closeCalendar();
     triggerRef.current?.focus();
     return true;
@@ -302,7 +301,7 @@ export function CalendarPicker({ value, onChange, label = "BALANCE ON", variant 
                 value={month}
                 onChange={(event) => {
                   const nextMonth = Number(event.currentTarget.value);
-                  setViewMonth(`${String(year).padStart(4, "0")}-${String(nextMonth).padStart(2, "0")}-01`);
+                  setViewMonth(formatDateParts(year, nextMonth, 1));
                 }}
               >
                 {MONTH_NAMES.map((monthName, index) => (
@@ -315,7 +314,7 @@ export function CalendarPicker({ value, onChange, label = "BALANCE ON", variant 
                 value={year}
                 onChange={(event) => {
                   const nextYear = Number(event.currentTarget.value);
-                  setViewMonth(`${String(nextYear).padStart(4, "0")}-${String(month).padStart(2, "0")}-01`);
+                  setViewMonth(formatDateParts(nextYear, month, 1));
                 }}
               >
                 {yearOptions.map((yearOption) => (

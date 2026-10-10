@@ -29,10 +29,14 @@ import {
   type StoreAction,
   balanceHistoryDates,
   balanceHistoryForDates,
+  compareDated,
+  compareDates,
+  compareStartDates,
   dayLabel,
   eventDateRangeLabel,
   eventPoolHours,
   eventTotalHours,
+  firstDate,
   formatHours,
   monthLabel,
   poolTotalsOn,
@@ -184,7 +188,7 @@ function Planner({ planner }: { planner: ReturnType<typeof useStoredPlanner> }) 
   );
   const firstPoolId = store.pools[0]?.id;
   const timeline = useMemo(() => [...store.events].sort((left, right) =>
-    left.days[0]?.date.localeCompare(right.days[0]?.date ?? "") ?? 0,
+    left.days[0] ? compareDates(left.days[0].date, right.days[0]?.date ?? "") : 0,
   ), [store.events]);
   const usesFilterPool = store.pools.find((pool) => pool.id === selectedUsesPoolId);
   const visibleTimeline = useMemo(() => usesFilterPool
@@ -263,8 +267,7 @@ function Planner({ planner }: { planner: ReturnType<typeof useStoredPlanner> }) 
   }
 
   function selectEvent(id: number) {
-    const startDate = store.events.find((event) => event.id === id)?.days
-      .map((day) => day.date).sort()[0];
+    const startDate = firstDate(store.events.find((event) => event.id === id)?.days ?? []);
     if (startDate) setBalanceDate(startDate);
     setHighlightedEventId((current) => current === id ? null : id);
   }
@@ -587,7 +590,7 @@ function Planner({ planner }: { planner: ReturnType<typeof useStoredPlanner> }) 
                       : includedDays > 0
                         ? "Partly included"
                         : "After selected date";
-                    const firstDate = event.days.map((day) => day.date).sort()[0] ?? "";
+                    const startDate = firstDate(event.days) ?? "";
                     const fullEvent = store.events.find((candidate) => candidate.id === event.id) ?? event;
                     const totalHours = eventTotalHours(fullEvent);
                     const poolShares = store.pools.map((pool) => ({
@@ -604,8 +607,8 @@ function Planner({ planner }: { planner: ReturnType<typeof useStoredPlanner> }) 
                           selectEvent(event.id);
                         }}>
                         <div className="event-date-block">
-                          <span className="event-month">{monthLabel(firstDate)}</span>
-                          <strong>{dayLabel(firstDate)}</strong>
+                          <span className="event-month">{monthLabel(startDate)}</span>
+                          <strong>{dayLabel(startDate)}</strong>
                         </div>
                         <div className="event-info">
                           <strong><button className="pool-select-button" type="button"
@@ -932,7 +935,7 @@ function PoolInformationModal({
           <p className="no-rules">No time added yet. Add a balance or set a schedule.</p>
         ) : (
           <>
-            {[...pool.caps].sort((left, right) => right.start_date.localeCompare(left.start_date)).map((cap) => (
+            {[...pool.caps].sort((left, right) => compareStartDates(right, left)).map((cap) => (
               <div className="rule-row" key={`cap-${cap.id}`}>
                 <span className="rule-symbol cap-symbol">≤</span>
                 <span className="rule-copy">Maximum balance {formatHours(cap.max_balance)} h</span>
@@ -942,7 +945,7 @@ function PoolInformationModal({
                 </div>
               </div>
             ))}
-            {[...pool.recurring].sort((left, right) => right.start_date.localeCompare(left.start_date)).map((rule) => (
+            {[...pool.recurring].sort((left, right) => compareStartDates(right, left)).map((rule) => (
               <div className="rule-row" key={`recurring-${rule.id}`}>
                 <span className="rule-symbol recurring-symbol">↻</span>
                 <span className="rule-copy">{rule.reset ? `Reset to ${formatHours(rule.amount)} h` : `+${formatHours(rule.amount)} h`} {recurringScheduleDescription(rule)}{rule.expires_same_day ? " · valid that day only" : ""}</span>
@@ -955,7 +958,7 @@ function PoolInformationModal({
                 </div>
               </div>
             ))}
-            {[...pool.additions].sort((left, right) => right.date.localeCompare(left.date)).map((addition) => (
+            {[...pool.additions].sort((left, right) => compareDated(right, left)).map((addition) => (
               <div className="rule-row" key={`addition-${addition.id}`}>
                 <span className="rule-symbol one-time-symbol">+</span>
                 <span className="rule-copy">{addition.reset ? `Reset to ${formatHours(addition.amount)} h` : `+${formatHours(addition.amount)} h one-time`}{addition.expires_same_day ? " · valid that day only" : ""}</span>

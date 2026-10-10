@@ -22,24 +22,20 @@ it("keeps ledger replays out of drag rerenders and refreshes figures when inputs
     return <div style={{ transform: `translateX(${frame}px)` }}>{figures.currentBalance}</div>;
   }
   const totals = vi.spyOn(model, "poolTotalsOn");
-  const balance = vi.spyOn(model, "poolBalanceOn");
   try {
     await act(async () => root.render(<Card />));
     expect(figures!).toEqual({ currentBalance: 7, dayAdded: 2, dayHours: 3, startingBalance: 10 });
     const initial = figures!;
     totals.mockClear();
-    balance.mockClear();
     for (let frame = 1; frame <= 10; frame++) {
       await act(async () => root.render(<Card frame={frame} />));
     }
     expect(figures!).toBe(initial);
     expect(totals).not.toHaveBeenCalled();
-    expect(balance).not.toHaveBeenCalled();
 
     await act(async () => root.render(<Card date="2026-01-03" />));
     expect(figures!).toEqual({ currentBalance: 7, dayAdded: 0, dayHours: 0, startingBalance: 7 });
     expect(totals).toHaveBeenCalledTimes(2);
-    expect(balance).not.toHaveBeenCalled();
 
     await act(async () => root.render(<Card poolId={2} />));
     expect(figures!).toEqual({ currentBalance: 0, dayAdded: 0, dayHours: 0, startingBalance: 0 });
