@@ -39,13 +39,21 @@ performed. `backend/src/planner.rs::validate_document` is the executable contrac
   an omitted end extends indefinitely.
 - Event: `id`, nonblank `name`, nonempty `days`. Day: `date`, nonempty `allocations`.
   Allocation: `pool_id` referring to an existing pool, positive numeric `hours`.
-  Repeated days or allocations remain valid, matching the frontend model.
+  Dates must be unique within an event; pool IDs must be unique within a day's
+  allocations. The same date may appear in different events.
+- Names are at most 48 UTF-16 code units for pools and 64 for events (matching
+  browser input length limits); whitespace counts toward the limit.
+- Collection limits: 100 pools per document, 10,000 events per document,
+  10,000 additions per pool, 1,000 recurring schedules and 1,000 caps per pool,
+  3,660 days per event, and 100 allocations per day. Limits are inclusive and
+  apply independently to each collection; the 2 MiB HTTP body limit also applies.
 - All IDs are positive JavaScript-safe integers (maximum 9007199254740991).
   IDs are unique within each collection (pools, events, each pool's additions,
   recurring schedules, caps), matching frontend normalization. Cross-collection
   reuse is permitted. `next_id` is safe, positive, and exceeds every entity ID.
 - Hours are finite numbers, nonnegative, with hundredth-hour precision, using
-  the frontend's 1e-7 tolerance on cents. Strings are rejected.
+  the frontend's 1e-7 tolerance on cents. Individual `amount`, `hours`, and
+  `max_balance` values cannot exceed 1,000,000 hours. Strings are rejected.
 - Dates are real Gregorian `YYYY-MM-DD` dates, years 1900–2200 inclusive,
   matching the frontend validator, backup import parser, and calendar picker.
   Remote documents outside this range are rejected without repair or overwrite.

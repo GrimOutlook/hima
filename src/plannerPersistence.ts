@@ -29,20 +29,20 @@ export function validateDocument(value: unknown): asserts value is PlannerDocume
     if (required.some((key) => !(key in obj)) || Object.keys(obj).some((key) => ![...required, ...optional].includes(key))) fail();
     return obj;
   };
-  const array = (v: unknown): unknown[] => Array.isArray(v) ? v : fail();
+  const array = (v: unknown, limit: number): unknown[] => Array.isArray(v) && v.length <= limit ? v : fail();
   const id = (v: unknown): number => typeof v === "number" && Number.isSafeInteger(v) && v > 0 ? v : fail();
-  const text = (v: unknown) => { if (typeof v !== "string" || !v.trim()) fail(); };
+  const text = (v: unknown, limit: number) => { if (typeof v !== "string" || !v.trim() || v.length > limit) fail(); };
   const date = (v: unknown): string => typeof v === "string" && isValidDate(v) ? v : fail();
   const amount = (v: unknown, zero: boolean) => {
-    if (typeof v !== "number" || !Number.isFinite(v) || (zero ? v < 0 : v <= 0) || Math.abs(v * 100 - Math.round(v * 100)) > 1e-7) fail();
+    if (typeof v !== "number" || !Number.isFinite(v) || v > 1_000_000 || (zero ? v < 0 : v <= 0) || Math.abs(v * 100 - Math.round(v * 100)) > 1e-7) fail();
   };
   const flags = (o: Record<string, unknown>, keys: string[]) => {
     for (const key of keys) if (key in o && typeof o[key] !== "boolean") fail();
   };
   let largest = 0;
-  const entities = (v: unknown, visit: (o: unknown) => number) => {
+  const entities = (v: unknown, limit: number, visit: (o: unknown) => number) => {
     const seen = new Set<number>();
-    for (const entry of array(v)) {
+    for (const entry of array(v, limit)) {
       const entityId = visit(entry);
       if (seen.has(entityId)) fail();
       seen.add(entityId);
@@ -52,9 +52,9 @@ export function validateDocument(value: unknown): asserts value is PlannerDocume
   };
   const root = object(value, ["version", "pools", "events", "next_id"], ["settings"]);
   if (root.version !== 1) fail();
-  const pools = entities(root.pools, (v) => {
+  const pools = entities(root.pools, 100, (v) => {
     const pool = object(v, ["id", "name", "additions", "recurring", "caps"], ["color", "new_additions_expire_same_day", "hidden_from_graph", "hidden_from_total"]);
-    text(pool.name);
+    text(pool.name, 48);
     flags(pool, ["new_additions_expire_same_day", "hidden_from_graph", "hidden_from_total"]);
     if ("color" in pool && (typeof pool.color !== "string" || !/^#[0-9a-f]{6}$/i.test(pool.color))) fail();
     const addition = (v: unknown, recurring: boolean) => {
@@ -74,10 +74,10 @@ export function validateDocument(value: unknown): asserts value is PlannerDocume
       }
       return id(o.id);
     };
-    entities(pool.additions, (v) => addition(v, false));
-    entities(pool.recurring, (v) => addition(v, true));
+    entities(pool.additions, 10_000, (v) => addition(v, false));
+    entities(pool.recurring, 1000, (v) => addition(v, true));
     const ranges: { start: string; end: string }[] = [];
-    entities(pool.caps, (v) => {
+    entities(pool.caps, 1000, (v) => {
       const cap = object(v, ["id", "max_balance", "start_date"], ["end_date"]);
       amount(cap.max_balance, true);
       const start = date(cap.start_date);
@@ -88,19 +88,25 @@ export function validateDocument(value: unknown): asserts value is PlannerDocume
     });
     return id(pool.id);
   });
-  entities(root.events, (v) => {
+  entities(root.events, 10_000, (v) => {
     const event = object(v, ["id", "name", "days"]);
-    text(event.name);
-    const days = array(event.days);
+    text(event.name, 64);
+    const days = array(event.days, 3660);
     if (!days.length) fail();
+    const dates = new Set<string>();
     for (const v of days) {
       const day = object(v, ["date", "allocations"]);
-      date(day.date);
-      const allocations = array(day.allocations);
+      const dayDate = date(day.date);
+      if (dates.has(dayDate)) fail();
+      dates.add(dayDate);
+      const allocations = array(day.allocations, 100);
       if (!allocations.length) fail();
+      const allocatedPools = new Set<number>();
       for (const v of allocations) {
         const allocation = object(v, ["pool_id", "hours"]);
-        if (!pools.has(id(allocation.pool_id))) fail();
+        const poolId = id(allocation.pool_id);
+        if (!pools.has(poolId) || allocatedPools.has(poolId)) fail();
+        allocatedPools.add(poolId);
         amount(allocation.hours, false);
       }
     }
