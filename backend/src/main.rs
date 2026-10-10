@@ -48,8 +48,7 @@ async fn run() -> Result<(), String> {
             )
         })?;
     tracing::info!(address = %listener.local_addr().map_err(|_| "could not read listening address")?, "server listening");
-    axum::serve(listener, app)
-        .with_graceful_shutdown(server::shutdown_signal())
+    server::serve(listener, app, server::shutdown_signal())
         .await
         .map_err(|_| "HTTP server failed".to_owned())
 }
