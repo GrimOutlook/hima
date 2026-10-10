@@ -153,3 +153,57 @@ it("navigates dates across months, traps focus, and closes only the nested calen
     vi.unstubAllGlobals();
   }
 });
+
+it.each(["pointerup", "pointercancel", "lostpointercapture", "Clear", "Done", "Escape"])("resets multi-date drag previews after %s", async (action) => {
+  vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
+  vi.useFakeTimers({ toFake: ["Date"] });
+  vi.setSystemTime(new Date("2026-06-10T12:00:00Z"));
+  const container = document.createElement("div");
+  document.body.append(container);
+  const root = createRoot(container);
+  const change = vi.fn();
+  function DateField() {
+    const [dates, setDates] = useState<string[]>([]);
+    return <CalendarPicker value="2026-06-10" onChange={vi.fn()} selectedDates={dates}
+      onDatesChange={(next) => { change(next); setDates(next); }} />;
+  }
+  const pointer = (type: string) => {
+    const event = new MouseEvent(type, { bubbles: true, button: 0 });
+    Object.defineProperties(event, { pointerId: { value: 1 }, isPrimary: { value: true } });
+    return event;
+  };
+  try {
+    await act(async () => root.render(<DateField />));
+    const trigger = container.querySelector<HTMLButtonElement>(".date-picker-trigger")!;
+    await act(async () => trigger.click());
+    const day = () => document.querySelector<HTMLButtonElement>('[data-date="2026-06-10"]')!;
+    day().setPointerCapture = vi.fn();
+    await act(async () => day().dispatchEvent(pointer("pointerdown")));
+    expect(day().getAttribute("aria-pressed")).toBe("true");
+    expect(day().classList.contains("is-selected")).toBe(true);
+    expect(change).not.toHaveBeenCalled();
+
+    await act(async () => {
+      if (action.startsWith("pointer") || action === "lostpointercapture") day().dispatchEvent(pointer(action));
+      else if (action === "Escape") document.activeElement!.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true, cancelable: true }));
+      else Array.from(document.querySelectorAll<HTMLButtonElement>(".calendar-footer button"))
+        .find((button) => button.textContent === action)!.click();
+    });
+    if (action === "Done" || action === "Escape") {
+      expect(document.querySelector(".date-picker-calendar")).toBeNull();
+      expect(document.activeElement).toBe(trigger);
+      await act(async () => trigger.click());
+    }
+    const committed = action === "pointerup";
+    expect(day().getAttribute("aria-pressed")).toBe(String(committed));
+    expect(day().classList.contains("is-selected")).toBe(committed);
+    if (committed) expect(change).toHaveBeenCalledExactlyOnceWith(["2026-06-10"]);
+    else if (action === "Clear") expect(change).toHaveBeenCalledExactlyOnceWith([]);
+    else expect(change).not.toHaveBeenCalled();
+  } finally {
+    await act(async () => root.unmount());
+    container.remove();
+    vi.useRealTimers();
+    vi.unstubAllGlobals();
+  }
+});
