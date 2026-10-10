@@ -69,16 +69,21 @@ export function addMonths(value: string, months: number): string {
   return dateString(firstOfTarget);
 }
 
-export function prettyDate(value: string): string {
+function formattedDate(value: string, options: Intl.DateTimeFormatOptions, fallback: string): string {
   const date = dateFromParts(value);
-  return date ? new Intl.DateTimeFormat("en-US", {
-    month: "short", day: "2-digit", year: "numeric", timeZone: "UTC",
-  }).format(date) : value;
+  return date ? new Intl.DateTimeFormat("en-US", { ...options, timeZone: "UTC" }).format(date) : fallback;
+}
+
+export function prettyDate(value: string): string {
+  return formattedDate(value, { month: "short", day: "2-digit", year: "numeric" }, value);
+}
+
+export function monthYearLabel(value: string | undefined): string {
+  return formattedDate(value ?? "", { month: "short", year: "numeric" }, "");
 }
 
 export function monthLabel(value: string): string {
-  const date = dateFromParts(value);
-  return date ? new Intl.DateTimeFormat("en-US", { month: "short", timeZone: "UTC" }).format(date).toUpperCase() : "";
+  return formattedDate(value, { month: "short" }, "").toUpperCase();
 }
 
 export function dayLabel(value: string): string {
