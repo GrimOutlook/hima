@@ -461,6 +461,21 @@ series. Removed pools are evicted, and imported documents with new ledger arrays
 are recalculated. Reducer updates must preserve untouched ledger-array identities
 and replace arrays when their contents change.
 
+## Planned leave list performance
+
+The planned leave list indexes full events once per immutable `store.events` array.
+Each mounted row memoizes full/filtered hours, pool shares, date labels and balance
+status; event and pool replacements invalidate the relevant values, while selection,
+zoom and unrelated planner renders reuse them. Balance-date changes update status
+without repeating hours, shares or date sorting. Keep event/pool updates immutable.
+
+Virtualization is deferred for the current personal leave-planner scope. At 1,000
+events the issue's measured derivation cost was under 5 ms and DOM rendering was
+the larger cost; this change does not claim to solve that scale's DOM cost. A future
+large-planner feature should measure realistic row counts and add windowing together
+with indexed chart-to-row scrolling and keyboard/focus preservation: the current
+chart navigation queries mounted event rows and all row controls are accessible.
+
 ## License
 
 hima is licensed under the [MIT License](LICENSE). Third-party dependencies, including the bundled fonts, retain their own licenses.
