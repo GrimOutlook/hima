@@ -4,6 +4,7 @@ use serde_json::{Map, Value};
 use std::{collections::HashSet, fmt};
 
 const MAX_ID: u64 = 9_007_199_254_740_991;
+const MAX_HOURS: f64 = 1_000_000.0;
 const WEEKDAYS: &[&str] = &[
     "Sunday",
     "Monday",
@@ -50,9 +51,20 @@ fn object<'a>(v: &'a Value, fields: &[&str]) -> Result<&'a Map<String, Value>> {
     Ok(o)
 }
 fn array<'a>(o: &'a Map<String, Value>, key: &str) -> Result<&'a Vec<Value>> {
-    o.get(key)
+    let values = o
+        .get(key)
         .and_then(Value::as_array)
-        .ok_or_else(|| invalid(&format!("{key} must be an array")))
+        .ok_or_else(|| invalid(&format!("{key} must be an array")))?;
+    let limit = match key {
+        "pools" | "allocations" => 100,
+        "recurring" | "caps" => 1000,
+        "days" => 3660,
+        _ => 10_000,
+    };
+    if values.len() > limit {
+        return Err(invalid(&format!("{key} exceeds its collection limit")));
+    }
+    Ok(values)
 }
 fn text<'a>(o: &'a Map<String, Value>, key: &str) -> Result<&'a str> {
     o.get(key)
@@ -71,9 +83,12 @@ fn entry_id(o: &Map<String, Value>, ids: &mut HashSet<u64>) -> Result<()> {
     }
     Ok(())
 }
-fn name(o: &Map<String, Value>) -> Result<()> {
-    if text(o, "name")?.trim().is_empty() {
-        return Err(invalid("Names must not be blank"));
+fn name(o: &Map<String, Value>, limit: usize) -> Result<()> {
+    let value = text(o, "name")?;
+    if value.trim().is_empty() || value.encode_utf16().count() > limit {
+        return Err(invalid(
+            "Names must be nonblank and within their length limit",
+        ));
     }
     Ok(())
 }
@@ -122,7 +137,11 @@ fn amount(o: &Map<String, Value>, key: &str, zero: bool) -> Result<()> {
         .and_then(Value::as_f64)
         .ok_or_else(|| invalid("Hours must be numbers"))?;
     let cents = n * 100.0;
-    if !cents.is_finite() || n < 0.0 || (!zero && n == 0.0) || (cents - cents.round()).abs() > 1e-7
+    if !cents.is_finite()
+        || n > MAX_HOURS
+        || n < 0.0
+        || (!zero && n == 0.0)
+        || (cents - cents.round()).abs() > 1e-7
     {
         return Err(invalid(
             "Hours must be nonnegative hundredth-hour amounts (positive for credits and allocations)",
@@ -162,7 +181,7 @@ pub fn validate_document(v: &Value) -> Result<()> {
         )?;
         entry_id(p, &mut pool_ids)?;
         largest = largest.max(id(p, "id")?);
-        name(p)?;
+        name(p, 48)?;
         flags(
             p,
             &[
@@ -266,22 +285,29 @@ pub fn validate_document(v: &Value) -> Result<()> {
         let e = object(e, &["id", "name", "days"])?;
         entry_id(e, &mut ids)?;
         largest = largest.max(id(e, "id")?);
-        name(e)?;
+        name(e, 64)?;
         let days = array(e, "days")?;
         if days.is_empty() {
             return Err(invalid("Events require days"));
         }
+        let mut dates = HashSet::new();
         for d in days {
             let d = object(d, &["date", "allocations"])?;
-            date(d, "date")?;
+            if !dates.insert(date(d, "date")?) {
+                return Err(invalid("Duplicate date within event"));
+            }
             let allocations = array(d, "allocations")?;
             if allocations.is_empty() {
                 return Err(invalid("Days require allocations"));
             }
+            let mut allocated_pools = HashSet::new();
             for a in allocations {
                 let a = object(a, &["pool_id", "hours"])?;
                 if !pool_ids.contains(&id(a, "pool_id")?) {
                     return Err(invalid("Allocation references a missing pool"));
+                }
+                if !allocated_pools.insert(id(a, "pool_id")?) {
+                    return Err(invalid("Duplicate pool allocation within day"));
                 }
                 amount(a, "hours", false)?;
             }

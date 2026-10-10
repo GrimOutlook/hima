@@ -6,6 +6,125 @@ pub fn document() -> Value {
 }
 
 #[test]
+fn name_and_hour_boundaries() {
+    for (path, limit) in [("/pools/0/name", 48), ("/events/0/name", 64)] {
+        for unit in ["a", "é", "😀"] {
+            let width = unit.encode_utf16().count();
+            for extra in [0, 1] {
+                let mut v = document();
+                *v.pointer_mut(path).unwrap() = json!(format!(
+                    "{}{}",
+                    unit.repeat(limit / width),
+                    "a".repeat(extra)
+                ));
+                assert_eq!(validate_document(&v).is_ok(), extra == 0, "{path}: {unit}");
+            }
+        }
+    }
+    for path in [
+        "/pools/0/additions/0/amount",
+        "/pools/0/recurring/0/amount",
+        "/pools/0/caps/0/max_balance",
+        "/events/0/days/0/allocations/0/hours",
+    ] {
+        for hours in [999_999.99, 1_000_000.0, 1_000_000.01, 1e300] {
+            let mut v = document();
+            *v.pointer_mut(path).unwrap() = json!(hours);
+            assert_eq!(
+                validate_document(&v).is_ok(),
+                hours <= 1_000_000.0,
+                "{path}: {hours}"
+            );
+        }
+    }
+}
+
+#[test]
+fn duplicate_dates_and_pool_allocations_are_rejected() {
+    for path in ["/events/0/days", "/events/0/days/0/allocations"] {
+        let mut v = document();
+        let entries = v.pointer_mut(path).unwrap().as_array_mut().unwrap();
+        entries.push(entries[0].clone());
+        let before = v.clone();
+        assert!(validate_document(&v).is_err());
+        assert_eq!(v, before);
+    }
+    let mut v = document();
+    let mut event = v["events"][0].clone();
+    event["id"] = json!(6);
+    v["events"].as_array_mut().unwrap().push(event);
+    v["next_id"] = json!(7);
+    validate_document(&v).unwrap();
+}
+
+#[test]
+fn every_collection_has_an_inclusive_limit() {
+    for (path, limit) in [
+        ("/pools", 100),
+        ("/events", 10_000),
+        ("/pools/0/additions", 10_000),
+        ("/pools/0/recurring", 1000),
+        ("/pools/0/caps", 1000),
+        ("/events/0/days", 3660),
+        ("/events/0/days/0/allocations", 100),
+    ] {
+        let mut v = document();
+        v["next_id"] = json!(100_000);
+        // Allocations need distinct existing pools.
+        if path.ends_with("allocations") {
+            let pool = v["pools"][0].clone();
+            v["pools"] = json!(
+                (1..=100)
+                    .map(|id| {
+                        let mut p = pool.clone();
+                        p["id"] = json!(id);
+                        p
+                    })
+                    .collect::<Vec<_>>()
+            );
+        }
+        let template = v.pointer(path).unwrap()[0].clone();
+        let entries: Vec<_> = (0..limit)
+            .map(|i| {
+                let mut entry = template.clone();
+                let date = chrono::NaiveDate::from_ymd_opt(2000, 1, 1).unwrap()
+                    + chrono::Duration::days(i as i64);
+                if path.ends_with("days") {
+                    entry["date"] = json!(date.to_string());
+                } else if path.ends_with("allocations") {
+                    entry["pool_id"] = json!(i + 1);
+                } else {
+                    entry["id"] = json!(i + 10);
+                }
+                if path.ends_with("caps") {
+                    entry["start_date"] = json!(date.to_string());
+                    entry["end_date"] = json!(date.to_string());
+                }
+                entry
+            })
+            .collect();
+        *v.pointer_mut(path).unwrap() = json!(entries);
+        // The event references pool 1 in the pools boundary case.
+        if path == "/pools" {
+            v["events"][0]["days"][0]["allocations"][0]["pool_id"] = json!(10);
+        }
+        validate_document(&v).unwrap_or_else(|e| panic!("{path}: {e}"));
+        v.pointer_mut(path)
+            .unwrap()
+            .as_array_mut()
+            .unwrap()
+            .push(Value::Null);
+        assert!(
+            validate_document(&v)
+                .unwrap_err()
+                .0
+                .contains("collection limit"),
+            "{path}"
+        );
+    }
+}
+
+#[test]
 fn supported_date_range_applies_to_every_date_field() {
     for path in [
         "/pools/0/additions/0/date",
