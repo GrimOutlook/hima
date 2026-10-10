@@ -21,6 +21,20 @@ def free_port():
         return sock.getsockname()[1]
 
 
+def assert_security_headers(response):
+    expected = {
+        "Strict-Transport-Security": "max-age=63072000; includeSubDomains",
+        "Content-Security-Policy": (
+            "default-src 'self'; style-src 'self' 'unsafe-inline'; "
+            "img-src 'self' data:; frame-ancestors 'none'; "
+            "base-uri 'none'; form-action 'self'"
+        ),
+        "X-Content-Type-Options": "nosniff",
+    }
+    for name, value in expected.items():
+        assert response.headers.get_all(name) == [value], (name, response.headers)
+
+
 root = Path(__file__).resolve().parent.parent
 if not (root / "dist/index.html").exists():
     raise SystemExit("Run pnpm run build first")
@@ -62,6 +76,8 @@ with tempfile.TemporaryDirectory(prefix="hima-https-") as directory:
         for attempt in range(50):
             try:
                 with urllib.request.urlopen(origin, context=context, timeout=1) as response:
+                    assert_security_headers(response)
+                    assert response.headers["Cache-Control"] == "no-cache"
                     assert b'<div id="root">' in response.read()
                 break
             except (OSError, urllib.error.URLError):
@@ -76,6 +92,23 @@ with tempfile.TemporaryDirectory(prefix="hima-https-") as directory:
                 f"{origin}/assets/{asset.name}", context=context, timeout=5
             ) as response:
                 assert response.headers.get_content_type() == mime
+                assert_security_headers(response)
+        for version in (ssl.TLSVersion.TLSv1_2, ssl.TLSVersion.TLSv1_3):
+            tls_context = ssl.create_default_context(cafile=str(cert))
+            tls_context.minimum_version = tls_context.maximum_version = version
+            with urllib.request.urlopen(origin, context=tls_context, timeout=5) as response:
+                assert_security_headers(response)
+        # No API is running yet: verify `always` on nginx-generated errors and
+        # server-level inheritance on both bare and nested proxy routes.
+        for path in ("/api", "/api/me", "/auth", "/auth/login"):
+            try:
+                urllib.request.urlopen(f"{origin}{path}", context=context, timeout=5)
+            except urllib.error.HTTPError as response:
+                with response:
+                    assert response.code == 502
+                    assert_security_headers(response)
+            else:
+                raise AssertionError(f"Expected unavailable upstream for {path}")
         env = {**os.environ, "HIMA_TEST_HTTPS_PROXY": origin, "HIMA_TEST_PROXY_CA": str(cert)}
         env.pop("HIMA_TEST_VITE_PROXY", None)
         subprocess.run([
@@ -86,7 +119,7 @@ with tempfile.TemporaryDirectory(prefix="hima-https-") as directory:
         assert "/auth" not in (tmp / "access.log").read_text()
         assert "/api" not in (tmp / "access.log").read_text()
         assert (tmp / "api-error.log").read_text() == ""
-        print("HTTPS static serving, OIDC, CSRF save, restart persistence, logout and log privacy passed")
+        print("HTTPS security headers, TLS 1.2/1.3, static serving, OIDC, CSRF save, restart persistence, logout and log privacy passed")
     finally:
         proxy.terminate()
         proxy.wait(timeout=10)
