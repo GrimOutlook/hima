@@ -1,6 +1,5 @@
-import { isValidDate, WEEKDAYS, type Store } from "./model";
-import { TIMELINE_PRESETS } from "./settings";
-import type { BackupSettings } from "./backup";
+import { CADENCES, hasCentPrecision, isHexColor, isValidDate, MAX_EVENT_NAME_LENGTH, MAX_HISTORY_POINTS, MAX_POOL_NAME_LENGTH, NTH_WEEKDAYS, STORE_VERSION, WEEKDAYS, type Store } from "./model";
+import { isValidSettings, type BackupSettings } from "./settings";
 
 export type PlannerDocument = Store & { settings?: BackupSettings };
 export type PlannerSession = { user_id: number; csrf_token: string };
@@ -17,8 +16,6 @@ export class PersistenceError extends Error {
   constructor(public code: string, message: string, public status = 0) { super(message); }
 }
 
-export const defaultSettings: BackupSettings = { firstDayOfWeek: "Monday", ignoreWeekends: false, defaultTimeline: "±6 month" };
-
 // Remote documents must never use the repairing legacy-import parser. Reject
 // unsupported/malformed responses rather than dropping data and saving it back.
 export function validateDocument(value: unknown): asserts value is PlannerDocument {
@@ -34,7 +31,7 @@ export function validateDocument(value: unknown): asserts value is PlannerDocume
   const text = (v: unknown, limit: number) => { if (typeof v !== "string" || !v.trim() || v.length > limit) fail(); };
   const date = (v: unknown): string => typeof v === "string" && isValidDate(v) ? v : fail();
   const amount = (v: unknown, zero: boolean) => {
-    if (typeof v !== "number" || !Number.isFinite(v) || v > 1_000_000 || (zero ? v < 0 : v <= 0) || Math.abs(v * 100 - Math.round(v * 100)) > 1e-7) fail();
+    if (typeof v !== "number" || !hasCentPrecision(v) || v > 1_000_000 || (zero ? v < 0 : v <= 0)) fail();
   };
   const flags = (o: Record<string, unknown>, keys: string[]) => {
     for (const key of keys) if (key in o && typeof o[key] !== "boolean") fail();
@@ -51,12 +48,12 @@ export function validateDocument(value: unknown): asserts value is PlannerDocume
     return seen;
   };
   const root = object(value, ["version", "pools", "events", "next_id"], ["settings"]);
-  if (root.version !== 1) fail();
+  if (root.version !== STORE_VERSION) fail();
   const pools = entities(root.pools, 100, (v) => {
     const pool = object(v, ["id", "name", "additions", "recurring", "caps"], ["color", "new_additions_expire_same_day", "hidden_from_graph", "hidden_from_total"]);
-    text(pool.name, 48);
+    text(pool.name, MAX_POOL_NAME_LENGTH);
     flags(pool, ["new_additions_expire_same_day", "hidden_from_graph", "hidden_from_total"]);
-    if ("color" in pool && (typeof pool.color !== "string" || !/^#[0-9a-f]{6}$/i.test(pool.color))) fail();
+    if ("color" in pool && !isHexColor(pool.color)) fail();
     const addition = (v: unknown, recurring: boolean) => {
       const o = object(v, recurring ? ["id", "amount", "cadence", "start_date"] : ["id", "amount", "date"],
         recurring ? ["reset", "expires_same_day", "end_date", "month", "nth_weekday", "weekday"] : ["reset", "expires_same_day"]);
@@ -65,11 +62,11 @@ export function validateDocument(value: unknown): asserts value is PlannerDocume
       if (o.reset === true && o.expires_same_day === true) fail();
       date(recurring ? o.start_date : o.date);
       if (recurring) {
-        if (!["Weekly", "Fortnightly", "Monthly", "Yearly", "YearlyNthWeekday"].includes(o.cadence as string)) fail();
+        if (!CADENCES.includes(o.cadence as typeof CADENCES[number])) fail();
         if ("end_date" in o) date(o.end_date);
         if (o.cadence === "YearlyNthWeekday") {
           if (typeof o.month !== "number" || !Number.isInteger(o.month) || o.month < 1 || o.month > 12 ||
-            !["First", "Second", "Third", "Fourth", "Fifth", "Last"].includes(o.nth_weekday as string) || !WEEKDAYS.includes(o.weekday as typeof WEEKDAYS[number])) fail();
+            !NTH_WEEKDAYS.includes(o.nth_weekday as typeof NTH_WEEKDAYS[number]) || !WEEKDAYS.includes(o.weekday as typeof WEEKDAYS[number])) fail();
         } else if (["month", "nth_weekday", "weekday"].some((key) => key in o)) fail();
       }
       return id(o.id);
@@ -90,8 +87,8 @@ export function validateDocument(value: unknown): asserts value is PlannerDocume
   });
   entities(root.events, 10_000, (v) => {
     const event = object(v, ["id", "name", "days"]);
-    text(event.name, 64);
-    const days = array(event.days, 3660);
+    text(event.name, MAX_EVENT_NAME_LENGTH);
+    const days = array(event.days, MAX_HISTORY_POINTS);
     if (!days.length) fail();
     const dates = new Set<string>();
     for (const v of days) {
@@ -115,7 +112,6 @@ export function validateDocument(value: unknown): asserts value is PlannerDocume
   if (id(root.next_id) <= largest) fail();
   if ("settings" in root) {
     const settings = object(root.settings, ["firstDayOfWeek", "ignoreWeekends", "defaultTimeline"]);
-    if (!WEEKDAYS.includes(settings.firstDayOfWeek as typeof WEEKDAYS[number]) || typeof settings.ignoreWeekends !== "boolean" ||
-      !TIMELINE_PRESETS.includes(settings.defaultTimeline as typeof TIMELINE_PRESETS[number])) fail();
+    if (!isValidSettings(settings)) fail();
   }
 }

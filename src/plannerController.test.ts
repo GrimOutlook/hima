@@ -2,7 +2,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { PlannerController } from "./plannerController";
 import { emptyStore } from "./model";
 import { localPersistence } from "./localPersistence";
-import { defaultSettings, PersistenceError, type PlannerDocument, type PlannerPersistence, type StoredPlanner } from "./plannerPersistence";
+import { PersistenceError, type PlannerDocument, type PlannerPersistence, type StoredPlanner } from "./plannerPersistence";
+import { defaultSettings } from "./settings";
 
 function deferred<T>() {
   let resolve!: (value: T) => void;

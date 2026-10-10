@@ -2,7 +2,8 @@ import { parseBackupJson } from "./backup";
 import { ACK_PREFIX, SETTINGS_KEY, STORAGE_KEY, serializeRawBrowserData } from "./browserStorage";
 import { exportRawBrowserData } from "./localPersistence";
 import { emptyStore } from "./model";
-import { defaultSettings, validateDocument, type PlannerDocument } from "./plannerPersistence";
+import { validateDocument, type PlannerDocument } from "./plannerPersistence";
+import { defaultSettings } from "./settings";
 
 export type LocalMigration = { document: PlannerDocument | null; warnings: string[]; error: string | null; raw: string; fingerprint: string };
 export interface LocalSource {

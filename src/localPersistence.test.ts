@@ -2,7 +2,8 @@
 import { afterEach, expect, it, vi } from "vitest";
 import { emptyStore, STORAGE_KEY } from "./model";
 import { localPersistence, REVISION_KEY, SETTINGS_KEY } from "./localPersistence";
-import { defaultSettings, PersistenceError } from "./plannerPersistence";
+import { PersistenceError } from "./plannerPersistence";
+import { defaultSettings } from "./settings";
 
 const signal = new AbortController().signal;
 const session = { user_id: 1, csrf_token: "local" };

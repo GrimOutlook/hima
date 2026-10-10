@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { parseBackupJson, serializeBackupJson, type BackupSettings } from "./backup";
+import { parseBackupJson, serializeBackupJson } from "./backup";
+import type { BackupSettings } from "./settings";
 import { emptyStore } from "./model";
 
 describe("backups", () => {
