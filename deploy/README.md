@@ -131,6 +131,35 @@ load balancer, or tracing system. Do not enable request/header/body debug loggin
 API/auth 4xx/5xx must pass through, not become the SPA's `index.html`. Static
 responses use revalidation so a deployment does not leave a cached old index.
 
+The file's `map` and `limit_req_zone` directives belong directly in the **http
+context**, outside either `server` block. Two 10 MiB shared-memory zones track
+the binary client address across nginx workers. Auth routes share a 6 requests/minute
+budget with 5 excess requests allowed as an immediate burst; API routes share a
+separate 10 requests/second budget with 20 excess requests allowed. `nodelay`
+forwards allowed bursts immediately; excess requests return **429** before any
+upstream session lookup or login database work. Empty map keys exclude the other
+route family from each zone. Bare `/auth` and `/api` are included; static files
+are not rate limited. Budgets refill over time rather than resetting at a fixed
+minute boundary. Clients should back off on 429, and operators can tune rates
+and bursts for expected traffic (including users sharing a NAT address).
+
+The key uses nginx's client address, never an untrusted `X-Forwarded-For` header.
+If deploying behind another proxy, configure nginx's real-IP module with only
+explicitly trusted proxy addresses before using this recipe; otherwise all users
+behind that proxy share a budget. Keep the Rust port private so requests cannot
+bypass nginx's limits.
+
+Run the database-independent rate-limit regression test with nginx, openssl and
+Python 3 on PATH:
+
+```sh
+python3 deploy/test_rate_limits.py
+```
+
+It exercises the shipped configuration over HTTPS, verifies rejected requests
+never reach a counting upstream, and checks separate route/client budgets,
+spoofed forwarding headers, static serving, security headers and budget recovery.
+
 The HTTPS server permits only TLS 1.2 and 1.3. All HTTPS responses, including
 errors, send `Strict-Transport-Security: max-age=63072000; includeSubDomains`,
 `X-Content-Type-Options: nosniff`, and this Content Security Policy:
