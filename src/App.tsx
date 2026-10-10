@@ -22,11 +22,11 @@ import {
   PoolUsageModal,
   SettingsModal,
   eventInputDays,
+} from "./Modals";
+import {
   type AdditionFormData,
   type PoolCapFormData,
   type PoolFormData,
-} from "./Modals";
-import {
   reduceStore,
   storeActionError,
   type StoreAction,
@@ -583,12 +583,8 @@ function Planner({ planner }: { planner: ReturnType<typeof useStoredPlanner> }) 
       </main>
 
       {modal?.type === "settings" && <SettingsModal
-        firstDayOfWeek={firstDayOfWeek}
-        onChange={(firstDayOfWeek) => planner.setSettings({ firstDayOfWeek })}
-        ignoreWeekends={ignoreWeekends}
-        onIgnoreWeekendsChange={(ignoreWeekends) => planner.setSettings({ ignoreWeekends })}
-        defaultTimeline={defaultTimeline}
-        onDefaultTimelineChange={(defaultTimeline) => planner.setSettings({ defaultTimeline })}
+        settings={planner.settings}
+        onChange={planner.setSettings}
         onExport={() => downloadBackup(store)}
         onImport={(importSettings) => {
           importSettingsRef.current = importSettings;
@@ -622,11 +618,9 @@ function Planner({ planner }: { planner: ReturnType<typeof useStoredPlanner> }) 
         <PoolModal
           key={`edit-pool-${modal.poolId}`}
           editing
-          initialName={modalPool?.name ?? ""}
-          initialColor={poolColor(modal.poolId, modalPool?.color)}
-          initialHiddenFromGraph={modalPool?.hidden_from_graph}
-          initialHiddenFromTotal={modalPool?.hidden_from_total}
-          initialNewAdditionsExpireSameDay={modalPool?.new_additions_expire_same_day}
+          initial={{ name: modalPool?.name ?? "", color: poolColor(modal.poolId, modalPool?.color),
+            hiddenFromGraph: modalPool?.hidden_from_graph, hiddenFromTotal: modalPool?.hidden_from_total,
+            newAdditionsExpireSameDay: modalPool?.new_additions_expire_same_day }}
           onDelete={() => removePool(modal.poolId, modalPool?.name ?? "")}
           onClose={() => setModal(null)}
           onSave={savePool}
@@ -931,10 +925,8 @@ function AdditionModalForState({ modal, pools, onClose, onSave, onSaveCap, onDel
         {...sharedProps}
         mode="edit-one-time"
         onDelete={() => onDelete(addition.id, false)}
-        initialReset={addition.reset}
-        initialExpiresSameDay={addition.expires_same_day}
-        initialAmount={formatHours(addition.amount)}
-        initialDate={addition.date}
+        initial={{ reset: addition.reset, expiresSameDay: addition.expires_same_day,
+          amount: formatHours(addition.amount), date: addition.date }}
       />
     );
   }
@@ -946,15 +938,9 @@ function AdditionModalForState({ modal, pools, onClose, onSave, onSaveCap, onDel
         {...sharedProps}
         mode="edit-recurring"
         onDelete={() => onDelete(rule.id, true)}
-        initialReset={rule.reset}
-        initialExpiresSameDay={rule.expires_same_day}
-        initialAmount={formatHours(rule.amount)}
-        initialDate={rule.start_date}
-        initialEndDate={rule.end_date}
-        initialCadence={rule.cadence}
-        initialMonth={rule.month}
-        initialNthWeekday={rule.nth_weekday}
-        initialWeekday={rule.weekday}
+        initial={{ reset: rule.reset, expiresSameDay: rule.expires_same_day, amount: formatHours(rule.amount),
+          date: rule.start_date, endDate: rule.end_date, cadence: rule.cadence, month: rule.month,
+          nthWeekday: rule.nth_weekday, weekday: rule.weekday }}
       />
     );
   }
