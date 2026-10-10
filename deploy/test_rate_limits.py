@@ -33,6 +33,9 @@ class Upstream(BaseHTTPRequestHandler):
 with tempfile.TemporaryDirectory(prefix="hima-rate-limits-") as directory:
     tmp = Path(directory)
     (tmp / "index.html").write_text("static")
+    (tmp / "assets").mkdir()
+    for asset in ("index-abc123.js", "index-abc123.css", "font-abc123.woff2", "favicon.svg"):
+        (tmp / "assets" / asset).write_text(asset)
     cert, key = tmp / "cert.pem", tmp / "key.pem"
     subprocess.run([
         "openssl", "req", "-x509", "-newkey", "rsa:2048", "-nodes", "-days", "1",
@@ -68,18 +71,20 @@ with tempfile.TemporaryDirectory(prefix="hima-rate-limits-") as directory:
     proxy = subprocess.Popen([*args, "-g", "daemon off;"])
     context = ssl.create_default_context(cafile=str(cert))
 
-    def request(path, client="127.0.0.1", forwarded="203.0.113.1"):
+    def request(path, client="127.0.0.1", forwarded="203.0.113.1", headers=None, metadata=False):
         connection = http.client.HTTPSConnection(
             "127.0.0.1", port, context=context, timeout=5,
             source_address=(client, 0),
         )
         try:
-            connection.request("GET", path, headers={"X-Forwarded-For": forwarded})
+            connection.request("GET", path, headers={"X-Forwarded-For": forwarded, **(headers or {})})
             response = connection.getresponse()
             body = response.read()
             assert response.getheader("X-Content-Type-Options") == "nosniff"
             assert response.getheader("Strict-Transport-Security")
             assert response.getheader("Content-Security-Policy")
+            if metadata:
+                return response.status, body, dict(response.getheaders())
             return response.status, body
         finally:
             connection.close()
@@ -95,6 +100,26 @@ with tempfile.TemporaryDirectory(prefix="hima-rate-limits-") as directory:
                 time.sleep(0.1)
         else:
             raise RuntimeError("nginx did not become ready")
+
+        for asset in ("index-abc123.js", "index-abc123.css", "font-abc123.woff2"):
+            path = f"/assets/{asset}"
+            status, body, headers = request(path, metadata=True)
+            assert (status, body) == (200, asset.encode())
+            assert headers["Cache-Control"] == "public, max-age=31536000, immutable"
+            status, body, headers = request(
+                path, headers={"If-None-Match": headers["ETag"]}, metadata=True,
+            )
+            assert (status, body) == (304, b"")
+            assert headers["Cache-Control"] == "public, max-age=31536000, immutable"
+        for path in ("/", "/index.html", "/planner", "/assets/favicon.svg?release=2"):
+            status, _, headers = request(path, metadata=True)
+            assert status == 200
+            assert headers["Cache-Control"] == "no-cache", path
+        for path in ("/assets/missing-abc123.js", "/assets/missing.svg", "/assets/"):
+            status, body, headers = request(path, metadata=True)
+            assert status == 404, path
+            assert body != b"static", "Missing asset became SPA HTML"
+            assert "Cache-Control" not in headers, "Missing asset cached as immutable"
 
         # Bare and nested auth paths consume the same budget, even if XFF changes.
         for path in ("/auth", "/auth/login", "/auth/callback", "/auth/logout", "/auth/login", "/auth"):
@@ -124,7 +149,7 @@ with tempfile.TemporaryDirectory(prefix="hima-rate-limits-") as directory:
         assert request("/auth/login")[0] == 200, "Auth budget did not recover"
         assert request("/api/me", client="127.0.0.3")[0] == 200
         assert (tmp / "api-error.log").read_text() == ""
-        print("HTTPS rate limits, upstream exclusion, independent budgets, recovery and headers passed")
+        print("HTTPS asset caching, rate limits, upstream exclusion, independent budgets, recovery and headers passed")
     finally:
         proxy.terminate()
         proxy.wait(timeout=10)
