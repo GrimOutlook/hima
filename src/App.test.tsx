@@ -4,6 +4,10 @@ import { createRoot } from "react-dom/client";
 import { expect, it, vi } from "vitest";
 import App from "./App";
 import { emptyStore, STORAGE_KEY, type BalancePoint } from "./model";
+import * as selector from "./persistence";
+import { localPersistence } from "./localPersistence";
+
+vi.mock("./persistence", async (original) => ({ ...await original<typeof import("./persistence")>(), storageMode: "remote" }));
 
 vi.mock("./localMigration", () => ({ browserLocalSource: { read: () => null } }));
 
@@ -19,6 +23,69 @@ vi.mock("./BalanceChart", () => ({ BalanceChart: (props: {
 }) =>
   <div data-testid="chart" data-zoom={String(props.zoomToSelectedEvent)} data-wide={String(props.widenSelectedEvent)}
     data-dates={JSON.stringify(props.historyDates)} data-histories={JSON.stringify(props.poolHistories)} /> }));
+
+it("shows browser-only save status and hides account controls including settings", async () => {
+  const previousPersistence = selector.persistence;
+  vi.mocked(selector).storageMode = "local";
+  vi.mocked(selector).persistence = localPersistence;
+  vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(emptyStore()));
+  const container = document.createElement("div");
+  document.body.append(container);
+  const root = createRoot(container);
+  try {
+    await act(async () => root.render(<App />));
+    expect(container.textContent).toContain("Saved in this browser");
+    expect(container.querySelector('a[href="/auth/login"]')).toBeNull();
+    expect(container.textContent).not.toContain("Sign out");
+    await act(async () => container.querySelector<HTMLButtonElement>('[aria-label="Open settings"]')!.click());
+    expect(document.body.textContent).not.toContain("Sign out everywhere");
+    expect(document.body.textContent).toContain("Data is stored only in this browser");
+  } finally {
+    await act(async () => root.unmount());
+    container.remove();
+    localStorage.clear();
+    vi.mocked(selector).storageMode = "remote";
+    vi.mocked(selector).persistence = previousPersistence;
+    vi.unstubAllGlobals();
+  }
+});
+
+it("exports corrupt browser data and starts fresh only after confirmation", async () => {
+  const previousPersistence = selector.persistence;
+  vi.mocked(selector).storageMode = "local";
+  vi.mocked(selector).persistence = localPersistence;
+  vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
+  localStorage.setItem(STORAGE_KEY, "broken JSON");
+  localStorage.setItem("hima.settings.v1", "broken settings");
+  localStorage.setItem("hima.local.revision", "5");
+  const createURL = vi.fn(() => "blob:backup");
+  vi.stubGlobal("URL", { createObjectURL: createURL, revokeObjectURL: vi.fn() });
+  vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(() => {});
+  const confirm = vi.spyOn(window, "confirm").mockReturnValue(false);
+  const container = document.createElement("div");
+  const root = createRoot(container);
+  const button = (label: string) => Array.from(container.querySelectorAll("button")).find((button) => button.textContent === label)!;
+  try {
+    await act(async () => root.render(<App />));
+    expect(container.textContent).toContain("Could not load your planner");
+    await act(async () => button("Export raw browser data").click());
+    expect(createURL).toHaveBeenCalledWith(expect.any(Blob));
+    await act(async () => button("Start fresh").click());
+    expect(localStorage.getItem(STORAGE_KEY)).toBe("broken JSON");
+    confirm.mockReturnValue(true);
+    await act(async () => button("Start fresh").click());
+    expect(localStorage.length).toBe(0);
+    expect(container.textContent).toContain("Start with a pool");
+  } finally {
+    await act(async () => root.unmount());
+    localStorage.clear();
+    vi.mocked(selector).storageMode = "remote";
+    vi.mocked(selector).persistence = previousPersistence;
+    vi.restoreAllMocks();
+    vi.unstubAllGlobals();
+  }
+});
 
 it.each([
   [false, false, "100", "122.8 h", "22.8 h"],

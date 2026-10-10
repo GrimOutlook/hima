@@ -6,6 +6,7 @@ import { CalendarPicker } from "./CalendarPicker";
 import { poolColor } from "./poolColors";
 import { parseBackupJson, serializeBackupJson } from "./backup";
 import { useStoredPlanner } from "./useStoredPlanner";
+import { clearBrowserData, exportRawBrowserData } from "./localPersistence";
 import { usePoolCardFigures } from "./usePoolCardFigures";
 import { FirstDayOfWeekContext, IgnoreWeekendsContext, nextWeekday } from "./settings";
 import { defaultSettings, type PlannerDocument } from "./plannerPersistence";
@@ -62,6 +63,14 @@ type ModalState =
 
 function App() {
   const planner = useStoredPlanner();
+  const local = planner.mode === "local";
+  function recoverBrowserData(clear: boolean) {
+    if (clear && !window.confirm("Remove the planner and settings stored in this browser and start fresh? Export raw browser data first to keep a backup.")) return;
+    try {
+      if (clear) { clearBrowserData(); planner.retry(); }
+      else downloadJson(exportRawBrowserData());
+    } catch (error) { window.alert(error instanceof Error ? error.message : "Browser storage could not be accessed."); }
+  }
   return <>
     {planner.recoveries.map((recovery, index) => <p role="alert" key={index}>
       Unsaved changes from account {recovery.userId} are retained in this page.
@@ -77,7 +86,7 @@ function App() {
       {(planner.error || planner.migration.error) && <p role="alert">{planner.error || planner.migration.error}</p>}
       <button className="button" disabled={planner.resolving || !planner.migration.document} onClick={() => { if (window.confirm("Upload the displayed local copy and settings, replacing the remote planner? Export backups first if needed.")) void planner.migrate(); }}>Upload local planner and settings</button>
       <button className="button" disabled={planner.resolving} onClick={planner.chooseRemote}>Use remote / cancel migration</button>
-      <button className="button" onClick={() => void planner.logout()}>Sign out</button>
+      {!local && <button className="button" onClick={() => void planner.logout()}>Sign out</button>}
     </main> : planner.phase === "ready" ? <>
       {planner.migratedLocal && <section aria-label="Remove migrated browser data">
         <p role="status">Your local planner was saved to your account. Remove the local copy and recovery backups? Keeping them leaves them readable to anyone using this browser and available to other accounts.</p>
@@ -86,21 +95,21 @@ function App() {
         <button className="button" onClick={() => planner.finishLocalMigration(false)}>Keep local copy</button>
       </section>}
       {planner.saveStatus === "conflict" && <section aria-label="Resolve revision conflict">
-        <p role="alert">Remote data changed. Your unsaved work is retained. Saving is paused until you choose a copy.</p>
+        <p role="alert">{local ? "Another tab or window changed this browser's planner." : "Remote data changed."} Your unsaved work is retained. Saving is paused until you choose a copy.</p>
         <button className="button" onClick={() => downloadBackup(planner.document)}>Export unsaved work</button>
-        <button className="button" disabled={planner.resolving} onClick={() => void planner.fetchLatest()}>Fetch latest remote copy</button>
+        <button className="button" disabled={planner.resolving} onClick={() => void planner.fetchLatest()}>{local ? "Fetch latest browser copy" : "Fetch latest remote copy"}</button>
         {planner.latest && <>
-          <p>Latest remote revision: {planner.latest.revision}. Pools: {planner.latest.document.pools.length}; events: {planner.latest.document.events.length}.</p>
-          <button className="button" onClick={() => downloadBackup(planner.latest!.document)}>Export latest remote backup</button>
-          <button className="button" onClick={() => { if (window.confirm("Load the latest remote copy? Your unsaved work will remain available as a retained backup in this page.")) planner.resolveConflict(false); }}>Load latest remote copy</button>
-          <button className="button" onClick={() => { if (window.confirm("Replace the latest remote copy with your unsaved work? Export both copies first if needed.")) planner.resolveConflict(true); }}>Replace remote with my work</button>
+          <p>Latest {local ? "browser" : "remote"} revision: {planner.latest.revision}. Pools: {planner.latest.document.pools.length}; events: {planner.latest.document.events.length}.</p>
+          <button className="button" onClick={() => downloadBackup(planner.latest!.document)}>Export latest {local ? "browser" : "remote"} backup</button>
+          <button className="button" onClick={() => { if (window.confirm(`Load the latest ${local ? "browser" : "remote"} copy? Your unsaved work will remain available as a retained backup in this page.`)) planner.resolveConflict(false); }}>Load latest {local ? "browser" : "remote"} copy</button>
+          <button className="button" onClick={() => { if (window.confirm(`Replace the latest ${local ? "browser" : "remote"} copy with your unsaved work? Export both copies first if needed.`)) planner.resolveConflict(true); }}>Replace {local ? "browser copy" : "remote"} with my work</button>
         </>}
       </section>}
       <Planner key={planner.generation} planner={planner} />
     </> : <main className="page-content">
       <h1>hima</h1>
-      {planner.phase === "loading" ? <p role="status">Loading your account and planner…</p> : planner.phase === "logging-out" ? <p role="status">Signing out…</p> : <>
-        {planner.phase === "error" ? <><p role="alert">Could not load your planner: {planner.error}</p><button className="button" type="button" onClick={planner.retry}>Retry loading</button></> : <><p>Sign in to load and save your planner.</p><a className="button button-primary" href="/auth/login">Sign in</a></>}
+      {planner.phase === "loading" ? <p role="status">{local ? "Loading your planner…" : "Loading your account and planner…"}</p> : planner.phase === "logging-out" ? <p role="status">Signing out…</p> : <>
+        {planner.phase === "error" ? <><p role="alert">Could not load your planner: {planner.error}</p><button className="button" type="button" onClick={planner.retry}>Retry loading</button>{local && <><button className="button" type="button" onClick={() => recoverBrowserData(false)}>Export raw browser data</button><button className="button" type="button" onClick={() => recoverBrowserData(true)}>Start fresh</button></>}</> : <><p>Sign in to load and save your planner.</p><a className="button button-primary" href="/auth/login">Sign in</a></>}
       </>}
     </main>}
   </>;
@@ -286,7 +295,7 @@ function Planner({ planner }: { planner: ReturnType<typeof useStoredPlanner> }) 
       if (!mounted.current) return;
       const restoreSettings = shouldImportSettings && settings !== undefined;
       const confirmed = window.confirm(
-        `${warnings.length ? `${warnings.join("\n")}\n\n` : ""}Imported amounts are rounded to hundredths of an hour.\n\nReplace this account's planner with ${imported.pools.length} ${imported.pools.length === 1 ? "pool" : "pools"} and ${imported.events.length} ${imported.events.length === 1 ? "event" : "events"}${restoreSettings ? " and restore the backup settings" : ""}? Export a backup first to keep the current copy.`,
+        `${warnings.length ? `${warnings.join("\n")}\n\n` : ""}Imported amounts are rounded to hundredths of an hour.\n\nReplace ${planner.mode === "local" ? "this browser's" : "this account's"} planner with ${imported.pools.length} ${imported.pools.length === 1 ? "pool" : "pools"} and ${imported.events.length} ${imported.events.length === 1 ? "event" : "events"}${restoreSettings ? " and restore the backup settings" : ""}? Export a backup first to keep the current copy.`,
       );
       if (!confirmed) return;
       planner.importBackup(imported, restoreSettings ? settings : undefined);
@@ -373,11 +382,11 @@ function Planner({ planner }: { planner: ReturnType<typeof useStoredPlanner> }) 
         <div className="topbar-right">
           <span className="privacy-note" role="status">
             {saveStatus === "saved" && <span className="privacy-dot" />}
-            {saveStatus === "saved" ? planner.revision === 0 ? "No changes to save" : "Saved to your account" : saveStatus === "conflict" ? "Save conflict" : saveStatus === "failed" ? "Save failed" : "Changes pending"}
+            {saveStatus === "saved" ? planner.revision === 0 ? "No changes to save" : planner.mode === "local" ? "Saved in this browser" : "Saved to your account" : saveStatus === "conflict" ? "Save conflict" : saveStatus === "failed" ? "Save failed" : "Changes pending"}
           </span>
           {(saveStatus === "failed" || saveStatus === "conflict") && <button className="button" type="button" onClick={exportData}>Export backup</button>}
           {saveStatus === "failed" && <button className="button" type="button" onClick={planner.retry}>Retry save</button>}
-          <button className="button" type="button" onClick={() => { void planner.logout(); }}>Sign out</button>
+          {planner.mode === "remote" && <button className="button" type="button" onClick={() => { void planner.logout(); }}>Sign out</button>}
           <button ref={settingsButtonRef} className="icon-button" type="button" title="Settings" aria-label="Open settings" aria-haspopup="dialog" onClick={() => setModal({ type: "settings" })}>
             <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
               <path d="m9 3-.5 2-2 1.2-2-.6-2 3.5L4 10.5v3l-1.5 1.4 2 3.5 2-.6 2 1.2.5 2h6l.5-2 2-1.2 2 .6 2-3.5-1.5-1.4v-3l1.5-1.4-2-3.5-2 .6-2-1.2L15 3Z" />
@@ -395,7 +404,7 @@ function Planner({ planner }: { planner: ReturnType<typeof useStoredPlanner> }) 
         </div>
       </header>
       {saveStatus === "failed" && <p role="alert">Changes could not be saved: {planner.error} Your edits are retained. Retry saving or export a backup before closing this page.</p>}
-      {saveStatus === "conflict" && <p role="alert">The remote planner changed. Your edits are retained and saving is paused to protect both copies. Export a backup before reloading to load the latest remote planner.</p>}
+      {saveStatus === "conflict" && <p role="alert">{planner.mode === "local" ? "Another tab or window changed this browser's planner. Your edits are retained and saving is paused to protect both copies. Export a backup before reloading to load the latest browser planner." : "The remote planner changed. Your edits are retained and saving is paused to protect both copies. Export a backup before reloading to load the latest remote planner."}</p>}
 
       <main id="top" className="page-content">
         <section className="page-intro">
@@ -665,7 +674,7 @@ function Planner({ planner }: { planner: ReturnType<typeof useStoredPlanner> }) 
       {modal?.type === "settings" && <SettingsModal firstDayOfWeek={firstDayOfWeek} onChange={setFirstDayOfWeek} ignoreWeekends={ignoreWeekends} onIgnoreWeekendsChange={setIgnoreWeekends} defaultTimeline={defaultTimeline} onDefaultTimelineChange={setDefaultTimeline} onExport={exportData} onImport={(importSettings) => {
         importSettingsRef.current = importSettings;
         importInputRef.current?.click();
-      }} onLogoutEverywhere={() => { void planner.logoutEverywhere(); }} onClose={closeSettings} />}
+      }} browserOnly={planner.mode === "local"} onLogoutEverywhere={planner.mode === "remote" ? () => { void planner.logoutEverywhere(); } : undefined} onClose={closeSettings} />}
       {informationPool && (
         <PoolInformationModal {...poolCardProps(informationPool)} onEditCap={(capId) => setModal({ type: "edit-cap", poolId: informationPool.id, capId })} onClose={() => setModal(null)} />
       )}
