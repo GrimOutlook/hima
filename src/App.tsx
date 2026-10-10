@@ -69,7 +69,7 @@ function App() {
     </p>)}
     {planner.phase === "ready" && planner.migration ? <main className="page-content">
       <h1>Choose your planner for account {planner.session?.user_id}</h1>
-      <p>Existing browser data and settings were found. Originals remain intact. {planner.revision === 0 ? "This account has no remote planner." : "This account also has a remote planner. Uploading local data replaces that remote copy."}</p>
+      <p>Existing browser data and settings were found. Local copies remain readable to anyone using this browser, including other accounts. After a successful upload you can remove them and their recovery backups. {planner.revision === 0 ? "This account has no remote planner." : "This account also has a remote planner. Uploading local data replaces that remote copy."}</p>
       <button className="button" onClick={() => downloadJson(planner.migration!.raw)}>Export original local backup</button>
       {planner.migration.document && <><p>Local copy: {planner.migration.document.pools.length} pools; {planner.migration.document.events.length} events.</p><button className="button" onClick={() => downloadBackup(planner.migration!.document!)}>Export migrated local backup</button></>}
       <button className="button" onClick={() => downloadBackup(planner.document)}>Export remote backup</button>
@@ -79,6 +79,12 @@ function App() {
       <button className="button" disabled={planner.resolving} onClick={planner.chooseRemote}>Use remote / cancel migration</button>
       <button className="button" onClick={() => void planner.logout()}>Sign out</button>
     </main> : planner.phase === "ready" ? <>
+      {planner.migratedLocal && <section aria-label="Remove migrated browser data">
+        <p role="status">Your local planner was saved to your account. Remove the local copy and recovery backups? Keeping them leaves them readable to anyone using this browser and available to other accounts.</p>
+        {planner.error && <p role="alert">{planner.error}</p>}
+        <button className="button" onClick={() => planner.finishLocalMigration(true)}>Remove local copy and recovery backups</button>
+        <button className="button" onClick={() => planner.finishLocalMigration(false)}>Keep local copy</button>
+      </section>}
       {planner.saveStatus === "conflict" && <section aria-label="Resolve revision conflict">
         <p role="alert">Remote data changed. Your unsaved work is retained. Saving is paused until you choose a copy.</p>
         <button className="button" onClick={() => downloadBackup(planner.document)}>Export unsaved work</button>

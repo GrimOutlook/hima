@@ -36,5 +36,6 @@ export function useStoredPlanner(persistence: PlannerPersistence = plannerApi) {
   return { ...snapshot, store: snapshot.document, settings: snapshot.document.settings ?? defaultSettings,
     setStore, setSettings, importBackup, retry: controller.retry, logout,
     migrate: () => controller.migrate(generation), chooseRemote: () => controller.chooseRemote(generation),
+    finishLocalMigration: (remove: boolean) => controller.finishLocalMigration(remove, generation),
     fetchLatest: () => controller.fetchLatest(generation), resolveConflict: (replace: boolean) => controller.resolveConflict(replace, generation) };
 }
