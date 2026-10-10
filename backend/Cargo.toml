@@ -11,6 +11,8 @@ sha2 = "0.10"
 hex = "0.4"
 subtle = "2"
 axum = { version = "0.8", features = ["json"] }
+hyper = { version = "1", features = ["server", "http1"] }
+hyper-util = { version = "0.1", features = ["tokio", "service", "server-graceful"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 chrono = { version = "0.4", default-features = false, features = ["std", "serde"] }
@@ -20,6 +22,8 @@ tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter", "json"] }
 
 [dev-dependencies]
+futures-util = { version = "0.3", default-features = false, features = ["std"] }
+tokio = { version = "1", features = ["test-util", "io-util"] }
 base64 = "0.22"
 rand = "0.8"
 rsa = { version = "0.9", features = ["sha2"] }

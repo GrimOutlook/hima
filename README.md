@@ -42,6 +42,16 @@ frontend/backend packages, an HTTPS nginx reverse proxy, systemd startup and
 restart, OIDC/secret configuration, migrations, backup/restore, and acceptance
 health checks.
 
+The API enforces a 10-second HTTP/1 header-read deadline and a 15-second
+request deadline (including body reads and authentication). Request timeouts
+return a no-store JSON 503 with code `request_timeout`. Its five-connection
+PostgreSQL pool waits at most 3 seconds to acquire a connection and sets a
+5-second `statement_timeout` on every connection; database failures use the
+existing endpoint-specific 503 responses. These limits also apply when binding
+the API directly outside loopback. Shutdown drains connections for at most
+15 seconds. A timed-out write may already have committed; retrying retains the
+normal revision-conflict protection.
+
 ### Build with Nix
 
 With Nix flakes enabled, run `nix build .#frontend` (or `nix build`) to build the production site using the pinned Node.js and pnpm dependencies. The static site is available in `result/dist/`, ready to serve with a static web server. `nix build .#backend --out-link result-backend` builds release executables `result-backend/bin/hima-api` and `result-backend/bin/migrate`, including embedded migrations. Package outputs support `x86_64-linux` and `aarch64-linux`.

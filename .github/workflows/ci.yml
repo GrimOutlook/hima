@@ -41,6 +41,7 @@ jobs:
       - run: cargo clippy --locked --all-targets -- -D warnings
       - run: cargo test --locked
       - run: cargo test --locked --test postgres -- --ignored
+      - run: cargo test --locked --lib -- --ignored
       - name: Test signed OIDC, unauthorized access, and concurrent planner saves
         run: cargo test --locked --test auth -- --ignored
       - name: Set up pnpm for proxy integration

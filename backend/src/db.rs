@@ -12,6 +12,50 @@ pub struct Database {
     pub(crate) pool: PgPool,
 }
 
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use sqlx::ConnectOptions;
+
+    #[sqlx::test(migrations = "./migrations")]
+    #[ignore = "requires DATABASE_URL with PostgreSQL CREATEDB privileges"]
+    async fn runtime_pool_bounds_acquisition_and_cancels_slow_statements(pool: PgPool) {
+        let db = Database::connect(pool.connect_options().to_url_lossy().as_str())
+            .await
+            .unwrap();
+        let mut connections = Vec::new();
+        for _ in 0..5 {
+            let mut connection = db.pool.acquire().await.unwrap();
+            let timeout: String = sqlx::query_scalar("SHOW statement_timeout")
+                .fetch_one(&mut *connection)
+                .await
+                .unwrap();
+            assert_eq!(timeout, "5s");
+            connections.push(connection);
+        }
+        let start = std::time::Instant::now();
+        assert!(matches!(db.load(1).await, Err(sqlx::Error::PoolTimedOut)));
+        assert!(start.elapsed() < std::time::Duration::from_secs(5));
+        drop(connections);
+        let error = sqlx::query("SELECT pg_sleep(10)")
+            .execute(&db.pool)
+            .await
+            .unwrap_err();
+        assert_eq!(
+            error.as_database_error().unwrap().code().as_deref(),
+            Some("57014")
+        );
+        assert_eq!(
+            sqlx::query_scalar::<_, i32>("SELECT 1")
+                .fetch_one(&db.pool)
+                .await
+                .unwrap(),
+            1
+        );
+        db.close().await;
+    }
+}
+
 #[derive(Debug, sqlx::FromRow, Serialize, PartialEq)]
 pub struct StoredPlanner {
     pub document: Value,
@@ -43,7 +87,19 @@ impl From<sqlx::Error> for SaveError {
 
 impl Database {
     pub async fn connect(url: &str) -> Result<Self, sqlx::Error> {
-        let pool = PgPoolOptions::new().max_connections(5).connect(url).await?;
+        let pool = PgPoolOptions::new()
+            .max_connections(5)
+            .acquire_timeout(std::time::Duration::from_secs(3))
+            .after_connect(|connection, _| {
+                Box::pin(async move {
+                    sqlx::query("SET statement_timeout = '5s'")
+                        .execute(connection)
+                        .await?;
+                    Ok(())
+                })
+            })
+            .connect(url)
+            .await?;
         Ok(Self { pool })
     }
     pub fn from_pool(pool: PgPool) -> Self {
