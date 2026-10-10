@@ -18,6 +18,17 @@ Use JSON export/import to move data between this site and a self-hosted instance
 their different origins prevent automatic migration. Concurrent edits in another
 tab or window use the revision-conflict recovery controls.
 
+**Shared-origin storage limitation:** `localStorage` is scoped to the origin
+(scheme, hostname, and port), not the URL path. The `/hima/` path does not
+isolate this planner from other GitHub Pages sites at
+`https://grimoutlook.github.io/<other-repo>/`. JavaScript running on any of
+those sites in the same browser profile can read, modify, or delete your
+planner data and settings. Storing data locally does not make it private
+from other sites on this shared origin; avoid storing sensitive information
+in the hosted Pages version. For origin isolation, host the browser-only
+build on a dedicated origin, such as its own domain or subdomain, and use
+JSON export/import to transfer your existing data.
+
 Run `pnpm run dev:local` and visit `http://127.0.0.1:5173/hima/` for browser-only
 development. Run `pnpm run build:pages` to build `dist/` with the `/hima/` base
 path. Default `dev` and `build` commands use the self-hosted account variant.
