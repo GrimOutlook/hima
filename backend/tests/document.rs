@@ -6,6 +6,48 @@ pub fn document() -> Value {
 }
 
 #[test]
+fn entity_ids_remain_collection_scoped_and_bound_next_id() {
+    for path in [
+        "/pools",
+        "/pools/0/additions",
+        "/pools/0/recurring",
+        "/pools/0/caps",
+        "/events",
+    ] {
+        let mut value = document();
+        value.pointer_mut(path).unwrap()[0]["id"] = json!(100);
+        if path == "/pools" {
+            value["events"][0]["days"][0]["allocations"][0]["pool_id"] = json!(100);
+        }
+        value["next_id"] = json!(100);
+        assert_eq!(
+            validate_document(&value).unwrap_err().0,
+            "next_id must exceed every entity ID",
+            "{path}"
+        );
+        value["next_id"] = json!(101);
+        validate_document(&value).unwrap();
+
+        let entries = value.pointer_mut(path).unwrap().as_array_mut().unwrap();
+        entries.push(entries[0].clone());
+        assert_eq!(
+            validate_document(&value).unwrap_err().0,
+            "Duplicate ID within collection",
+            "{path}"
+        );
+    }
+
+    let mut value = document();
+    // Reusing an ID across different entity collections remains valid.
+    value["pools"][0]["additions"][0]["id"] = json!(1);
+    value["pools"][0]["recurring"][0]["id"] = json!(1);
+    value["pools"][0]["caps"][0]["id"] = json!(1);
+    value["events"][0]["id"] = json!(1);
+    value["next_id"] = json!(2);
+    validate_document(&value).unwrap();
+}
+
+#[test]
 fn name_and_hour_boundaries() {
     for (path, limit) in [("/pools/0/name", 48), ("/events/0/name", 64)] {
         for unit in ["a", "é", "😀"] {
