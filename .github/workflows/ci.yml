@@ -13,25 +13,10 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  backend:
-    name: Backend format, lint, test, and build
+  backend-lint:
+    name: Backend format and lint
     runs-on: ubuntu-latest
     timeout-minutes: 10
-    services:
-      postgres:
-        image: postgres:17
-        env:
-          POSTGRES_PASSWORD: hima-test
-          POSTGRES_DB: hima_test
-        ports:
-          - 5432:5432
-        options: >-
-          --health-cmd pg_isready
-          --health-interval 5s
-          --health-timeout 5s
-          --health-retries 10
-    env:
-      DATABASE_URL: postgres://postgres:hima-test@localhost:5432/hima_test
     defaults:
       run:
         working-directory: backend
@@ -48,23 +33,89 @@ jobs:
           workspaces: backend
       - run: cargo fmt --check
       - run: cargo clippy --locked --all-targets -- -D warnings
+  backend-test:
+    name: Backend unit tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+      - name: Set up Rust
+        uses: dtolnay/rust-toolchain@686976e191b89faba57d3206551f0f330d8cb249 # stable
+      # This job builds every test target, so it saves the cache the other test jobs restore.
+      - name: Cache Cargo registry and build artifacts
+        uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+        with:
+          workspaces: backend
+          shared-key: backend-test
       - run: cargo test --locked
+  backend-postgres:
+    name: Backend PostgreSQL tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    services: &postgres-service
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_PASSWORD: hima-test
+          POSTGRES_DB: hima_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env: &database-env
+      DATABASE_URL: postgres://postgres:hima-test@localhost:5432/hima_test
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+      - name: Set up Rust
+        uses: dtolnay/rust-toolchain@686976e191b89faba57d3206551f0f330d8cb249 # stable
+      - name: Restore Cargo registry and build artifacts
+        uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+        with:
+          workspaces: backend
+          shared-key: backend-test
+          save-if: false
       - run: cargo test --locked --test postgres -- --ignored
       - run: cargo test --locked --lib -- --ignored
       - name: Test signed OIDC, unauthorized access, and concurrent planner saves
         run: cargo test --locked --test auth -- --ignored
-      - name: Set up pnpm for proxy integration
+  backend-vite:
+    name: Backend OIDC and sessions through Vite
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    services: *postgres-service
+    env: *database-env
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+      - name: Set up Rust
+        uses: dtolnay/rust-toolchain@686976e191b89faba57d3206551f0f330d8cb249 # stable
+      - name: Restore Cargo registry and build artifacts
+        uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+        with:
+          workspaces: backend
+          shared-key: backend-test
+          save-if: false
+      - name: Set up pnpm
         uses: pnpm/action-setup@9fd676a19091d4595eefd76e4bd31c97133911f1 # v4.2.0
-      - name: Set up Node.js for proxy integration
+      - name: Set up Node.js
         uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version: 22
           cache: pnpm
       - name: Install frontend dependencies
-        working-directory: .
         run: pnpm install --frozen-lockfile
       - name: Test OIDC and sessions through Vite
-        working-directory: .
         run: |
           pnpm run dev > "$RUNNER_TEMP/hima-vite.log" 2>&1 &
           vite_pid=$!
@@ -82,16 +133,57 @@ jobs:
             exit 1
           fi
           HIMA_TEST_VITE_PROXY=1 cargo test --locked --manifest-path backend/Cargo.toml --test auth -- --ignored
-      - name: Test production HTTPS reverse proxy and restart persistence
-        working-directory: .
+  backend-https:
+    name: Production HTTPS reverse proxy and restart persistence
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    services: *postgres-service
+    env: *database-env
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+      - name: Set up Rust
+        uses: dtolnay/rust-toolchain@686976e191b89faba57d3206551f0f330d8cb249 # stable
+      - name: Restore Cargo registry and build artifacts
+        uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+        with:
+          workspaces: backend
+          shared-key: backend-test
+          save-if: false
+      - name: Set up pnpm
+        uses: pnpm/action-setup@9fd676a19091d4595eefd76e4bd31c97133911f1 # v4.2.0
+      - name: Set up Node.js
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: 22
+          cache: pnpm
+      - name: Install frontend dependencies
+        run: pnpm install --frozen-lockfile
+      - name: Install nginx if the runner image lacks it
         run: |
           if ! command -v nginx > /dev/null; then
             sudo apt-get update
             sudo apt-get install -y nginx
           fi
-          python3 deploy/test_rate_limits.py
+      - name: Test production HTTPS reverse proxy and restart persistence
+        run: |
           pnpm run build
           python3 deploy/test_https_proxy.py
+  rate-limits:
+    name: Production nginx rate limits
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+      - name: Install nginx if the runner image lacks it
+        run: |
+          if ! command -v nginx > /dev/null; then
+            sudo apt-get update
+            sudo apt-get install -y nginx
+          fi
+      - name: Test production nginx rate limits
+        run: python3 deploy/test_rate_limits.py
   packages:
     name: Nix frontend and backend release packages
     runs-on: ubuntu-latest
