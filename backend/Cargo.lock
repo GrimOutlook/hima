@@ -786,7 +786,7 @@ dependencies = [
  "hyper",
  "hyper-util",
  "openidconnect",
- "rand 0.8.8",
+ "rand 0.10.3",
  "rsa",
  "serde",
  "serde_json",
