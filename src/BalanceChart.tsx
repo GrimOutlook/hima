@@ -38,8 +38,6 @@ interface BalanceChartProps {
 
 interface ChartPoint extends BalancePoint {
   index: number;
-  actualBalance: number | null;
-  projectedBalance: number | null;
   [key: string]: string | number | boolean | null;
 }
 
@@ -278,8 +276,6 @@ export function BalanceChart({
       return history.map((point, index) => ({
       ...point,
       index,
-      actualBalance: point.projected ? null : point.balance,
-      projectedBalance: point.projected || index === todayIndex || (!todayIsVisible && index === todayIndex - 1) ? point.balance : null,
       ...Object.fromEntries(series.flatMap((item) => {
         const pool = selectedPools.find((pool) => item.key === `pool_${pool.id}`);
         const balance = pool ? balances[pool.id]?.get(point.date) ?? 0 : point.balance;

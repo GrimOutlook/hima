@@ -1,10 +1,13 @@
 // @vitest-environment jsdom
 import { beforeEach, describe, expect, it } from "vitest";
 import { parseBackupJson, serializeBackupJson } from "./backup";
-import { emptyStore, loadStore, normalizeStore, parseStoreJson, saveStore, serializeStoreJson, STORAGE_KEY, STORE_VERSION } from "./model";
+import { emptyStore, normalizeStore, parseStoreJson, STORAGE_KEY, STORE_VERSION } from "./model";
+import { localPersistence } from "./localPersistence";
 
 describe("planner schema versions", () => {
   beforeEach(() => window.localStorage.clear());
+  const signal = new AbortController().signal;
+  const session = { user_id: 1, csrf_token: "local" };
 
   const legacy = {
     pools: [{ id: 1, name: "Leave", additions: [], recurring: [], caps: [] }],
@@ -17,21 +20,20 @@ describe("planner schema versions", () => {
     next_id: 6,
   };
 
-  it("migrates unversioned event formats and writes the current version everywhere", () => {
+  it("migrates unversioned event formats and writes the current version everywhere", async () => {
     window.localStorage.setItem(STORAGE_KEY, JSON.stringify(legacy));
-    const loaded = loadStore();
-    expect(loaded.canSave).toBe(true);
-    expect(loaded.warning).toBeNull();
-    expect(loaded.store.version).toBe(STORE_VERSION);
-    expect(loaded.store.events.map((event) => event.days[0]?.allocations))
+    const store = parseStoreJson(JSON.stringify(legacy));
+    expect(store.version).toBe(STORE_VERSION);
+    expect(store.events.map((event) => event.days[0]?.allocations))
       .toEqual([8, 4, 2, 1].map((hours) => [{ pool_id: 1, hours }]));
-    expect(saveStore(loaded.store)).toBe(true);
-    expect(JSON.parse(window.localStorage.getItem(STORAGE_KEY)!)).toEqual(loaded.store);
-    expect(parseStoreJson(serializeStoreJson(loaded.store))).toEqual(loaded.store);
+    await localPersistence.save(store, 1, session, signal);
+    expect((await localPersistence.load(signal)).document).toEqual(store);
+    expect(JSON.parse(window.localStorage.getItem(STORAGE_KEY)!)).toEqual(store);
+    expect(parseStoreJson(JSON.stringify(store))).toEqual(store);
     const settings = { firstDayOfWeek: "Monday", ignoreWeekends: false, defaultTimeline: "future 1 year" } as const;
-    const backup = serializeBackupJson(loaded.store, settings);
+    const backup = serializeBackupJson(store, settings);
     expect(JSON.parse(backup).version).toBe(STORE_VERSION);
-    expect(parseBackupJson(backup)).toEqual({ store: loaded.store, settings });
+    expect(parseBackupJson(backup)).toEqual({ store, settings });
     expect(emptyStore().version).toBe(STORE_VERSION);
   });
 
@@ -42,15 +44,12 @@ describe("planner schema versions", () => {
     expect(warnings).toContain("Ignored 3 events (invalid or duplicate).");
   });
 
-  it.each([0, 2, -1, 1.5, "1", null, true])("rejects unsupported or malformed version %j", (version) => {
+  it.each([0, 2, -1, 1.5, "1", null, true])("rejects unsupported or malformed version %j", async (version) => {
     const json = JSON.stringify({ ...legacy, version });
     expect(() => parseStoreJson(json)).toThrow("Unsupported data schema version");
     expect(() => parseBackupJson(json)).toThrow("Unsupported data schema version");
     window.localStorage.setItem(STORAGE_KEY, json);
-    const loaded = loadStore();
-    expect(loaded.warning).toContain("preserved");
-    expect(loaded.store).toEqual(emptyStore());
+    await expect(localPersistence.load(signal)).rejects.toMatchObject({ code: "invalid_document" });
     expect(window.localStorage.getItem(STORAGE_KEY)).toBe(json);
-    expect(window.localStorage.getItem(`${STORAGE_KEY}.backup`)).toBe(json);
   });
 });

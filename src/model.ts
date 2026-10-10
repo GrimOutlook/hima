@@ -478,10 +478,6 @@ export function normalizeStore(value: unknown, warnings: string[] = []): Store {
   return { version: STORE_VERSION, pools, events, next_id: Math.max(storedNextId, largestId + 1, 1) };
 }
 
-export function serializeStoreJson(store: Store): string {
-  return JSON.stringify(store, null, 2);
-}
-
 export function parseStoreJson(json: string, warnings: string[] = []): Store {
   let value: unknown;
   try {
@@ -499,59 +495,6 @@ export function parseStoreJson(json: string, warnings: string[] = []): Store {
   }
 
   return normalizeStore(source, warnings);
-}
-
-export interface StoreLoadResult {
-  store: Store;
-  warning: string | null;
-  canSave: boolean;
-}
-
-export function loadStore(): StoreLoadResult {
-  let saved: string | null;
-  try {
-    saved = window.localStorage.getItem(STORAGE_KEY);
-  } catch {
-    return { store: emptyStore(), canSave: false, warning: "Browser storage could not be read. Saving is disabled for this session; export any changes to keep them." };
-  }
-  if (saved === null) return { store: emptyStore(), warning: null, canSave: true };
-  try {
-    return { store: parseStoreJson(saved), warning: null, canSave: true };
-  } catch {
-    try {
-      // Never replace an earlier recovery copy. Reuse an identical copy on
-      // remount (including StrictMode), otherwise choose the next unused key.
-      let backupKey = `${STORAGE_KEY}.backup`;
-      for (let suffix = 1; ; suffix += 1) {
-        const existing = window.localStorage.getItem(backupKey);
-        if (existing === saved) break;
-        if (existing === null) {
-          window.localStorage.setItem(backupKey, saved);
-          break;
-        }
-        backupKey = `${STORAGE_KEY}.backup.${suffix}`;
-      }
-      return {
-        store: emptyStore(), canSave: true,
-        warning: `Saved data could not be loaded. The original has been preserved in browser storage under ${backupKey}. An empty planner is shown; new changes will replace the active saved data but keep that recovery copy.`,
-      };
-    } catch {
-      return {
-        store: emptyStore(), canSave: false,
-        warning: "Saved data could not be loaded or backed up. The original has not been overwritten. Saving is disabled for this session; export any changes to keep them.",
-      };
-    }
-  }
-}
-
-export function saveStore(store: Store): boolean {
-  try {
-    window.localStorage.setItem(STORAGE_KEY, JSON.stringify(store));
-    return true;
-  } catch {
-    // Keep the planner usable when browser storage is unavailable or full.
-    return false;
-  }
 }
 
 export function allocateIds(store: Store, count = 1): { firstId: number; nextId: number } {
@@ -723,52 +666,11 @@ export function nthWeekdayInMonth(
   return `${String(year).padStart(4, "0")}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
 }
 
-export function recurringOccurrencesThrough(rule: RecurringAddition, date: string): number {
-  if (!isValidDate(rule.start_date) || !isValidDate(date)) return 0;
-  if (rule.end_date && !isValidDate(rule.end_date)) return 0;
-  const endDate = rule.end_date && date > rule.end_date ? rule.end_date : date;
-  if (endDate < rule.start_date) return 0;
-  if (rule.cadence === "YearlyNthWeekday") {
-    if (rule.month === undefined || !rule.nth_weekday || !rule.weekday) return 0;
-    let occurrences = 0;
-    for (let year = Number(rule.start_date.slice(0, 4)); year <= Number(endDate.slice(0, 4)); year += 1) {
-      const occurrence = nthWeekdayInMonth(year, rule.month, rule.nth_weekday, rule.weekday);
-      if (occurrence && occurrence >= rule.start_date && occurrence <= endDate) occurrences += 1;
-    }
-    return occurrences;
-  }
-  const start = dateFromParts(rule.start_date)!;
-  const end = dateFromParts(endDate)!;
-  const elapsedDays = Math.floor((end.getTime() - start.getTime()) / 86_400_000);
-  if (rule.cadence === "Weekly") return Math.floor(elapsedDays / 7) + 1;
-  if (rule.cadence === "Fortnightly") return Math.floor(elapsedDays / 14) + 1;
-
-  const monthsPerPeriod = rule.cadence === "Monthly" ? 1 : 12;
-  const elapsedMonths =
-    (end.getUTCFullYear() - start.getUTCFullYear()) * 12 +
-    end.getUTCMonth() -
-    start.getUTCMonth();
-  let periods = Math.floor(elapsedMonths / monthsPerPeriod);
-  while (periods >= 0) {
-    if (addMonths(rule.start_date, periods * monthsPerPeriod) <= endDate) return periods + 1;
-    periods -= 1;
-  }
-  return 0;
-}
-
 export function eventTotalHours(event: LeaveEvent): number {
   return event.days.reduce(
     (total, day) => total + day.allocations.reduce((dayTotal, allocation) => dayTotal + allocation.hours, 0),
     0,
   );
-}
-
-export function eventHoursFromPoolThrough(event: LeaveEvent, poolId: number, date: string): number {
-  return event.days
-    .filter((day) => day.date <= date)
-    .flatMap((day) => day.allocations)
-    .filter((allocation) => allocation.pool_id === poolId)
-    .reduce((total, allocation) => total + allocation.hours, 0);
 }
 
 export function totalsOn(store: Store, date: string): { accrued: number; used: number; balance: number } {
@@ -820,10 +722,6 @@ export function eventDateRangeLabel(event: LeaveEvent): string {
   const first = prettyDate(dates[0] ?? "");
   const last = prettyDate(dates.at(-1) ?? "");
   return first === last ? first : `${first} – ${last}`;
-}
-
-export function balanceHistory(store: Store, today: string, poolId?: number): BalancePoint[] {
-  return balanceHistoryForDates(store, today, balanceHistoryDates(store, today, poolId), poolId);
 }
 
 export function balanceHistoryDates(store: Store, today: string, poolId?: number): string[] {
