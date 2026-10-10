@@ -33,8 +33,9 @@ export function useStoredPlanner(persistence: PlannerPersistence = plannerApi) {
     controller.edit((document) => ({ ...store, settings: settings ?? document.settings ?? { ...defaultSettings } }), generation);
   }, [controller, generation]);
   const logout = useCallback(() => controller.logout(generation), [controller, generation]);
+  const logoutEverywhere = useCallback(() => controller.logout(generation, true), [controller, generation]);
   return { ...snapshot, store: snapshot.document, settings: snapshot.document.settings ?? defaultSettings,
-    setStore, setSettings, importBackup, retry: controller.retry, logout,
+    setStore, setSettings, importBackup, retry: controller.retry, logout, logoutEverywhere,
     migrate: () => controller.migrate(generation), chooseRemote: () => controller.chooseRemote(generation),
     finishLocalMigration: (remove: boolean) => controller.finishLocalMigration(remove, generation),
     fetchLatest: () => controller.fetchLatest(generation), resolveConflict: (replace: boolean) => controller.resolveConflict(replace, generation) };

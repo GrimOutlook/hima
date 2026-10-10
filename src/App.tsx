@@ -665,7 +665,7 @@ function Planner({ planner }: { planner: ReturnType<typeof useStoredPlanner> }) 
       {modal?.type === "settings" && <SettingsModal firstDayOfWeek={firstDayOfWeek} onChange={setFirstDayOfWeek} ignoreWeekends={ignoreWeekends} onIgnoreWeekendsChange={setIgnoreWeekends} defaultTimeline={defaultTimeline} onDefaultTimelineChange={setDefaultTimeline} onExport={exportData} onImport={(importSettings) => {
         importSettingsRef.current = importSettings;
         importInputRef.current?.click();
-      }} onClose={closeSettings} />}
+      }} onLogoutEverywhere={() => { void planner.logoutEverywhere(); }} onClose={closeSettings} />}
       {informationPool && (
         <PoolInformationModal {...poolCardProps(informationPool)} onEditCap={(capId) => setModal({ type: "edit-cap", poolId: informationPool.id, capId })} onClose={() => setModal(null)} />
       )}

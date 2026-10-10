@@ -80,17 +80,25 @@ async fn upgrade_preserves_planners_and_rejects_changed_migrations(pool: PgPool)
     let user = db.ensure_user("https://upgrade", "existing").await.unwrap();
     let document = json!({"version":1,"pools":[],"events":[],"next_id":9});
     let before = db.save(user, &document, 0).await.unwrap();
+    let auth_schema = sqlx::migrate::Migrator {
+        migrations: std::borrow::Cow::Borrowed(&hima_api::db::MIGRATOR.migrations[..2]),
+        ignore_missing: false,
+        locking: true,
+        no_tx: false,
+    };
+    auth_schema.run(&pool).await.unwrap();
+    sqlx::query("INSERT INTO sessions (token_hash,user_id,csrf_token,expires_at) VALUES ('upgrade-session',$1,'csrf',clock_timestamp() + interval '1 hour')")
+        .bind(user).execute(&pool).await.unwrap();
     db.migrate().await.unwrap();
     db.migrate().await.unwrap();
     assert_eq!(db.load(user).await.unwrap().unwrap(), before);
-    sqlx::query("INSERT INTO sessions (token_hash,user_id,csrf_token,expires_at) VALUES ('upgrade-session',$1,'csrf',clock_timestamp() + interval '1 hour')")
-        .bind(user).execute(&pool).await.unwrap();
+    assert!(sqlx::query_scalar::<_, bool>("SELECT last_seen_at > clock_timestamp() - interval '1 minute' FROM sessions WHERE token_hash='upgrade-session'").fetch_one(&pool).await.unwrap());
     let versions: Vec<i64> =
         sqlx::query_scalar("SELECT version FROM _sqlx_migrations WHERE success ORDER BY version")
             .fetch_all(&pool)
             .await
             .unwrap();
-    assert_eq!(versions, vec![202610090001, 202610090002]);
+    assert_eq!(versions, vec![202610090001, 202610090002, 202610090003]);
 
     // A release must fail closed if an applied migration has been rewritten.
     sqlx::query(

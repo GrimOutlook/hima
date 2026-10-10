@@ -28,6 +28,14 @@ afterEach(async () => {
   vi.restoreAllMocks(); vi.useRealTimers(); vi.unstubAllGlobals();
 });
 const tick = async () => { await act(async () => { await vi.advanceTimersByTimeAsync(500); }); };
+it("signs out everywhere from settings through the session-bound controller", async () => {
+  await act(async () => root.render(<App />));
+  await tick();
+  await act(async () => container.querySelector<HTMLButtonElement>('[aria-label="Open settings"]')!.click());
+  await act(async () => [...container.querySelectorAll("button")].find((button) => button.textContent === "Sign out everywhere")!.click());
+  expect(plannerApi.logout).toHaveBeenCalledWith({ user_id: 1, csrf_token: "a" }, expect.any(AbortSignal), true);
+  expect(container.textContent).toContain("Sign in");
+});
 const waitForText = async (text: string) => {
   await vi.waitFor(async () => {
     await act(async () => { await vi.advanceTimersByTimeAsync(50); });

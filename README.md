@@ -325,6 +325,10 @@ Endpoints:
   data returns 403 `csrf_failed`; an absent/expired session returns 401. GET logout
   is unsupported. Application logout does not end the provider's SSO session;
   a later login may authenticate without prompting at the provider.
+- **POST `/auth/logout-all`** uses the same Origin and CSRF verification and deletes
+  every session belonging to the authenticated account, including this browser.
+  Settings exposes this as **Sign out everywhere**. It clears browser cookies and
+  redirects to `/`; other accounts and the provider's SSO session are unaffected.
 
 Unsafe `/api/*` requests use the same session/Origin/CSRF middleware. Browser clients
 must send the CSRF header for mutations; no cross-origin CORS access is enabled.
@@ -334,8 +338,12 @@ HttpOnly, SameSite=Lax, Path=/, and no Domain attribute. The callback must use a
 top-level GET redirect (`response_mode=query`), so Lax permits the login cookie.
 
 Sessions have 256-bit opaque random tokens; PostgreSQL stores only their SHA-256
-hashes, user IDs, CSRF tokens, and expiration. Sessions survive backend restarts and
-expire **seven days after login**, without sliding renewal. Login rotates and revokes
+hashes, user IDs, CSRF tokens, expiration, and last-seen timestamps. Sessions survive backend restarts and
+expire after **24 hours without authenticated requests** or **seven days after login**,
+whichever comes first. Each successful session check atomically updates last-seen
+without sliding the seven-day cap; visible-page session polling counts as activity.
+Existing sessions begin their idle window when the activity migration runs.
+Login rotates and revokes
 the session previously presented by that browser. Other devices retain their own
 sessions. Expired rows are pruned when a login starts; expiration is checked on every
 access independently of cleanup. Login transactions store PKCE verifiers and nonces

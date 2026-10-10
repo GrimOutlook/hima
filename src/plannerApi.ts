@@ -40,7 +40,7 @@ export const plannerApi: PlannerPersistence = {
       body: JSON.stringify({ expected_revision: revision, document }),
     }));
   },
-  async logout(session, signal) {
-    await request("/auth/logout", signal, { method: "POST", headers: { "X-CSRF-Token": session.csrf_token } }, true);
+  async logout(session, signal, everywhere = false) {
+    await request(everywhere ? "/auth/logout-all" : "/auth/logout", signal, { method: "POST", headers: { "X-CSRF-Token": session.csrf_token } }, true);
   },
 };

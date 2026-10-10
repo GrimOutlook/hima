@@ -225,14 +225,14 @@ export class PlannerController {
     this.publish({ document: replace ? this.state.document : latest.document, revision: latest.revision, latest: null, saveStatus: replace ? "pending" : "saved", error: null, generation: replace ? this.state.generation : this.state.generation + 1 });
     this.schedule();
   };
-  logout = async (generation = this.state.generation) => {
+  logout = async (generation = this.state.generation, everywhere = false) => {
     const session = this.state.session;
     if (!this.active || !session || this.state.phase !== "ready" || generation !== this.state.generation) return;
     this.cancel();
     const epoch = this.epoch;
     this.publish({ phase: "logging-out" });
     try {
-      await this.persistence.logout(session, this.abort.signal);
+      await this.persistence.logout(session, this.abort.signal, everywhere);
       if (!this.current(epoch)) return;
       this.preserve();
       this.cancel();
