@@ -115,7 +115,7 @@ describe("incremental uncapped balance history", () => {
     },
   );
 
-  it("scans event days once per pool over a decade of daily chart points", () => {
+  it("indexes event days once across pools and reuses the ledger for cards and totals", () => {
     let eventScans = 0;
     const pools: Pool[] = Array.from({ length: 8 }, (_, index) => ({
       id: index + 1, name: "Leave", caps: [],
@@ -130,11 +130,16 @@ describe("incremental uncapped balance history", () => {
       },
     }));
     const dates = Array.from({ length: 3652 }, (_, index) => addDays("2020-01-01", index));
-    const history = balanceHistoryForDates({ ...emptyStore(), pools, events }, "2025-01-01", dates);
+    const store = { ...emptyStore(), pools, events };
+    const history = balanceHistoryForDates(store, "2025-01-01", dates);
     expect(history).toHaveLength(dates.length);
     expect(history[0]?.balance).toBe(807);
     expect(history.at(-1)?.balance).toBe(800 + 8 * (Math.floor(3651 / 7) + 1) - 300);
-    expect(eventScans).toBe(events.length * pools.length);
+    dates.forEach((date, index) => {
+      expect(totalsOn(store, date).balance).toBe(history[index]!.balance);
+      for (const pool of pools) poolTotalsOn(store, pool.id, date);
+    });
+    expect(eventScans).toBe(events.length);
   });
 });
 
@@ -245,7 +250,7 @@ describe("holiday hours", () => {
       additions: [...pool.additions, { id: 4, amount: 6, date: "2025-12-01" }],
     }] };
     expect(poolTotalsOn(store, 1, "2026-01-02")).toEqual({ accrued: 10, used: 0, balance: 6 });
-    store.pools[0]!.additions.push({ id: 5, amount: 7, reset: true, date: "2026-01-01" });
+    store.pools = store.pools.map((pool) => ({ ...pool, additions: [...pool.additions, { id: 5, amount: 7, reset: true, date: "2026-01-01" }] }));
     expect(poolTotalsOn(store, 1, "2026-01-02").balance).toBe(7);
   });
 

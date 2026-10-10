@@ -1,5 +1,4 @@
-import { addDays, addMonths, compareDates, firstDate, isValidDate, nthWeekdayInMonth } from "./dates";
-import { dayPoolHours } from "./events";
+import { addDays, compareDates, firstDate, formatDateParts, isValidDate, MAX_DATE, nthWeekdayInMonth } from "./dates";
 import { roundHours } from "./hours";
 import type { LeaveDay, LeaveEvent, Pool, Store } from "./types";
 
@@ -49,9 +48,75 @@ interface PoolDailyActions {
   reset?: number;
 }
 
+interface LedgerIndex {
+  dates: string[];
+  snapshots: PoolLedgerSnapshot[];
+  dayFigures: Map<string, { dayHours: number; startingBalance: number }>;
+}
+
+// Store updates replace pools/events immutably. Weak keys release old planners;
+// all consumers (including charts and previews) share the same running ledger.
+// Expand through the supported maximum once, so later/future queries never
+// replay recurrence. Query results are copies to keep snapshots private.
+const ledgerCache = new WeakMap<LeaveEvent[], WeakMap<Pool, LedgerIndex>>();
+const eventCache = new WeakMap<LeaveEvent[], Map<number, Map<string, number>>>();
+
+function indexedEventHours(events: LeaveEvent[]): Map<number, Map<string, number>> {
+  const cached = eventCache.get(events);
+  if (cached) return cached;
+  const indexed = new Map<number, Map<string, number>>();
+  for (const event of events) {
+    for (const day of event.days) {
+      const hoursByPool = new Map<number, number>();
+      for (const allocation of day.allocations) {
+        hoursByPool.set(allocation.pool_id, (hoursByPool.get(allocation.pool_id) ?? 0) + allocation.hours);
+      }
+      for (const [poolId, hours] of hoursByPool) {
+        if (hours <= 0) continue;
+        const days = indexed.get(poolId) ?? new Map<string, number>();
+        days.set(day.date, (days.get(day.date) ?? 0) + hours);
+        indexed.set(poolId, days);
+      }
+    }
+  }
+  eventCache.set(events, indexed);
+  return indexed;
+}
+
+export function poolDayFiguresOn(store: Store, poolId: number, date: string): { dayHours: number; startingBalance: number } {
+  const totals = poolTotalsOn(store, poolId, date);
+  const pool = store.pools.find((candidate) => candidate.id === poolId);
+  const figures = pool && ledgerCache.get(store.events)?.get(pool)?.dayFigures.get(date);
+  return figures ? { ...figures } : { dayHours: 0, startingBalance: totals.balance };
+}
+
 export function poolLedgerForDates(pool: Pool, events: LeaveEvent[], dates: string[]): PoolLedgerSnapshot[] {
-  const throughDate = dates.at(-1);
-  if (!throughDate || !isValidDate(throughDate)) return dates.map(emptySnapshot);
+  if (dates.length === 0) return [];
+  let pools = ledgerCache.get(events);
+  if (!pools) {
+    pools = new WeakMap();
+    ledgerCache.set(events, pools);
+  }
+  let ledger = pools.get(pool);
+  if (!ledger) {
+    ledger = buildLedger(pool, indexedEventHours(events).get(pool.id));
+    pools.set(pool, ledger);
+  }
+  return dates.map((date) => {
+    if (!isValidDate(date)) return emptySnapshot();
+    let low = 0;
+    let high = ledger.dates.length;
+    while (low < high) {
+      const middle = (low + high) >>> 1;
+      if (ledger.dates[middle]! <= date) low = middle + 1;
+      else high = middle;
+    }
+    return { ...(ledger.snapshots[low - 1] ?? emptySnapshot()) };
+  });
+}
+
+function buildLedger(pool: Pool, eventHours: Map<string, number> | undefined): LedgerIndex {
+  const throughDate = MAX_DATE;
 
   const actions = new Map<string, PoolDailyActions>();
   const actionForDate = (date: string): PoolDailyActions => {
@@ -88,6 +153,10 @@ export function poolLedgerForDates(pool: Pool, events: LeaveEvent[], dates: stri
 
     let occurrenceIndex = 0;
     let previousOccurrence = "";
+    const startYear = Number(rule.start_date.slice(0, 4));
+    const startMonth = Number(rule.start_date.slice(5, 7)) - 1;
+    const startDay = Number(rule.start_date.slice(8, 10));
+    const startTime = Date.UTC(startYear, startMonth, startDay);
     while (true) {
       let occurrenceDate: string | null;
       if (rule.cadence === "YearlyNthWeekday") {
@@ -97,13 +166,17 @@ export function poolLedgerForDates(pool: Pool, events: LeaveEvent[], dates: stri
         occurrenceIndex += 1;
         if (!occurrenceDate || occurrenceDate < rule.start_date) continue;
       } else {
-        occurrenceDate = rule.cadence === "Weekly"
-          ? addDays(rule.start_date, occurrenceIndex * 7)
-          : rule.cadence === "Fortnightly"
-            ? addDays(rule.start_date, occurrenceIndex * 14)
-            : addMonths(rule.start_date, occurrenceIndex * (rule.cadence === "Monthly" ? 1 : 12));
+        if (rule.cadence === "Weekly" || rule.cadence === "Fortnightly") {
+          const occurrence = new Date(startTime + occurrenceIndex * (rule.cadence === "Weekly" ? 7 : 14) * 86400000);
+          occurrenceDate = formatDateParts(occurrence.getUTCFullYear(), occurrence.getUTCMonth() + 1, occurrence.getUTCDate());
+        } else {
+          const month = startMonth + occurrenceIndex * (rule.cadence === "Monthly" ? 1 : 12);
+          const occurrence = new Date(Date.UTC(startYear, month, 1));
+          const lastDay = new Date(Date.UTC(startYear, month + 1, 0)).getUTCDate();
+          occurrenceDate = formatDateParts(occurrence.getUTCFullYear(), occurrence.getUTCMonth() + 1, Math.min(startDay, lastDay));
+        }
       }
-      if (!isValidDate(occurrenceDate) || occurrenceDate > recurringEnd || occurrenceDate <= previousOccurrence) break;
+      if (occurrenceDate > recurringEnd || occurrenceDate <= previousOccurrence) break;
       if (rule.reset) actionForDate(occurrenceDate).reset = rule.amount;
       else postCredit(occurrenceDate, rule.amount, rule.expires_same_day);
       previousOccurrence = occurrenceDate;
@@ -111,48 +184,38 @@ export function poolLedgerForDates(pool: Pool, events: LeaveEvent[], dates: stri
     }
   }
 
-  for (const event of events) {
-    for (const day of event.days) {
-      if (!isValidDate(day.date) || day.date > throughDate) continue;
-      const hours = dayPoolHours(day, pool.id);
-      if (hours > 0) actionForDate(day.date).used += hours;
-    }
-  }
+  for (const [date, hours] of eventHours ?? []) actionForDate(date).used += hours;
 
   const orderedActions = [...actions.entries()].sort(([left], [right]) => compareDates(left, right));
-  let actionIndex = 0;
   let balance = 0;
   let accrued = 0;
   let used = 0;
   let expiringBalance = 0;
-  return dates.map((date) => {
-    while (true) {
-      const action = orderedActions[actionIndex];
-      if (!action || action[0] > date) break;
-      const [actionDate, daily] = action;
-      // Only the unused portion of the previous day's temporary credit expires.
-      balance = roundHours(balance - expiringBalance);
+  const dayFigures = new Map<string, { dayHours: number; startingBalance: number }>();
+  const snapshots = orderedActions.map(([actionDate, daily]) => {
+    // Only the unused portion of the previous day's temporary credit expires.
+    balance = roundHours(balance - expiringBalance);
+    expiringBalance = 0;
+    const activeCap = pool.caps.find(
+      (cap) => cap.start_date <= actionDate && (!cap.end_date || actionDate <= cap.end_date),
+    );
+    // Cap each credit when posted; same-day leave use is applied after accrual.
+    const acceptedAccrual = activeCap
+      ? Math.min(daily.accrued, Math.max(0, activeCap.max_balance - balance))
+      : daily.accrued;
+    dayFigures.set(actionDate, { dayHours: daily.used, startingBalance: daily.reset ?? roundHours(balance + acceptedAccrual) });
+    balance = roundHours(balance + acceptedAccrual - daily.used);
+    // Permanent credits are posted first when a cap limits same-day accrual.
+    const acceptedExpiring = Math.max(0, acceptedAccrual - (daily.accrued - (daily.expiring ?? 0)));
+    expiringBalance = roundHours(Math.max(0, acceptedExpiring - daily.used));
+    accrued = roundHours(accrued + acceptedAccrual);
+    used = roundHours(used + daily.used);
+    // Reset dates replace the remaining balance at the end of the day.
+    if (daily.reset !== undefined) {
+      balance = daily.reset;
       expiringBalance = 0;
-      const activeCap = pool.caps.find(
-        (cap) => cap.start_date <= actionDate && (!cap.end_date || actionDate <= cap.end_date),
-      );
-      // Cap each credit when posted; same-day leave use is applied after accrual.
-      const acceptedAccrual = activeCap
-        ? Math.min(daily.accrued, Math.max(0, activeCap.max_balance - balance))
-        : daily.accrued;
-      balance = roundHours(balance + acceptedAccrual - daily.used);
-      // Permanent credits are posted first when a cap limits same-day accrual.
-      const acceptedExpiring = Math.max(0, acceptedAccrual - (daily.accrued - (daily.expiring ?? 0)));
-      expiringBalance = roundHours(Math.max(0, acceptedExpiring - daily.used));
-      accrued = roundHours(accrued + acceptedAccrual);
-      used = roundHours(used + daily.used);
-      // Reset dates replace the remaining balance at the end of the day.
-      if (daily.reset !== undefined) {
-        balance = daily.reset;
-        expiringBalance = 0;
-      }
-      actionIndex += 1;
     }
     return { accrued, used, balance };
   });
+  return { dates: orderedActions.map(([date]) => date), snapshots, dayFigures };
 }
