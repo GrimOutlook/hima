@@ -95,11 +95,11 @@ fn date<'a>(o: &'a Map<String, Value>, key: &str) -> Result<&'a str> {
             .bytes()
             .enumerate()
             .all(|(i, b)| i == 4 || i == 7 || b.is_ascii_digit())
-        || s[..4].parse::<u32>().unwrap_or(0) < 100
+        || !(1900..=2200).contains(&s[..4].parse::<u32>().unwrap_or(0))
         || NaiveDate::parse_from_str(s, "%Y-%m-%d").is_err()
     {
         return Err(invalid(
-            "Dates must be real YYYY-MM-DD dates (years 0100–9999)",
+            "Dates must be real YYYY-MM-DD dates (years 1900–2200)",
         ));
     }
     Ok(s)

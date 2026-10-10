@@ -46,8 +46,12 @@ performed. `backend/src/planner.rs::validate_document` is the executable contrac
   reuse is permitted. `next_id` is safe, positive, and exceeds every entity ID.
 - Hours are finite numbers, nonnegative, with hundredth-hour precision, using
   the frontend's 1e-7 tolerance on cents. Strings are rejected.
-- Dates are real Gregorian `YYYY-MM-DD` dates, years 0100–9999, matching the
-  frontend's date validator (JavaScript rejects years 0000–0099).
+- Dates are real Gregorian `YYYY-MM-DD` dates, years 1900–2200 inclusive,
+  matching the frontend validator, backup import parser, and calendar picker.
+  Remote documents outside this range are rejected without repair or overwrite.
+  Independently, chart histories are bounded to 3660 points, sampling longer
+  spans while retaining both endpoints and replaying all intervening ledger actions.
+  Chart padding is clamped to the supported date boundaries.
 - Optional `settings` requires all three synchronized preferences:
   `firstDayOfWeek` (full English weekday), `ignoreWeekends` (boolean), and
   `defaultTimeline` (one of `src/settings.ts`'s exact `TIMELINE_PRESETS` strings).

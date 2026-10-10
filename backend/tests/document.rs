@@ -6,6 +6,38 @@ pub fn document() -> Value {
 }
 
 #[test]
+fn supported_date_range_applies_to_every_date_field() {
+    for path in [
+        "/pools/0/additions/0/date",
+        "/pools/0/recurring/0/start_date",
+        "/pools/0/recurring/0/end_date",
+        "/pools/0/caps/0/start_date",
+        "/pools/0/caps/0/end_date",
+        "/events/0/days/0/date",
+    ] {
+        for date in [
+            "1900-01-01",
+            "2200-12-31",
+            "1899-12-31",
+            "2201-01-01",
+            "0100-01-01",
+            "9999-12-31",
+        ] {
+            let mut v = document();
+            v["pools"][0]["recurring"][0]["end_date"] = json!("2200-12-31");
+            v["pools"][0]["caps"][0]["start_date"] = json!("1900-01-01");
+            v["pools"][0]["caps"][0]["end_date"] = json!("2200-12-31");
+            *v.pointer_mut(path).unwrap() = json!(date);
+            assert_eq!(
+                validate_document(&v).is_ok(),
+                ("1900-01-01"..="2200-12-31").contains(&date),
+                "{path}: {date}"
+            );
+        }
+    }
+}
+
+#[test]
 fn version_one_compatibility() {
     let mut v = document();
     validate_document(&v).unwrap();
