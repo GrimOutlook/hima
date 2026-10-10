@@ -757,9 +757,39 @@ async fn oidc_and_persistent_browser_sessions(pool: PgPool) {
         .status(),
         StatusCode::BAD_REQUEST
     );
-    let response = request(&app, "GET", &callback, &browser, &[]).await;
+    let response = request(&app, "GET", &callback, &format!("foo; {browser}; bar"), &[]).await;
     assert_eq!(response.status(), StatusCode::SEE_OTHER);
     let session = cookie(&response, "__Host-hima-session=");
+    // Unrelated malformed fragments and unreadable headers cannot hide a session.
+    for invalid_first in [true, false] {
+        let mut request = Request::builder()
+            .uri("/api/me")
+            .body(Body::empty())
+            .unwrap();
+        let headers = request.headers_mut();
+        let invalid = axum::http::HeaderValue::from_bytes(b"other=\xff").unwrap();
+        if invalid_first {
+            headers.append("cookie", invalid.clone());
+        }
+        headers.append("cookie", format!("foo; {session}; bar").parse().unwrap());
+        headers.append("cookie", invalid);
+        assert_eq!(
+            app.clone().oneshot(request).await.unwrap().status(),
+            StatusCode::OK
+        );
+    }
+    assert_eq!(
+        request(
+            &app,
+            "GET",
+            "/api/me",
+            &format!("{session}; foo; {session}"),
+            &[]
+        )
+        .await
+        .status(),
+        StatusCode::UNAUTHORIZED
+    );
     let raw = session.split_once('=').unwrap().1;
     assert_eq!(
         sqlx::query_scalar::<_, i64>("SELECT count(*) FROM sessions WHERE token_hash=$1")

@@ -172,23 +172,114 @@ impl Auth {
         )
     }
     fn read_cookie<'a>(&self, headers: &'a HeaderMap, login: bool) -> Option<&'a str> {
-        let mut found = None;
-        for header in headers.get_all(header::COOKIE) {
-            for part in header.to_str().ok()?.split(';') {
-                let (name, value) = part.trim().split_once('=')?;
-                if name == self.name(login) {
-                    if found.is_some() {
-                        return None;
-                    }
-                    found = Some(value);
-                }
-            }
-        }
-        found.filter(|v| v.len() >= 32 && v.len() <= 128)
+        read_cookie(headers, self.name(login))
     }
     pub(crate) async fn session(&self, headers: &HeaderMap) -> Result<Session, ApiError> {
         let token = self.read_cookie(headers, false).ok_or_else(unauthorized)?;
         sqlx::query_as::<_, Session>("SELECT user_id, csrf_token FROM sessions WHERE token_hash = $1 AND expires_at > clock_timestamp()") .bind(hash(token)).fetch_optional(&self.db.pool).await.map_err(|_| unavailable())?.ok_or_else(unauthorized)
+    }
+}
+
+fn read_cookie<'a>(headers: &'a HeaderMap, cookie_name: &str) -> Option<&'a str> {
+    let mut found = None;
+    for header in headers.get_all(header::COOKIE) {
+        let Ok(header) = header.to_str() else {
+            continue;
+        };
+        for part in header.split(';') {
+            let Some((name, value)) = part.trim().split_once('=') else {
+                continue;
+            };
+            if name == cookie_name {
+                if found.is_some() {
+                    return None;
+                }
+                found = Some(value);
+            }
+        }
+    }
+    found.filter(|v| v.len() >= 32 && v.len() <= 128)
+}
+
+#[cfg(test)]
+mod cookie_tests {
+    use super::*;
+    use axum::http::HeaderValue;
+
+    #[test]
+    fn malformed_cookies_do_not_hide_valid_tokens() {
+        let token = "a".repeat(32);
+        for name in [
+            "__Host-hima-session",
+            "__Host-hima-login",
+            "hima-session",
+            "hima-login",
+        ] {
+            for value in [
+                format!("foo; {name}={token}; bar"),
+                format!("{name}={token}; foo"),
+            ] {
+                for invalid_first in [true, false] {
+                    let mut headers = HeaderMap::new();
+                    let invalid = HeaderValue::from_bytes(b"other=\xff").unwrap();
+                    if invalid_first {
+                        headers.append(header::COOKIE, invalid.clone());
+                    }
+                    headers.append(header::COOKIE, value.parse().unwrap());
+                    headers.append(header::COOKIE, invalid);
+                    assert_eq!(read_cookie(&headers, name), Some(token.as_str()));
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn duplicate_tokens_are_rejected_even_with_malformed_cookies() {
+        let name = "__Host-hima-session";
+        let token = "a".repeat(32);
+        for separate_headers in [true, false] {
+            let mut headers = HeaderMap::new();
+            headers.append(
+                header::COOKIE,
+                format!("{name}={token}; foo").parse().unwrap(),
+            );
+            headers.append(
+                header::COOKIE,
+                HeaderValue::from_bytes(b"other=\xff").unwrap(),
+            );
+            if separate_headers {
+                headers.append(header::COOKIE, format!("{name}={token}").parse().unwrap());
+            } else {
+                headers.insert(
+                    header::COOKIE,
+                    format!("{name}={token}; foo; {name}={token}")
+                        .parse()
+                        .unwrap(),
+                );
+            }
+            assert_eq!(read_cookie(&headers, name), None);
+        }
+    }
+
+    #[test]
+    fn missing_and_invalid_length_tokens_are_rejected() {
+        for value in [
+            "foo".to_owned(),
+            "other=value".to_owned(),
+            "hima-session=".to_owned(),
+            format!("hima-session={}", "a".repeat(31)),
+            format!("hima-session={}", "a".repeat(129)),
+        ] {
+            let mut headers = HeaderMap::new();
+            headers.insert(header::COOKIE, value.parse().unwrap());
+            assert_eq!(read_cookie(&headers, "hima-session"), None);
+        }
+        let mut headers = HeaderMap::new();
+        headers.insert(
+            header::COOKIE,
+            format!("hima-session={}", "a".repeat(128)).parse().unwrap(),
+        );
+        assert_eq!(read_cookie(&headers, "hima-session").unwrap().len(), 128);
     }
 }
 #[derive(sqlx::FromRow)]
