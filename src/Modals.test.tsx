@@ -2,8 +2,9 @@
 import { act, StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 import { expect, it, vi } from "vitest";
-import { AdditionModal, EventModal, ModalFrame, PoolCapModal, SettingsModal } from "./Modals";
+import { AdditionModal, EventModal, ModalFrame, PoolCapModal, PoolModal, SettingsModal } from "./Modals";
 import { emptyStore } from "./model";
+import { defaultSettings } from "./settings";
 
 it("routes cap creation separately and preserves the addition draft across action switches", async () => {
   vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
@@ -19,8 +20,8 @@ it("routes cap creation separately and preserves the addition draft across actio
     await act(async () => container.querySelector("form")!.dispatchEvent(new Event("submit", { bubbles: true, cancelable: true })));
   };
   try {
-    await act(async () => root.render(<AdditionModal mode="add" poolName="Leave" initialAmount="8"
-      initialDate="2026-06-10" initialEndDate="2026-06-30" onClose={vi.fn()}
+    await act(async () => root.render(<AdditionModal mode="add" poolName="Leave"
+      initial={{ amount: "8", date: "2026-06-10", endDate: "2026-06-30" }} onClose={vi.fn()}
       onSave={saveAddition} onSaveCap={saveCap} />));
     await click("Repeating");
     await click("Balance cap");
@@ -92,8 +93,8 @@ it("carries selected addition dates between one-time and repeating modes", async
     await act(async () => container.querySelector("form")!.dispatchEvent(new Event("submit", { bubbles: true, cancelable: true })));
   };
   try {
-    await act(async () => root.render(<AdditionModal mode="add" poolName="Leave" initialAmount="8"
-      initialDate="2026-06-10" onClose={vi.fn()} onSave={save} />));
+    await act(async () => root.render(<AdditionModal mode="add" poolName="Leave"
+      initial={{ amount: "8", date: "2026-06-10" }} onClose={vi.fn()} onSave={save} />));
     await act(async () => container.querySelector<HTMLButtonElement>(".date-picker-trigger")!.click());
     await act(async () => document.querySelector<HTMLButtonElement>('[data-date="2026-06-12"]')!.click());
     await act(async () => document.activeElement!.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true, cancelable: true })));
@@ -213,11 +214,20 @@ it("preserves autofocus and returns from import options before closing Settings"
   opener.focus();
   const root = createRoot(container);
   const close = vi.fn();
+  const change = vi.fn();
   try {
-    await act(async () => root.render(<SettingsModal firstDayOfWeek="Monday" onChange={vi.fn()} ignoreWeekends={false}
-      onIgnoreWeekendsChange={vi.fn()} defaultTimeline="±6 month" onDefaultTimelineChange={vi.fn()}
+    await act(async () => root.render(<SettingsModal settings={defaultSettings} onChange={change}
       onExport={vi.fn()} onImport={vi.fn()} onClose={close} />));
     expect(document.activeElement).toBe(container.querySelector("select"));
+    const selects = container.querySelectorAll("select");
+    await act(async () => {
+      selects[0]!.value = "Sunday";
+      selects[0]!.dispatchEvent(new Event("change", { bubbles: true }));
+      selects[1]!.value = "YTD";
+      selects[1]!.dispatchEvent(new Event("change", { bubbles: true }));
+      container.querySelector<HTMLInputElement>('input[type="checkbox"]')!.click();
+    });
+    expect(change.mock.calls).toEqual([[{ firstDayOfWeek: "Sunday" }], [{ defaultTimeline: "YTD" }], [{ ignoreWeekends: true }]]);
     const importButton = Array.from(container.querySelectorAll("button")).find((button) => button.textContent === "Import JSON")!;
     await act(async () => importButton.click());
     expect(container.querySelector("h2")?.textContent).toBe("Import backup");
@@ -230,6 +240,59 @@ it("preserves autofocus and returns from import options before closing Settings"
     await act(async () => root.unmount());
     expect(document.activeElement).toBe(opener);
     opener.remove();
+    container.remove();
+    vi.unstubAllGlobals();
+  }
+});
+
+it("loads a pool's initial object and preserves visibility and behavior when saving", async () => {
+  vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
+  const container = document.createElement("div");
+  document.body.append(container);
+  const root = createRoot(container);
+  const save = vi.fn();
+  try {
+    await act(async () => root.render(<PoolModal editing initial={{ name: " Leave ", color: "#abcdef",
+      hiddenFromGraph: true, hiddenFromTotal: true, newAdditionsExpireSameDay: true }} onClose={vi.fn()} onSave={save} />));
+    await act(async () => container.querySelector("form")!.dispatchEvent(new Event("submit", { bubbles: true, cancelable: true })));
+    expect(save).toHaveBeenCalledWith(expect.objectContaining({ name: "Leave", color: "#abcdef",
+      hiddenFromGraph: true, hiddenFromTotal: true, newAdditionsExpireSameDay: true }));
+  } finally {
+    await act(async () => root.unmount());
+    container.remove();
+    vi.unstubAllGlobals();
+  }
+});
+
+it("updates matching single allocations with defaults while preserving customized and split allocations", async () => {
+  vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
+  const container = document.createElement("div");
+  document.body.append(container);
+  const root = createRoot(container);
+  const pools = [1, 2].map((id) => ({ id, name: `Pool ${id}`, additions: [], recurring: [], caps: [] }));
+  try {
+    await act(async () => root.render(<EventModal editing={false} pools={pools} store={emptyStore()}
+      initialName="Trip" initialDays={[
+        { date: "2026-06-10", allocations: [{ pool_id: 1, hours: "" }] },
+        { date: "2026-06-11", allocations: [{ pool_id: 2, hours: "3" }] },
+        { date: "2026-06-12", allocations: [{ pool_id: 1, hours: "" }, { pool_id: 2, hours: "4" }] },
+      ]} onClose={vi.fn()} onSave={vi.fn()} />));
+    const defaultHours = container.querySelector<HTMLInputElement>('input[type="number"]')!;
+    await act(async () => {
+      Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")!.set!.call(defaultHours, "7.6");
+      defaultHours.dispatchEvent(new Event("input", { bubbles: true }));
+    });
+    const defaultPool = container.querySelector("select")!;
+    await act(async () => {
+      defaultPool.value = "2";
+      defaultPool.dispatchEvent(new Event("change", { bubbles: true }));
+    });
+    await act(async () => container.querySelector("form")!.dispatchEvent(new Event("submit", { bubbles: true, cancelable: true })));
+    const allocations = Array.from(container.querySelectorAll(".event-allocation-row"));
+    expect(allocations.map((row) => [row.querySelector("select")!.value, row.querySelector("input")!.value]))
+      .toEqual([["2", "7.6"], ["2", "3"], ["1", ""], ["2", "4"]]);
+  } finally {
+    await act(async () => root.unmount());
     container.remove();
     vi.unstubAllGlobals();
   }

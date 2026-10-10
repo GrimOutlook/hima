@@ -4,7 +4,8 @@ import { CalendarPicker } from "./CalendarPicker";
 import { SettingTooltip } from "./SettingTooltip";
 import { POOL_COLORS } from "./poolColors";
 import { pluralize } from "./presentation";
-import { TIMELINE_PRESETS, type TimelinePreset } from "./settings";
+import { TIMELINE_PRESETS, type BackupSettings, type TimelinePreset } from "./settings";
+import { parseAdditionAmount, validateAdditionDraft, validateCapDraft, validateEventDraft, validatePoolDraft, type CapDraft } from "./modalValidation";
 import {
   addDays,
   dayPoolHours,
@@ -33,8 +34,6 @@ import {
   type Store,
   type Weekday,
 } from "./model";
-
-export type { AdditionFormData, PoolCapFormData, PoolFormData } from "./model";
 
 interface ModalFrameProps {
   icon: string;
@@ -78,15 +77,17 @@ export function ModalFrame({
       (controls()[0] ?? card)?.focus();
     }
     if (!card.contains(document.activeElement)) focusInside();
+    function ownsPopup(target: EventTarget | null) {
+      const popup = target instanceof Element ? target.closest('[role="dialog"][id]') : null;
+      return popup && Array.from(card!.querySelectorAll('[aria-controls]')).some((control) => control.getAttribute("aria-controls") === popup.id);
+    }
     function handleFocus(event: FocusEvent) {
-      const popup = (event.target as Element).closest?.('[role="dialog"][id]');
-      if (popup && Array.from(card!.querySelectorAll('[aria-controls]')).some((control) => control.getAttribute("aria-controls") === popup.id)) return;
+      if (ownsPopup(event.target)) return;
       if (!card!.contains(event.target as Node)) focusInside();
     }
     function handleKeyDown(event: KeyboardEvent) {
       if (event.defaultPrevented) return;
-      const popup = (event.target as Element).closest?.('[role="dialog"][id]');
-      if (popup && Array.from(card!.querySelectorAll('[aria-controls]')).some((control) => control.getAttribute("aria-controls") === popup.id)) return;
+      if (ownsPopup(event.target)) return;
       if (event.key === "Escape") {
         event.preventDefault();
         onCloseRef.current();
@@ -129,13 +130,9 @@ export function ModalFrame({
   );
 }
 
-export function SettingsModal({ firstDayOfWeek, onChange, ignoreWeekends, onIgnoreWeekendsChange, defaultTimeline, onDefaultTimelineChange, onExport, onImport, browserOnly, onLogoutEverywhere, onClose }: {
-  firstDayOfWeek: Weekday;
-  onChange: (day: Weekday) => void;
-  ignoreWeekends: boolean;
-  onIgnoreWeekendsChange: (ignore: boolean) => void;
-  defaultTimeline: TimelinePreset;
-  onDefaultTimelineChange: (preset: TimelinePreset) => void;
+export function SettingsModal({ settings, onChange, onExport, onImport, browserOnly, onLogoutEverywhere, onClose }: {
+  settings: BackupSettings;
+  onChange: (change: Partial<BackupSettings>) => void;
   onExport: () => void;
   onImport: (importSettings: boolean) => void;
   onLogoutEverywhere?: () => void;
@@ -163,20 +160,20 @@ export function SettingsModal({ firstDayOfWeek, onChange, ignoreWeekends, onIgno
     <div className="modal-form">
       <label className="field-label">
         First day of the week
-        <select autoFocus value={firstDayOfWeek} onChange={(event) => onChange(event.currentTarget.value as Weekday)} aria-describedby="week-start-description">
+        <select autoFocus value={settings.firstDayOfWeek} onChange={(event) => onChange({ firstDayOfWeek: event.currentTarget.value as Weekday })} aria-describedby="week-start-description">
           {WEEKDAYS.map((day) => <option key={day} value={day}>{day}</option>)}
         </select>
       </label>
       <p className="wizard-hint" id="week-start-description">Calendar pickers display weeks starting on this day.</p>
       <label className="field-label">
         Default timeline
-        <select value={defaultTimeline} onChange={(event) => onDefaultTimelineChange(event.currentTarget.value as TimelinePreset)} aria-describedby="default-timeline-description">
+        <select value={settings.defaultTimeline} onChange={(event) => onChange({ defaultTimeline: event.currentTarget.value as TimelinePreset })} aria-describedby="default-timeline-description">
           {TIMELINE_PRESETS.map((preset) => <option key={preset} value={preset}>{preset === "±6 month" ? "±6 months" : preset}</option>)}
         </select>
       </label>
       <p className="wizard-hint" id="default-timeline-description">The graph timeline shown when first loading the page. ±6 months shows six months before and after today.</p>
       <fieldset className="pool-visibility-settings">
-        <label><input type="checkbox" checked={ignoreWeekends} onChange={(event) => onIgnoreWeekendsChange(event.currentTarget.checked)} aria-describedby="ignore-weekends-description" />Ignore weekends</label>
+        <label><input type="checkbox" checked={settings.ignoreWeekends} onChange={(event) => onChange({ ignoreWeekends: event.currentTarget.checked })} aria-describedby="ignore-weekends-description" />Ignore weekends</label>
       </fieldset>
       <p className="wizard-hint" id="ignore-weekends-description">Skip Saturdays and Sundays in the graph and calendar selections. Existing entries and balance calculations are preserved.</p>
       <div className="field-label">Data backup</div>
@@ -209,31 +206,40 @@ function DeleteButton({ label, onDelete }: { label: string; onDelete: () => void
   </button>;
 }
 
+function HoursInput({ label, value, onChange, min = "0.01", placeholder = "e.g. 7.6" }: {
+  label: string;
+  value: string;
+  onChange: (value: string) => void;
+  min?: string;
+  placeholder?: string;
+}) {
+  return <label className="field-label">{label}
+    <div className="input-with-suffix">
+      <input type="number" min={min} step="0.01" placeholder={placeholder} value={value}
+        onChange={(event) => onChange(event.currentTarget.value)} />
+      <span>hours</span>
+    </div>
+  </label>;
+}
+
 interface PoolModalProps {
   onDelete?: () => void;
-  initialColor?: string;
   editing: boolean;
-  initialName?: string;
-  initialDate?: string;
-  initialHiddenFromGraph?: boolean;
-  initialHiddenFromTotal?: boolean;
-  initialNewAdditionsExpireSameDay?: boolean;
+  initial?: Partial<Pick<PoolFormData, "name" | "color" | "openingDate" | "hiddenFromGraph" | "hiddenFromTotal" | "newAdditionsExpireSameDay">>;
   onClose: () => void;
   onSave: (form: PoolFormData) => string | null;
 }
 
 export function PoolModal({
   onDelete,
-  initialColor = "#60866b",
   editing,
-  initialName = "",
-  initialDate = todayDate(),
-  initialHiddenFromGraph = false,
-  initialHiddenFromTotal = false,
-  initialNewAdditionsExpireSameDay = false,
+  initial = {},
   onClose,
   onSave,
 }: PoolModalProps) {
+  const { name: initialName = "", color: initialColor = "#60866b", openingDate: initialDate = todayDate(),
+    hiddenFromGraph: initialHiddenFromGraph = false, hiddenFromTotal: initialHiddenFromTotal = false,
+    newAdditionsExpireSameDay: initialNewAdditionsExpireSameDay = false } = initial;
   const [name, setName] = useState(initialName);
   const [color, setColor] = useState(initialColor);
   const [customColor, setCustomColor] = useState(!POOL_COLORS.includes(initialColor.toLowerCase()));
@@ -247,16 +253,9 @@ export function PoolModal({
   function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const trimmedName = name.trim();
-    if (!trimmedName) {
-      setError("Add a name for this pool.");
-      return;
-    }
-    if (!editing && openingAmount.trim() !== "" && parseHours(openingAmount, true) === null) {
-      setError("Enter a starting balance with up to two decimal places.");
-      return;
-    }
-    if (!editing && !isValidDate(openingDate)) {
-      setError("Choose a valid starting date.");
+    const validationError = validatePoolDraft({ name, openingAmount, openingDate }, editing);
+    if (validationError) {
+      setError(validationError);
       return;
     }
     const saveError = onSave({
@@ -347,20 +346,7 @@ export function PoolModal({
         )}
         {!editing && (
           <div className="form-two-columns">
-            <label className="field-label">
-              Starting balance
-              <div className="input-with-suffix">
-                <input
-                  type="number"
-                  min="0"
-                  step="0.01"
-                  placeholder="0"
-                  value={openingAmount}
-                  onChange={(event) => setOpeningAmount(event.currentTarget.value)}
-                />
-                <span>hours</span>
-              </div>
-            </label>
+            <HoursInput label="Starting balance" min="0" placeholder="0" value={openingAmount} onChange={setOpeningAmount} />
             <CalendarPicker label="Balance as of" value={openingDate} onChange={setOpeningDate} />
           </div>
         )}
@@ -456,12 +442,6 @@ export function PoolUsageModal({ pool, events, onClose }: PoolUsageModalProps) {
   );
 }
 
-interface CapDraft {
-  amount: string;
-  date: string;
-  endDate: string;
-}
-
 export function PoolCapModal({ poolName, editing, initialAmount = "", initialDate = "", initialEndDate = "", draft, onDraftChange, actions, onClose, onSave, onDelete }: {
   poolName: string;
   editing: boolean;
@@ -483,19 +463,12 @@ export function PoolCapModal({ poolName, editing, initialAmount = "", initialDat
   }
   function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    const maxBalance = parseHours(amount, true);
-    if (amount.trim() === "" || maxBalance === null) {
-      setError("Enter a maximum balance of zero or more with up to two decimal places.");
+    const validationError = validateCapDraft({ amount, date, endDate });
+    if (validationError) {
+      setError(validationError);
       return;
     }
-    if (!isValidDate(date) || (endDate && !isValidDate(endDate))) {
-      setError("Choose a valid start date and, if provided, end date.");
-      return;
-    }
-    if (endDate && endDate < date) {
-      setError("A cap's end date must be on or after its start date.");
-      return;
-    }
+    const maxBalance = parseHours(amount, true)!;
     const saveError = onSave({ max_balance: maxBalance, start_date: date, ...(endDate ? { end_date: endDate } : {}) });
     if (saveError) setError(saveError);
   }
@@ -505,12 +478,7 @@ export function PoolCapModal({ poolName, editing, initialAmount = "", initialDat
     labelledBy="cap-modal-title" onClose={onClose}>
     <form className="modal-form" onSubmit={submit}>
       {actions}
-      <label className="field-label">Maximum balance
-        <div className="input-with-suffix">
-          <input type="number" min="0" step="0.01" placeholder="e.g. 7.6" value={amount} onChange={(event) => update({ amount: event.currentTarget.value })} />
-          <span>hours</span>
-        </div>
-      </label>
+      <HoursInput label="Maximum balance" min="0" value={amount} onChange={(amount) => update({ amount })} />
       <CalendarPicker label="Starts on" value={date} onChange={(date) => update({ date })} />
       <CalendarPicker label="End date (inclusive, optional)" optional min={date} value={endDate} onChange={(endDate) => update({ endDate })} />
       {error && <p className="form-error" role="alert">{error}</p>}
@@ -526,17 +494,9 @@ export function PoolCapModal({ poolName, editing, initialAmount = "", initialDat
 interface AdditionModalProps {
   onDelete?: () => void;
   onSaveCap?: (cap: PoolCapFormData) => string | null;
-  initialReset?: boolean;
-  initialExpiresSameDay?: boolean;
   poolName: string;
   mode: "add" | "edit-one-time" | "edit-recurring";
-  initialAmount?: string;
-  initialDate?: string;
-  initialEndDate?: string;
-  initialCadence?: Cadence;
-  initialMonth?: number;
-  initialNthWeekday?: NthWeekday;
-  initialWeekday?: Weekday;
+  initial?: Partial<Omit<AdditionFormData, "amount" | "recurring" | "additionalEntries"> & { amount: string }>;
   onClose: () => void;
   onSave: (addition: AdditionFormData) => string | null;
 }
@@ -544,20 +504,16 @@ interface AdditionModalProps {
 export function AdditionModal({
   onDelete,
   onSaveCap,
-  initialReset = false,
-  initialExpiresSameDay = false,
   poolName,
   mode,
-  initialAmount = "",
-  initialDate = "",
-  initialEndDate = "",
-  initialCadence = "Fortnightly",
-  initialMonth = Number(todayDate().slice(5, 7)),
-  initialNthWeekday = "First",
-  initialWeekday = "Friday",
+  initial = {},
   onClose,
   onSave,
 }: AdditionModalProps) {
+  const { reset: initialReset = false, expiresSameDay: initialExpiresSameDay = false, amount: initialAmount = "",
+    date: initialDate = "", endDate: initialEndDate = "", cadence: initialCadence = "Fortnightly",
+    month: initialMonth = Number(todayDate().slice(5, 7)), nthWeekday: initialNthWeekday = "First",
+    weekday: initialWeekday = "Friday" } = initial;
   const adding = mode === "add";
   const [action, setAction] = useState<"add" | "reset" | "cap">(initialReset ? "reset" : "add");
   const reset = action === "reset";
@@ -575,42 +531,15 @@ export function AdditionModal({
 
   function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    const parsedAmount = reset && amount.trim() === "" ? 0 : parseHours(amount, reset);
-    if (parsedAmount === null) {
-      setError(reset
-        ? "Enter a reset balance of zero or more with up to two decimal places."
-        : "Enter an amount greater than zero with up to two decimal places.");
+    const validationError = validateAdditionDraft({ amount, reset, date, recurring, cadence, month, nthWeekday,
+      weekday, endDate, batchAdding, selectedDates });
+    if (validationError) {
+      setError(validationError);
       return;
     }
-    if (!batchAdding && !isValidDate(date)) {
-      setError("Choose a valid date.");
-      return;
-    }
-    if (
-      recurring &&
-      cadence === "YearlyNthWeekday" &&
-      (!Number.isInteger(month) || month < 1 || month > 12 || !nthWeekday || !weekday)
-    ) {
-      setError("Choose a valid occurrence, weekday, and month.");
-      return;
-    }
-    if (recurring && endDate && !isValidDate(endDate)) {
-      setError("Choose a valid end date.");
-      return;
-    }
-    if (recurring && endDate && endDate < date) {
-      setError("The end date must be on or after the schedule's start date.");
-      return;
-    }
-    const parsedEntries: { amount: number; date: string }[] = [];
+    const parsedAmount = parseAdditionAmount(amount, reset)!;
+    const parsedEntries = batchAdding ? selectedDates.slice(1).map((date) => ({ amount: parsedAmount, date })) : [];
     const firstSelectedDate = selectedDates[0];
-    if (batchAdding) {
-      if (firstSelectedDate === undefined || selectedDates.some((selected) => !isValidDate(selected))) {
-        setError("Choose at least one valid date.");
-        return;
-      }
-      parsedEntries.push(...selectedDates.slice(1).map((selected) => ({ amount: parsedAmount, date: selected })));
-    }
     const saveError = onSave({
       ...(parsedEntries.length ? { additionalEntries: parsedEntries } : {}),
       reset,
@@ -692,20 +621,8 @@ export function AdditionModal({
             </button>
           </div>
         )}
-        <label className="field-label">
-          {reset ? "Reset balance to" : "Time to add"}
-          <div className="input-with-suffix">
-            <input
-              type="number"
-              min={reset ? "0" : "0.01"}
-              step="0.01"
-              placeholder={reset ? "0" : "e.g. 7.6"}
-              value={amount}
-              onChange={(event) => setAmount(event.currentTarget.value)}
-            />
-            <span>hours</span>
-          </div>
-        </label>
+        <HoursInput label={reset ? "Reset balance to" : "Time to add"} min={reset ? "0" : "0.01"}
+          placeholder={reset ? "0" : "e.g. 7.6"} value={amount} onChange={setAmount} />
         {recurring && (
           <label className="field-label">
             Repeat every
@@ -807,7 +724,7 @@ export function EventModal({
   const [days, setDays] = useState<EditorDay[]>(() => (initialDays ?? []).map(editorDay));
   const [error, setError] = useState("");
 
-  const [step, setStep] = useState(1);
+  const [step, setStep] = useState<1 | 2 | 3>(1);
   const [reviewDays, setReviewDays] = useState<LeaveDay[]>([]);
 
   function selectDates(dates: string[]) {
@@ -817,25 +734,14 @@ export function EventModal({
     setError("");
   }
 
-  function changeDefaultHours(hours: string) {
+  function changeDefaultAllocation<K extends "hours" | "pool_id">(key: K, value: EditorAllocation[K]) {
+    const previous = key === "hours" ? defaultHours : defaultPoolId;
     setDays((current) => current.map((day) => {
       const allocation = day.allocations[0];
-      return day.allocations.length === 1 && allocation?.hours === defaultHours
-        ? { ...day, allocations: [{ ...allocation, hours }] }
+      return day.allocations.length === 1 && allocation && allocation[key] === previous
+        ? { ...day, allocations: [{ ...allocation, [key]: value }] }
         : day;
     }));
-    setDefaultHours(hours);
-    setError("");
-  }
-
-  function changeDefaultPool(poolId: number) {
-    setDays((current) => current.map((day) => {
-      const allocation = day.allocations[0];
-      return day.allocations.length === 1 && allocation?.pool_id === defaultPoolId
-        ? { ...day, allocations: [{ ...allocation, pool_id: poolId }] }
-        : day;
-    }));
-    setDefaultPoolId(poolId);
     setError("");
   }
 
@@ -859,12 +765,9 @@ export function EventModal({
   function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const trimmedName = name.trim();
-    if (!trimmedName) {
-      setError("Give this event a name.");
-      return;
-    }
-    if (days.length === 0) {
-      setError("Add at least one day to this event.");
+    const validationError = validateEventDraft(name, days, pools, editing || step !== 1);
+    if (validationError) {
+      setError(validationError);
       return;
     }
     if (!editing && step === 1) {
@@ -873,43 +776,9 @@ export function EventModal({
       return;
     }
 
-    const uniqueDates = new Set<string>();
-    const savedDays: LeaveDay[] = [];
-    for (const day of days) {
-      if (!isValidDate(day.date)) {
-        setError("Choose a valid date for each event day.");
-        return;
-      }
-      if (uniqueDates.has(day.date)) {
-        setError("Each event day must have a different date.");
-        return;
-      }
-      uniqueDates.add(day.date);
-      if (day.allocations.length === 0) {
-        setError("Choose at least one pool for each event day.");
-        return;
-      }
-      const uniquePools = new Set<number>();
-      const allocations = [];
-      for (const allocation of day.allocations) {
-        if (uniquePools.has(allocation.pool_id)) {
-          setError("Choose each pool only once per day.");
-          return;
-        }
-        uniquePools.add(allocation.pool_id);
-        if (!pools.some((pool) => pool.id === allocation.pool_id)) {
-          setError("Choose an existing pool for each event day.");
-          return;
-        }
-        const hours = parseHours(allocation.hours);
-        if (hours === null) {
-          setError("Enter positive hours with up to two decimal places for each pool allocation.");
-          return;
-        }
-        allocations.push({ pool_id: allocation.pool_id, hours });
-      }
-      savedDays.push({ date: day.date, allocations });
-    }
+    const savedDays: LeaveDay[] = days.map((day) => ({ date: day.date,
+      allocations: day.allocations.map((allocation) => ({ pool_id: allocation.pool_id, hours: parseHours(allocation.hours)! })),
+    }));
 
     if ((editing && step === 1) || (!editing && step === 2)) {
       setReviewDays(sortDays(savedDays));
@@ -935,18 +804,23 @@ export function EventModal({
     `${pools.find((pool) => pool.id === warning.poolId)?.name} is projected to have ${formatHours(warning.balance)} h on ${prettyDate(warning.date)}, including this event and other planned leave.`,
   ) : [];
 
+  const stepContent = editing ? {
+    1: { description: "Update dates, hours, or the source pool for any day.", submit: "Review changes" },
+    2: { description: "Update dates, hours, or the source pool for any day.", submit: "Review changes" },
+    3: { description: "Review your changes and their projected impact before saving.", submit: "Save changes" },
+  } : {
+    1: { description: "Name your event and choose its dates.", submit: "Next: hours & pools" },
+    2: { description: "Choose the hours and source pools for each date.", submit: "Review event" },
+    3: { description: "Review your event and its projected impact before adding it.", submit: "Add to plan" },
+  };
+  const content = stepContent[step];
+
   return (
     <ModalFrame
       icon="↘"
       iconClass="modal-icon-event"
       title={editing ? "Edit planned leave" : "Plan some leave"}
-      description={
-        editing
-          ? step === 3 ? "Review your changes and their projected impact before saving." : "Update dates, hours, or the source pool for any day."
-          : step === 1 ? "Name your event and choose its dates."
-          : step === 2 ? "Choose the hours and source pools for each date."
-          : "Review your event and its projected impact before adding it."
-      }
+      description={content.description}
       labelledBy="event-modal-title"
       onClose={onClose}
     >
@@ -974,16 +848,17 @@ export function EventModal({
         </>}
         {!editing && step <= 2 && <>
           <div className="form-two-columns">
-            <label className="field-label">
-              Default hours
-              <div className="input-with-suffix">
-                <input type="number" min="0.01" step="0.01" placeholder="e.g. 7.6" value={defaultHours} onChange={(event) => changeDefaultHours(event.currentTarget.value)} />
-                <span>hours</span>
-              </div>
-            </label>
+            <HoursInput label="Default hours" value={defaultHours} onChange={(hours) => {
+              changeDefaultAllocation("hours", hours);
+              setDefaultHours(hours);
+            }} />
             <label className="field-label">
               Default pool
-              <select value={defaultPoolId} onChange={(event) => changeDefaultPool(Number(event.currentTarget.value))}>
+              <select value={defaultPoolId} onChange={(event) => {
+                const poolId = Number(event.currentTarget.value);
+                changeDefaultAllocation("pool_id", poolId);
+                setDefaultPoolId(poolId);
+              }}>
                 {pools.map((pool) => <option key={pool.id} value={pool.id}>{pool.name}</option>)}
               </select>
             </label>
@@ -1039,20 +914,9 @@ export function EventModal({
                           {pools.map((pool) => <option key={pool.id} value={pool.id}>{pool.name}</option>)}
                         </select>
                       </label>
-                      <label className="field-label">
-                        Hours
-                        <input
-                          type="number"
-                          min="0.01"
-                          step="0.01"
-                          placeholder="e.g. 3.5"
-                          value={allocation.hours}
-                          onChange={(event) => {
-                            const hours = event.currentTarget.value;
-                            updateAllocation(dayIndex, allocationIndex, (current) => ({ ...current, hours }));
-                          }}
-                        />
-                      </label>
+                      <HoursInput label="Hours" placeholder="e.g. 3.5" value={allocation.hours} onChange={(hours) => {
+                        updateAllocation(dayIndex, allocationIndex, (current) => ({ ...current, hours }));
+                      }} />
                       {day.allocations.length > 1 && (
                         <button
                           className="icon-button allocation-remove"
@@ -1108,9 +972,9 @@ export function EventModal({
         <div className="modal-actions">
           {editing && onDelete && <DeleteButton label="Delete event" onDelete={onDelete} />}
           <button className="button button-quiet" type="button" onClick={onClose}>Cancel</button>
-          {step > 1 && <button className="button button-quiet" type="button" onClick={() => { setStep(editing ? 1 : step - 1); setError(""); }}>Back</button>}
+          {step > 1 && <button className="button button-quiet" type="button" onClick={() => { setStep(editing || step === 2 ? 1 : 2); setError(""); }}>Back</button>}
           <button className="button button-primary" type="submit">
-            {editing ? step === 3 ? "Save changes" : "Review changes" : step === 1 ? "Next: hours & pools" : step === 2 ? "Review event" : "Add to plan"}
+            {content.submit}
           </button>
         </div>
       </form>
