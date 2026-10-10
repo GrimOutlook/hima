@@ -163,6 +163,12 @@ export function storeActionError(store: Store, action: StoreAction): string | nu
 
 // Revalidate against the current store so queued updates cannot resurrect deleted
 // entries or introduce overlapping caps. Invalid actions leave the store intact.
+// Optional fields must be absent, not undefined: the controller validates edits
+// before JSON serialization, which would otherwise silently omit these fields.
+function definedFields<T extends object>(value: T): T {
+  return Object.fromEntries(Object.entries(value).filter(([, field]) => field !== undefined)) as T;
+}
+
 export function reduceStore(store: Store, action: StoreAction): Store {
   if (storeActionError(store, action)) return store;
   const updatePool = (poolId: number, update: (pool: Pool) => Pool): Store => ({
@@ -171,11 +177,11 @@ export function reduceStore(store: Store, action: StoreAction): Store {
   switch (action.type) {
     case "save-pool": {
       const settings = { name: action.name, hidden_from_graph: action.hiddenFromGraph, hidden_from_total: action.hiddenFromTotal, new_additions_expire_same_day: action.newAdditionsExpireSameDay || undefined };
-      if (action.poolId !== undefined) return updatePool(action.poolId, (pool) => ({ ...pool, ...settings, color: action.color }));
+      if (action.poolId !== undefined) return updatePool(action.poolId, (pool) => definedFields({ ...pool, ...settings, color: action.color }));
       const amount = action.openingAmount.trim() === "" ? 0 : parseHours(action.openingAmount, true)!;
       const ids = allocateIds(store, amount > 0 ? 2 : 1);
       return { ...store, next_id: ids.nextId, pools: [...store.pools, {
-        id: ids.firstId, ...settings, additions: amount > 0 ? [{ id: ids.firstId + 1, amount, date: action.openingDate, expires_same_day: action.newAdditionsExpireSameDay || undefined }] : [], recurring: [], caps: [],
+        id: ids.firstId, ...definedFields(settings), additions: amount > 0 ? [definedFields({ id: ids.firstId + 1, amount, date: action.openingDate, expires_same_day: action.newAdditionsExpireSameDay || undefined })] : [], recurring: [], caps: [],
       }] };
     }
     case "save-cap": {
@@ -190,15 +196,15 @@ export function reduceStore(store: Store, action: StoreAction): Store {
       const ids = target ? { firstId: target.id, nextId: store.next_id } : allocateIds(store, entries.length);
       return { ...updatePool(action.poolId, (pool) => {
         const flags = { reset: form.reset || undefined, expires_same_day: !form.reset && (target ? form.expiresSameDay : pool.new_additions_expire_same_day) || undefined };
-        if (target?.type === "one-time") return { ...pool, additions: pool.additions.map((addition) => addition.id === target.id ? { ...addition, amount: form.amount, date: form.date, ...flags } : addition) };
+        if (target?.type === "one-time") return { ...pool, additions: pool.additions.map((addition) => addition.id === target.id ? definedFields({ ...addition, amount: form.amount, date: form.date, ...flags }) : addition) };
         if (target?.type === "recurring" || form.recurring) {
           const rule: RecurringAddition = { id: ids.firstId, amount: form.amount, ...flags, cadence: form.cadence, start_date: form.date, end_date: form.endDate,
             month: form.cadence === "YearlyNthWeekday" ? form.month : undefined,
             nth_weekday: form.cadence === "YearlyNthWeekday" ? form.nthWeekday : undefined,
             weekday: form.cadence === "YearlyNthWeekday" ? form.weekday : undefined };
-          return { ...pool, recurring: target ? pool.recurring.map((existing) => existing.id === target.id ? { ...existing, ...rule } : existing) : [...pool.recurring, rule] };
+          return { ...pool, recurring: target ? pool.recurring.map((existing) => existing.id === target.id ? definedFields({ ...existing, ...rule }) : existing) : [...pool.recurring, definedFields(rule)] };
         }
-        return { ...pool, additions: [...pool.additions, ...entries.map((entry, index) => ({ ...entry, id: ids.firstId + index, ...flags }))] };
+        return { ...pool, additions: [...pool.additions, ...entries.map((entry, index) => definedFields({ ...entry, id: ids.firstId + index, ...flags }))] };
       }), next_id: ids.nextId };
     }
     case "save-event": {
