@@ -1,13 +1,13 @@
 import { useCallback, useEffect, useState, useSyncExternalStore, type SetStateAction } from "react";
 import type { Store } from "./model";
 import { defaultSettings, type BackupSettings } from "./settings";
-import { persistence as selectedPersistence, storageMode } from "./persistence";
-import { PlannerController } from "./plannerController";
+import { persistence as selectedPersistence, storageMode, type StorageMode } from "./persistence";
+import { PlannerController, SAVE_DEBOUNCE_MS } from "./plannerController";
 import { browserLocalSource } from "./localMigration";
 import type { PlannerPersistence } from "./plannerPersistence";
 
-export function useStoredPlanner(persistence: PlannerPersistence = selectedPersistence, mode: "local" | "remote" = storageMode) {
-  const [controller] = useState(() => new PlannerController(persistence, 500, mode === "remote" ? browserLocalSource : undefined));
+export function useStoredPlanner(persistence: PlannerPersistence = selectedPersistence, mode: StorageMode = storageMode) {
+  const [controller] = useState(() => new PlannerController(persistence, SAVE_DEBOUNCE_MS, mode === "remote" ? browserLocalSource : undefined));
   const snapshot = useSyncExternalStore(controller.subscribe, controller.getSnapshot);
   useEffect(() => {
     controller.start();

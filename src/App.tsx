@@ -5,6 +5,7 @@ import { CSS } from "@dnd-kit/utilities";
 import { CalendarPicker } from "./CalendarPicker";
 import { poolColor } from "./poolColors";
 import { parseBackupJson } from "./backup";
+import { errorMessage } from "./errors";
 import { downloadBackup, downloadJson } from "./backupDownload";
 import { ConflictPanel, MigrationScreen, saveStatusLabel } from "./PlannerScreens";
 import { EventRow } from "./EventRow";
@@ -74,7 +75,7 @@ function App() {
     try {
       if (clear) { clearBrowserData(); planner.retry(); }
       else downloadJson(exportRawBrowserData());
-    } catch (error) { window.alert(error instanceof Error ? error.message : "Browser storage could not be accessed."); }
+    } catch (error) { window.alert(errorMessage(error, "Browser storage could not be accessed.")); }
   }
   return <>
     {planner.recoveries.map((recovery, index) => <p role="alert" key={index}>
@@ -271,7 +272,7 @@ function Planner({ planner }: { planner: ReturnType<typeof useStoredPlanner> }) 
       setModal(null);
     } catch (error) {
       if (!mounted.current) return;
-      const message = error instanceof Error ? error.message : "The file could not be read.";
+      const message = errorMessage(error, "The file could not be read.");
       window.alert(`Could not import data: ${message}`);
     }
   }

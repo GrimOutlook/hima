@@ -1,4 +1,5 @@
 import { parseBackupJson } from "./backup";
+import { errorMessage } from "./errors";
 import { ACK_PREFIX, SETTINGS_KEY, STORAGE_KEY, serializeRawBrowserData } from "./browserStorage";
 import { exportRawBrowserData } from "./localPersistence";
 import { emptyStore } from "./model";
@@ -38,7 +39,7 @@ export const browserLocalSource: LocalSource = {
         validateDocument(document);
         return { document, warnings, error: null, raw, fingerprint };
       } catch (error) {
-        return { document: null, warnings, error: error instanceof Error ? error.message : "Invalid local data", raw, fingerprint };
+        return { document: null, warnings, error: errorMessage(error, "Invalid local data"), raw, fingerprint };
       }
     } catch { return null; }
   },
