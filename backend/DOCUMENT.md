@@ -100,11 +100,20 @@ endpoints return 401 `unauthenticated`.
 Returns 200 with the complete document and server metadata:
 
 ```json
-{"document":{"version":1,"pools":[],"events":[],"next_id":1},"revision":1,"updated_at":"2026-10-09T12:00:00Z"}
+{"document":{"version":1,"pools":[],"events":[],"next_id":1},"revision":1,"updated_at":"2026-10-09T12:00:00Z","session":{"user_id":123,"csrf_token":"..."}}
 ```
 
 An account without a saved planner returns 200 with
-`{"document":null,"revision":0,"updated_at":null}`. Loading does not create a row.
+`{"document":null,"revision":0,"updated_at":null,"session":{"user_id":123,"csrf_token":"..."}}`. Loading does not create a row.
+
+The session is the exact authenticated session used to select the document.
+Startup requests `/api/me`, then `/api/planner`, and compares both user ID and
+CSRF token before publishing the draft. Mismatches restart discovery; epoch
+guards discard late responses. This catches account changes, same-account
+re-login, and switches away and back during a load without a third request.
+Adapters without embedded identity retain sequential session verification.
+Responses are no-store; deployments must disable compression for both endpoints
+because they contain session secrets (see `deploy/nginx.conf`).
 
 ### PUT `/api/planner`
 

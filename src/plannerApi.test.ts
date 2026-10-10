@@ -5,6 +5,10 @@ import { validateDocument } from "./plannerPersistence";
 import { defaultSettings } from "./settings";
 
 afterEach(() => vi.unstubAllGlobals());
+it.each([undefined, null, {}, { user_id: 1, csrf_token: "" }, { user_id: 0, csrf_token: "token" }])("rejects unverified load identities (%j)", async (identity) => {
+  vi.stubGlobal("fetch", vi.fn().mockResolvedValue(Response.json({ document: null, revision: 0, updated_at: null, session: identity })));
+  await expect(plannerApi.load(new AbortController().signal)).rejects.toMatchObject({ code: "invalid_response" });
+});
 const signal = new AbortController().signal;
 const session = { user_id: 1, csrf_token: "session-bound-token" };
 it("revokes every session through a cookie-authenticated CSRF-protected request", async () => {
@@ -16,12 +20,12 @@ it("revokes every session through a cookie-authenticated CSRF-protected request"
 it("uses relative cookie-authenticated no-store requests and session-bound CSRF mutations", async () => {
   const document = { ...emptyStore(), settings: defaultSettings };
   const fetch = vi.fn().mockResolvedValueOnce(Response.json(session))
-    .mockResolvedValueOnce(Response.json({ document: null, revision: 0, updated_at: null }))
+    .mockResolvedValueOnce(Response.json({ document: null, revision: 0, updated_at: null, session }))
     .mockResolvedValueOnce(Response.json({ revision: 1, updated_at: "2026-10-09T12:00:00Z" }))
     .mockResolvedValueOnce(new Response("<!doctype html><title>hima</title>", { status: 200 }));
   vi.stubGlobal("fetch", fetch);
   expect(await plannerApi.session(signal)).toEqual(session);
-  expect(await plannerApi.load(signal)).toEqual({ document: null, revision: 0, updated_at: null });
+  expect(await plannerApi.load(signal)).toEqual({ document: null, revision: 0, updated_at: null, session });
   expect(await plannerApi.save(document, 0, session, signal)).toEqual({ revision: 1, updated_at: "2026-10-09T12:00:00Z" });
   await plannerApi.logout(session, signal);
   for (const [, options] of fetch.mock.calls) expect(options).toMatchObject({ signal, credentials: "same-origin", cache: "no-store" });
@@ -66,7 +70,7 @@ it("preserves valid remote field values and ordering without normalization", asy
     { id: 3, max_balance: 0, start_date: "2026-02-01", end_date: "2026-02-28" },
     { id: 2, max_balance: 10, start_date: "2026-01-01", end_date: "2026-01-31" },
   ] }], next_id: 4 };
-  vi.stubGlobal("fetch", vi.fn().mockResolvedValue(Response.json({ document, revision: 5, updated_at: "now" })));
+  vi.stubGlobal("fetch", vi.fn().mockResolvedValue(Response.json({ document, revision: 5, updated_at: "now", session })));
   expect((await plannerApi.load(signal)).document).toEqual(document);
 });
 

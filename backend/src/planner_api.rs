@@ -29,6 +29,15 @@ struct PlannerResponse {
     updated_at: Option<chrono::DateTime<chrono::Utc>>,
 }
 
+#[derive(Serialize)]
+struct LoadResponse {
+    #[serde(flatten)]
+    planner: PlannerResponse,
+    // The exact authenticated session used to select the planner, including
+    // empty accounts. A user ID alone cannot detect same-account re-login.
+    session: Session,
+}
+
 pub(crate) fn router(auth: Arc<Auth>) -> Router {
     Router::new()
         .route("/api/planner", get(load).put(save))
@@ -48,14 +57,17 @@ impl From<StoredPlanner> for PlannerResponse {
 async fn load(
     State(auth): State<Arc<Auth>>,
     headers: HeaderMap,
-) -> Result<Json<PlannerResponse>, ApiError> {
+) -> Result<Json<LoadResponse>, ApiError> {
     let session = auth.session(&headers).await?;
     let stored = auth
         .db
         .load(session.user_id)
         .await
         .map_err(|_| ApiError::planner_unavailable())?;
-    Ok(Json(stored.map(PlannerResponse::from).unwrap_or_default()))
+    Ok(Json(LoadResponse {
+        planner: stored.map(PlannerResponse::from).unwrap_or_default(),
+        session,
+    }))
 }
 
 async fn save(

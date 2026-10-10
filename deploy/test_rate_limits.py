@@ -139,20 +139,15 @@ with tempfile.TemporaryDirectory(prefix="hima-rate-limits-") as directory:
         status, body, headers = request("/assets/index-abc123.js", headers={"Accept-Encoding": "gzip"}, metadata=True)
         assert (status, body) == (200, b"index-abc123.js")
         assert "Content-Encoding" not in headers, "Small assets should not be compressed"
-        for path in ("/api/planner", "/api/me", "/api/me?compression=1"):
+        for path in ("/api/planner", "/api/planner?compression=1", "/api/me", "/api/me?compression=1"):
             status, body, headers = request(path, client="127.0.0.5", headers={
                 "Accept-Encoding": "gzip", "Via": "1.1 test-proxy", "X-CSRF-Token": "test-token",
             }, metadata=True)
             assert status == 200, (path, status, body)
             assert headers["X-Upstream-Accept-Encoding"] == "absent"
             assert headers["X-Upstream-CSRF"] == "test-token"
-            if path == "/api/planner":
-                assert headers["Content-Encoding"] == "gzip"
-                assert "Accept-Encoding" in headers["Vary"]
-                assert gzip.decompress(body) == json_body
-            else:
-                assert "Content-Encoding" not in headers
-                assert body == json_body
+            assert "Content-Encoding" not in headers
+            assert body == json_body
         status, body, headers = request("/api/planner", client="127.0.0.5", metadata=True)
         assert (status, body) == (200, json_body)
         assert "Content-Encoding" not in headers

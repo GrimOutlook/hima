@@ -3,7 +3,7 @@ import { isValidSettings, type BackupSettings } from "./settings";
 
 export type PlannerDocument = Store & { settings?: BackupSettings };
 export type PlannerSession = { user_id: number; csrf_token: string };
-export type StoredPlanner = { document: PlannerDocument | null; revision: number; updated_at: string | null };
+export type StoredPlanner = { document: PlannerDocument | null; revision: number; updated_at: string | null; session?: PlannerSession };
 export type SavedPlanner = { revision: number; updated_at: string; document?: PlannerDocument };
 export type SaveOptions = { echoDocument?: boolean };
 

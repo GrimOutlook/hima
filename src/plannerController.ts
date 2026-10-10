@@ -99,9 +99,12 @@ export class PlannerController {
   }
   private async loadValidated(session: PlannerSession, epoch: number, signal: AbortSignal) {
     const loaded = await this.persistence.load(signal);
-    const verified = await this.persistence.session(signal);
+    // Remote loads carry the session that selected the document. Adapters
+    // without that guarantee retain the sequential verification fallback.
+    const verified = loaded.session ?? await this.persistence.session(signal);
     if (!this.current(epoch)) return null;
     if (!sameSession(session, verified)) {
+      this.cancel();
       void this.refresh();
       return null;
     }

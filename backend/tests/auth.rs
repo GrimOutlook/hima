@@ -347,7 +347,7 @@ async fn planner_http_contract(app: &Router, pool: &PgPool) {
     assert_eq!(empty.status().as_u16(), 200);
     assert_eq!(
         serde_json::from_str::<Value>(&empty.text().await.unwrap()).unwrap(),
-        json!({"document":null,"revision":0,"updated_at":null})
+        json!({"document":null,"revision":0,"updated_at":null,"session":{"user_id":users[0],"csrf_token":"planner-csrf"}})
     );
     let missing = send(
         "PUT",
@@ -443,9 +443,11 @@ async fn planner_http_contract(app: &Router, pool: &PgPool) {
         .await
         .unwrap();
     assert_eq!(loaded.status().as_u16(), 200);
+    let mut expected = serde_json::to_value(&before).unwrap();
+    expected["session"] = json!({"user_id":users[0],"csrf_token":"planner-csrf"});
     assert_eq!(
         serde_json::from_str::<Value>(&loaded.text().await.unwrap()).unwrap(),
-        serde_json::to_value(&before).unwrap()
+        expected
     );
     for (raw, status) in [
         (body(1, &doc), 409),
