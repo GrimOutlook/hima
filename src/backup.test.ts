@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { parseBackupJson, serializeBackupJson, type BackupSettings } from "./backup";
-import { emptyStore, serializeStoreJson } from "./model";
+import { emptyStore } from "./model";
 
 describe("backups", () => {
   const settings: BackupSettings = {
@@ -16,7 +16,7 @@ describe("backups", () => {
 
   it("imports legacy backups without supplying replacement settings", () => {
     const store = emptyStore();
-    expect(parseBackupJson(serializeStoreJson(store))).toEqual({ store });
+    expect(parseBackupJson(JSON.stringify(store))).toEqual({ store });
   });
 
   it.each([

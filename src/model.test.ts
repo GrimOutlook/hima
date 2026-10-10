@@ -2,7 +2,6 @@ import { describe, expect, it } from "vitest";
 import {
   addDays,
   allocateIds,
-  balanceHistory,
   balanceHistoryDates,
   balanceHistoryForDates,
   capRangesOverlap,
@@ -16,14 +15,24 @@ import {
   parseHours,
   poolBalanceOn,
   poolTotalsOn,
-  recurringOccurrencesThrough,
-  serializeStoreJson,
   totalsOn,
   validDateOrFallback,
   type LeaveEvent,
   type Pool,
   type RecurringAddition,
+  type Store,
 } from "./model";
+
+// Exercise the same date-selection and ledger APIs used by the chart.
+function balanceHistory(store: Store, today: string, poolId?: number) {
+  return balanceHistoryForDates(store, today, balanceHistoryDates(store, today, poolId), poolId);
+}
+
+// Check recurrence through the production ledger, without a second generator.
+function accruedOccurrences(rule: RecurringAddition, date: string): number {
+  const store = { ...emptyStore(), pools: [{ id: 1, name: "Leave", additions: [], recurring: [{ ...rule, amount: 1 }], caps: [] }] };
+  return poolTotalsOn(store, 1, date).accrued;
+}
 
 function recurring(
   cadence: RecurringAddition["cadence"],
@@ -54,10 +63,17 @@ describe("incremental uncapped balance history", () => {
       }] };
       const dates = ["2023-12-31", "2024-01-01", "2024-02-29", "2025-02-28", "2026-02-28", "2027-01-01"];
       const history = balanceHistoryForDates(store, "2025-02-28", dates, 1);
-      expect(history).toEqual(dates.map((date) => ({
+      const occurrences = {
+        Weekly: [0, 0, 5, 57, 109, 109],
+        Fortnightly: [0, 0, 3, 29, 55, 55],
+        Monthly: [0, 0, 2, 14, 26, 26],
+        Yearly: [0, 0, 1, 2, 3, 3],
+        YearlyNthWeekday: [0, 0, 1, 2, 3, 3],
+      }[cadence];
+      expect(history).toEqual(dates.map((date, index) => ({
         date,
         balance: (date < "2024-01-01" ? 0 : 10.5 - 12) +
-          1.25 * recurringOccurrencesThrough(rule, date) - (date >= "2025-02-28" ? 2.25 : 0),
+          1.25 * occurrences[index]! - (date >= "2025-02-28" ? 2.25 : 0),
         projected: date > "2025-02-28",
       })));
     },
@@ -201,7 +217,7 @@ describe("holiday hours", () => {
     const store = { ...emptyStore(), next_id: 4, pools: [{ ...pool, recurring: [{
       ...recurring("Yearly", "2026-01-01", 8), id: 3, expires_same_day: true,
     }] }] };
-    expect(parseStoreJson(serializeStoreJson(store))).toEqual(store);
+    expect(parseStoreJson(JSON.stringify(store))).toEqual(store);
     const resetStore = { ...store, pools: [{ ...store.pools[0], additions: [{ ...pool.additions[0], reset: true }] }] };
     expect(normalizeStore(resetStore).pools[0]!.additions[0]!.expires_same_day).toBeUndefined();
   });
@@ -285,22 +301,22 @@ describe("calendar date validation", () => {
 describe("recurring accruals", () => {
   it("includes the start date and only completed occurrences", () => {
     const rule = recurring("Fortnightly", "2026-01-02", 3.8);
-    expect(recurringOccurrencesThrough(rule, "2026-01-01")).toBe(0);
-    expect(recurringOccurrencesThrough(rule, "2026-01-02")).toBe(1);
-    expect(recurringOccurrencesThrough(rule, "2026-01-30")).toBe(3);
+    expect(accruedOccurrences(rule, "2026-01-01")).toBe(0);
+    expect(accruedOccurrences(rule, "2026-01-02")).toBe(1);
+    expect(accruedOccurrences(rule, "2026-01-30")).toBe(3);
   });
 
   it("clamps monthly dates while keeping the original day for later months", () => {
     const rule = recurring("Monthly", "2025-01-31");
-    expect(recurringOccurrencesThrough(rule, "2025-02-28")).toBe(2);
-    expect(recurringOccurrencesThrough(rule, "2025-03-30")).toBe(2);
-    expect(recurringOccurrencesThrough(rule, "2025-03-31")).toBe(3);
+    expect(accruedOccurrences(rule, "2025-02-28")).toBe(2);
+    expect(accruedOccurrences(rule, "2025-03-30")).toBe(2);
+    expect(accruedOccurrences(rule, "2025-03-31")).toBe(3);
   });
 
   it("handles yearly leap-day recurrence with calendar-month clamping", () => {
     const rule = recurring("Yearly", "2024-02-29");
-    expect(recurringOccurrencesThrough(rule, "2025-02-28")).toBe(2);
-    expect(recurringOccurrencesThrough(rule, "2025-02-27")).toBe(1);
+    expect(accruedOccurrences(rule, "2025-02-28")).toBe(2);
+    expect(accruedOccurrences(rule, "2025-02-27")).toBe(1);
   });
 
   it("calculates yearly nth-weekday accrual dates", () => {
@@ -318,9 +334,9 @@ describe("recurring accruals", () => {
       nth_weekday: "First",
       weekday: "Friday",
     };
-    expect(recurringOccurrencesThrough(rule, "2026-08-06")).toBe(0);
-    expect(recurringOccurrencesThrough(rule, "2026-08-07")).toBe(1);
-    expect(recurringOccurrencesThrough(rule, "2027-08-06")).toBe(2);
+    expect(accruedOccurrences(rule, "2026-08-06")).toBe(0);
+    expect(accruedOccurrences(rule, "2026-08-07")).toBe(1);
+    expect(accruedOccurrences(rule, "2027-08-06")).toBe(2);
   });
 
   it("starts nth-weekday schedules at the next matching date and honors their end date", () => {
@@ -334,25 +350,25 @@ describe("recurring accruals", () => {
       nth_weekday: "First",
       weekday: "Friday",
     };
-    expect(recurringOccurrencesThrough(rule, "2026-08-07")).toBe(0);
-    expect(recurringOccurrencesThrough(rule, "2027-08-05")).toBe(0);
-    expect(recurringOccurrencesThrough(rule, "2027-08-06")).toBe(1);
-    expect(recurringOccurrencesThrough(rule, "2028-08-04")).toBe(1);
+    expect(accruedOccurrences(rule, "2026-08-07")).toBe(0);
+    expect(accruedOccurrences(rule, "2027-08-05")).toBe(0);
+    expect(accruedOccurrences(rule, "2027-08-06")).toBe(1);
+    expect(accruedOccurrences(rule, "2028-08-04")).toBe(1);
   });
 
   it("includes accruals through the optional end date, then stops", () => {
     const rule = recurring("Weekly", "2026-01-02", 3.5, "2026-01-16");
-    expect(recurringOccurrencesThrough(rule, "2026-01-01")).toBe(0);
-    expect(recurringOccurrencesThrough(rule, "2026-01-15")).toBe(2);
-    expect(recurringOccurrencesThrough(rule, "2026-01-16")).toBe(3);
-    expect(recurringOccurrencesThrough(rule, "2026-02-01")).toBe(3);
+    expect(accruedOccurrences(rule, "2026-01-01")).toBe(0);
+    expect(accruedOccurrences(rule, "2026-01-15")).toBe(2);
+    expect(accruedOccurrences(rule, "2026-01-16")).toBe(3);
+    expect(accruedOccurrences(rule, "2026-02-01")).toBe(3);
     const store = normalizeStore({ pools: [{ id: 1, name: "Leave", additions: [], recurring: [rule], caps: [] }] });
     expect(poolTotalsOn(store, 1, "2026-02-01").accrued).toBe(10.5);
   });
 
   it("does not accrue when the end date is before the start date", () => {
     const rule = recurring("Monthly", "2026-01-02", 1, "2026-01-01");
-    expect(recurringOccurrencesThrough(rule, "2026-02-01")).toBe(0);
+    expect(accruedOccurrences(rule, "2026-02-01")).toBe(0);
   });
 
   it("limits accruals to the active pool cap, discards excess, and resumes when room opens", () => {
@@ -485,7 +501,7 @@ describe("use-by dates", () => {
     expect(poolBalanceOn(store, 1, "2026-01-03")).toBe(9.5);
     expect(poolTotalsOn(store, 1, "2026-01-04")).toEqual({ accrued: 12, used: 0, balance: 12.25 });
     expect(poolBalanceOn(store, 1, "2026-02-04")).toBe(12.25);
-    expect(parseStoreJson(serializeStoreJson(store))).toEqual(store);
+    expect(parseStoreJson(JSON.stringify(store))).toEqual(store);
   });
 
   it("expires the remaining balance after same-day credits and usage, preserving lifetime totals", () => {
@@ -504,7 +520,7 @@ describe("use-by dates", () => {
     expect(poolBalanceOn(store, 1, "2026-01-30")).toBe(16);
     expect(poolTotalsOn(store, 1, "2026-01-31")).toEqual({ accrued: 25, used: 6, balance: 0 });
     expect(poolTotalsOn(store, 1, "2026-02-01")).toEqual({ accrued: 33, used: 6, balance: 8 });
-    expect(parseStoreJson(serializeStoreJson(store))).toEqual(store);
+    expect(parseStoreJson(JSON.stringify(store))).toEqual(store);
     expect(allocateIds(store).firstId).toBe(7);
     const history = balanceHistory(store, "2026-02-01");
     expect(history.find((point) => point.date === "2026-01-31")?.balance).toBe(0);
@@ -702,7 +718,7 @@ describe("JSON data backups", () => {
       }],
     });
 
-    expect(parseStoreJson(serializeStoreJson(store))).toEqual(store);
+    expect(parseStoreJson(JSON.stringify(store))).toEqual(store);
   });
 
   it("rejects malformed JSON and files without pool and event data", () => {
