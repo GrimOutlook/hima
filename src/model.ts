@@ -90,6 +90,11 @@ export interface BalancePoint {
 
 export const STORAGE_KEY = "hima.store.v1";
 export const STORE_VERSION = 1;
+export const MIN_YEAR = 1900;
+export const MAX_YEAR = 2200;
+export const MIN_DATE = `${MIN_YEAR}-01-01`;
+export const MAX_DATE = `${MAX_YEAR}-12-31`;
+export const MAX_HISTORY_POINTS = 3660;
 
 export function emptyStore(): Store {
   return { version: STORE_VERSION, pools: [], events: [], next_id: 1 };
@@ -618,6 +623,7 @@ export function isValidDate(value: string): boolean {
   const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value);
   if (!match) return false;
   const [, year, month, day] = match;
+  if (Number(year) < MIN_YEAR || Number(year) > MAX_YEAR) return false;
   const date = new Date(Date.UTC(Number(year), Number(month) - 1, Number(day)));
   return (
     date.getUTCFullYear() === Number(year) &&
@@ -693,7 +699,7 @@ export function nthWeekdayInMonth(
   nthWeekday: NthWeekday,
   weekday: Weekday,
 ): string | null {
-  if (!Number.isInteger(year) || year < 1 || year > 9999 || !Number.isInteger(month) || month < 1 || month > 12) {
+  if (!Number.isInteger(year) || year < MIN_YEAR || year > MAX_YEAR || !Number.isInteger(month) || month < 1 || month > 12) {
     return null;
   }
   const weekdayIndex = WEEKDAYS.indexOf(weekday);
@@ -840,18 +846,25 @@ export function balanceHistoryDates(store: Store, today: string, poolId?: number
     (earliest, date) => date < earliest ? date : earliest,
     defaultStart,
   );
-  const start = eventDates.reduce((first, date) => {
+  const rawStart = eventDates.reduce((first, date) => {
     const buffered = addDays(date, -7);
     return buffered < first ? buffered : first;
   }, earliestDate);
-  const end = eventDates.reduce((last, date) => {
+  const rawEnd = eventDates.reduce((last, date) => {
     const buffered = addDays(date, 7);
     return buffered > last ? buffered : last;
   }, `${Number(today.slice(0, 4)) + 1}-12-31`);
+  const start = rawStart < MIN_DATE ? MIN_DATE : rawStart;
+  const end = rawEnd > MAX_DATE ? MAX_DATE : rawEnd;
+  // Bound chart allocation independently of document validation. Long histories
+  // retain both endpoints; ledger replay still includes every intervening action.
+  const span = Math.round((dateFromParts(end)!.getTime() - dateFromParts(start)!.getTime()) / 86_400_000);
+  const step = Math.max(1, Math.ceil(span / (MAX_HISTORY_POINTS - 1)));
   const dates: string[] = [];
-  for (let date = start; date <= end; date = addDays(date, 1)) {
-    dates.push(date);
+  for (let offset = 0; offset < span; offset += step) {
+    dates.push(addDays(start, offset));
   }
+  dates.push(end);
   return dates;
 }
 

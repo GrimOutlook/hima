@@ -1,6 +1,6 @@
 import { createPortal } from "react-dom";
 import { useCallback, useContext, useEffect, useId, useLayoutEffect, useRef, useState } from "react";
-import { addDays, addMonths, isValidDate, MONTH_NAMES, prettyDate, todayDate, validDateOrFallback, WEEKDAYS } from "./model";
+import { addDays, addMonths, isValidDate, MIN_YEAR, MAX_YEAR, MONTH_NAMES, prettyDate, todayDate, validDateOrFallback, WEEKDAYS } from "./model";
 import { FirstDayOfWeekContext, IgnoreWeekendsContext, isWeekend, nextWeekday } from "./settings";
 
 interface CalendarPickerProps {
@@ -157,7 +157,7 @@ export function CalendarPicker({ value, onChange, label = "BALANCE ON", variant 
   const monthParts = viewMonth.split("-").map(Number);
   const year = monthParts[0] ?? 0;
   const month = monthParts[1] ?? 1;
-  const firstYearOption = Math.min(Math.max(1, year - 40), 9999 - 80);
+  const firstYearOption = Math.min(Math.max(MIN_YEAR, year - 40), MAX_YEAR - 80);
   const yearOptions = Array.from({ length: 81 }, (_, index) => firstYearOption + index);
   const daysInMonth = new Date(Date.UTC(year, month, 0)).getUTCDate();
   const firstWeekday = (new Date(Date.UTC(year, month - 1, 1)).getUTCDay() - weekStart + 7) % 7;
@@ -203,7 +203,7 @@ export function CalendarPicker({ value, onChange, label = "BALANCE ON", variant 
     }
     event.preventDefault();
     if (min && candidate < min) { candidate = min; direction = 1; }
-    while (ignoreWeekends && isWeekend(candidate)) candidate = addDays(candidate, direction);
+    while (isValidDate(candidate) && ignoreWeekends && isWeekend(candidate)) candidate = addDays(candidate, direction);
     if (!isValidDate(candidate) || (min && candidate < min)) return;
     focusDayPending.current = true;
     setFocusedDate(candidate);
@@ -290,6 +290,7 @@ export function CalendarPicker({ value, onChange, label = "BALANCE ON", variant 
               className="calendar-nav-button"
               type="button"
               aria-label="Previous month"
+              disabled={year === MIN_YEAR && month === 1}
               onClick={() => setViewMonth(addMonths(viewMonth, -1))}
             >
               ‹
@@ -326,6 +327,7 @@ export function CalendarPicker({ value, onChange, label = "BALANCE ON", variant 
               className="calendar-nav-button"
               type="button"
               aria-label="Next month"
+              disabled={year === MAX_YEAR && month === 12}
               onClick={() => setViewMonth(addMonths(viewMonth, 1))}
             >
               ›

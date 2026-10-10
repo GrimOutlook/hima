@@ -6,6 +6,27 @@ import { CalendarPicker } from "./CalendarPicker";
 import { ModalFrame } from "./Modals";
 import { IgnoreWeekendsContext } from "./settings";
 
+it.each(["1900-01-01", "2200-12-31"])("keeps month and keyboard navigation within the supported range at %s", async (value) => {
+  vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
+  const container = document.createElement("div");
+  document.body.append(container);
+  const root = createRoot(container);
+  try {
+    await act(async () => root.render(<CalendarPicker value={value} onChange={vi.fn()} />));
+    await act(async () => container.querySelector<HTMLButtonElement>("button")!.click());
+    const options = [...document.querySelectorAll<HTMLOptionElement>('[aria-label="Choose year"] option')].map((option) => Number(option.value));
+    expect(options.every((year) => year >= 1900 && year <= 2200)).toBe(true);
+    const lower = value.startsWith("1900");
+    expect(document.querySelector<HTMLButtonElement>(`[aria-label="${lower ? "Previous" : "Next"} month"]`)!.disabled).toBe(true);
+    await act(async () => document.activeElement!.dispatchEvent(new KeyboardEvent("keydown", { key: lower ? "ArrowLeft" : "ArrowRight", bubbles: true })));
+    expect((document.activeElement as HTMLElement).dataset.date).toBe(value);
+  } finally {
+    await act(async () => root.unmount());
+    container.remove();
+    vi.unstubAllGlobals();
+  }
+});
+
 it("enforces minimum dates and weekends, commits a selection, and clears an optional date", async () => {
   vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
   const container = document.createElement("div");
