@@ -1,10 +1,10 @@
 import { useCallback, useEffect, useState, useSyncExternalStore, type SetStateAction } from "react";
 import type { Store } from "./model";
-import type { BackupSettings } from "./backup";
+import { defaultSettings, type BackupSettings } from "./settings";
 import { persistence as selectedPersistence, storageMode } from "./persistence";
 import { PlannerController } from "./plannerController";
 import { browserLocalSource } from "./localMigration";
-import { defaultSettings, type PlannerPersistence } from "./plannerPersistence";
+import type { PlannerPersistence } from "./plannerPersistence";
 
 export function useStoredPlanner(persistence: PlannerPersistence = selectedPersistence, mode: "local" | "remote" = storageMode) {
   const [controller] = useState(() => new PlannerController(persistence, 500, mode === "remote" ? browserLocalSource : undefined));

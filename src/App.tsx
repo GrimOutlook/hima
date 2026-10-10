@@ -8,8 +8,8 @@ import { parseBackupJson, serializeBackupJson } from "./backup";
 import { useStoredPlanner } from "./useStoredPlanner";
 import { clearBrowserData, exportRawBrowserData } from "./localPersistence";
 import { usePoolCardFigures } from "./usePoolCardFigures";
-import { FirstDayOfWeekContext, IgnoreWeekendsContext, nextWeekday } from "./settings";
-import { defaultSettings, type PlannerDocument } from "./plannerPersistence";
+import { defaultSettings, FirstDayOfWeekContext, IgnoreWeekendsContext, nextWeekday } from "./settings";
+import type { PlannerDocument } from "./plannerPersistence";
 import {
   AdditionModal,
   PoolCapModal,

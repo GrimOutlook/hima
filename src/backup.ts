@@ -1,11 +1,5 @@
-import { parseStoreJson, WEEKDAYS, type Store, type Weekday } from "./model";
-import { TIMELINE_PRESETS, type TimelinePreset } from "./settings";
-
-export type BackupSettings = {
-  firstDayOfWeek: Weekday;
-  ignoreWeekends: boolean;
-  defaultTimeline: TimelinePreset;
-};
+import { parseStoreJson, type Store } from "./model";
+import { isValidSettings, type BackupSettings } from "./settings";
 
 export function serializeBackupJson(store: Store, settings: BackupSettings): string {
   return JSON.stringify({ ...store, settings }, null, 2);
@@ -17,14 +11,9 @@ export function parseBackupJson(json: string, warnings: string[] = []): { store:
   if (!("settings" in source)) return { store };
 
   const value = source.settings;
-  if (value === null || typeof value !== "object" || Array.isArray(value)) {
+  if (!isValidSettings(value)) {
     throw new Error("The backup contains invalid settings.");
   }
-  const settings = value as Record<string, unknown>;
-  const firstDayOfWeek = WEEKDAYS.find((day) => day === settings.firstDayOfWeek);
-  const defaultTimeline = TIMELINE_PRESETS.find((preset) => preset === settings.defaultTimeline);
-  if (!firstDayOfWeek || !defaultTimeline || typeof settings.ignoreWeekends !== "boolean") {
-    throw new Error("The backup contains invalid settings.");
-  }
-  return { store, settings: { firstDayOfWeek, ignoreWeekends: settings.ignoreWeekends, defaultTimeline } };
+  const { firstDayOfWeek, ignoreWeekends, defaultTimeline } = value;
+  return { store, settings: { firstDayOfWeek, ignoreWeekends, defaultTimeline } };
 }

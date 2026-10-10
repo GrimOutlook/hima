@@ -7,7 +7,8 @@ export const MONTH_NAMES = [
 
 export type NthWeekday = typeof NTH_WEEKDAYS[number];
 export type Weekday = typeof WEEKDAYS[number];
-export type Cadence = "Weekly" | "Fortnightly" | "Monthly" | "Yearly" | "YearlyNthWeekday";
+export const CADENCES = ["Weekly", "Fortnightly", "Monthly", "Yearly", "YearlyNthWeekday"] as const;
+export type Cadence = typeof CADENCES[number];
 
 export interface OneTimeAddition {
   id: number;
@@ -95,6 +96,20 @@ export const MAX_YEAR = 2200;
 export const MIN_DATE = `${MIN_YEAR}-01-01`;
 export const MAX_DATE = `${MAX_YEAR}-12-31`;
 export const MAX_HISTORY_POINTS = 3660;
+export const MAX_POOL_NAME_LENGTH = 48;
+export const MAX_EVENT_NAME_LENGTH = 64;
+
+export function isHexColor(value: unknown): value is string {
+  return typeof value === "string" && /^#[0-9a-f]{6}$/i.test(value);
+}
+
+function isFiniteHours(value: number): boolean {
+  return Number.isFinite(value) && Number.isFinite(value * 100);
+}
+
+export function hasCentPrecision(value: number): boolean {
+  return isFiniteHours(value) && Math.abs(value * 100 - Math.round(value * 100)) <= 1e-7;
+}
 
 export function emptyStore(): Store {
   return { version: STORE_VERSION, pools: [], events: [], next_id: 1 };
@@ -252,7 +267,7 @@ function numberValue(value: unknown, fallback = 0): number {
 
 function amountValue(value: unknown): number {
   const parsed = typeof value === "number" ? value : Number(value);
-  return Number.isFinite(parsed) && Number.isFinite(parsed * 100) ? roundHours(parsed) : 0;
+  return isFiniteHours(parsed) ? roundHours(parsed) : 0;
 }
 
 function stringValue(value: unknown, fallback = ""): string {
@@ -450,7 +465,7 @@ export function normalizeStore(value: unknown, warnings: string[] = []): Store {
         }
         return [{ id, name, additions, recurring, caps,
           ...(pool.new_additions_expire_same_day === true ? { new_additions_expire_same_day: true } : {}),
-          ...(typeof pool.color === "string" && /^#[0-9a-f]{6}$/i.test(pool.color) ? { color: pool.color } : {}),
+          ...(isHexColor(pool.color) ? { color: pool.color } : {}),
           ...(pool.hidden_from_graph === true ? { hidden_from_graph: true } : {}),
           ...(pool.hidden_from_total === true ? { hidden_from_total: true } : {}),
         }];
@@ -542,17 +557,14 @@ export function recurringScheduleDescription(rule: RecurringAddition): string {
 
 export function parseHours(value: string, allowZero = false): number | null {
   const amount = Number(value.trim());
-  const cents = amount * 100;
   if (
-    !Number.isFinite(amount) ||
-    !Number.isFinite(cents) ||
-    Math.abs(cents - Math.round(cents)) > 1e-7 ||
+    !hasCentPrecision(amount) ||
     amount < 0 ||
     (!allowZero && amount === 0)
   ) {
     return null;
   }
-  return Math.round(cents) / 100;
+  return roundHours(amount);
 }
 
 export function formatHours(value: number): string {

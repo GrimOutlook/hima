@@ -1,7 +1,8 @@
 import { afterEach, expect, it, vi } from "vitest";
 import { plannerApi } from "./plannerApi";
 import { emptyStore } from "./model";
-import { defaultSettings, validateDocument } from "./plannerPersistence";
+import { validateDocument } from "./plannerPersistence";
+import { defaultSettings } from "./settings";
 
 afterEach(() => vi.unstubAllGlobals());
 const signal = new AbortController().signal;

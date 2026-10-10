@@ -1,6 +1,7 @@
 import { emptyStore } from "./model";
 import type { LocalMigration, LocalSource } from "./localMigration";
-import { defaultSettings, PersistenceError, validateDocument, type PlannerDocument, type PlannerPersistence, type PlannerSession } from "./plannerPersistence";
+import { PersistenceError, validateDocument, type PlannerDocument, type PlannerPersistence, type PlannerSession } from "./plannerPersistence";
+import { defaultSettings } from "./settings";
 
 export type SaveStatus = "saved" | "pending" | "failed" | "conflict";
 export type PlannerSnapshot = {

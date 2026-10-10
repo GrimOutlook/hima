@@ -1,3 +1,5 @@
+import { isHexColor } from "./model";
+
 // Keep colors tied to pool IDs so renaming and reordering do not change them.
 export const POOL_COLORS: readonly [string, ...string[]] = [
   "#60866b", "#668eae", "#b98a54", "#9475ad",
@@ -5,6 +7,6 @@ export const POOL_COLORS: readonly [string, ...string[]] = [
 ];
 
 export function poolColor(poolId: number, customColor?: string): string {
-  if (customColor && /^#[0-9a-f]{6}$/i.test(customColor)) return customColor;
+  if (isHexColor(customColor)) return customColor;
   return POOL_COLORS[((poolId - 1) % POOL_COLORS.length + POOL_COLORS.length) % POOL_COLORS.length] ?? POOL_COLORS[0];
 }

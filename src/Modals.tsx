@@ -9,6 +9,8 @@ import {
   formatHours,
   isValidDate,
   MONTH_NAMES,
+  MAX_POOL_NAME_LENGTH,
+  MAX_EVENT_NAME_LENGTH,
   NTH_WEEKDAYS,
   parseHours,
   eventBalanceWarnings,
@@ -285,7 +287,7 @@ export function PoolModal({
             type="text"
             placeholder="e.g. Personal leave"
             value={name}
-            maxLength={48}
+            maxLength={MAX_POOL_NAME_LENGTH}
             autoFocus
             onChange={(event) => setName(event.currentTarget.value)}
           />
@@ -958,7 +960,7 @@ export function EventModal({
             type="text"
             placeholder="e.g. A long weekend"
             value={name}
-            maxLength={64}
+            maxLength={MAX_EVENT_NAME_LENGTH}
             autoFocus
             onChange={(event) => setName(event.currentTarget.value)}
           />
