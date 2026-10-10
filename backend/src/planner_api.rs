@@ -1,4 +1,8 @@
-use crate::{auth::Auth, db::SaveError, error::ApiError};
+use crate::{
+    auth::Auth,
+    db::{SaveError, StoredPlanner},
+    error::ApiError,
+};
 use axum::{
     Json, Router,
     extract::{State, rejection::JsonRejection},
@@ -16,7 +20,7 @@ struct SaveRequest {
     document: Value,
 }
 
-#[derive(Serialize)]
+#[derive(Default, Serialize)]
 struct PlannerResponse {
     document: Option<Value>,
     revision: i64,
@@ -29,12 +33,14 @@ pub(crate) fn router(auth: Arc<Auth>) -> Router {
         .with_state(auth)
 }
 
-fn unavailable() -> ApiError {
-    ApiError::auth(
-        StatusCode::SERVICE_UNAVAILABLE,
-        "planner_unavailable",
-        "Planner storage is temporarily unavailable.",
-    )
+impl From<StoredPlanner> for PlannerResponse {
+    fn from(stored: StoredPlanner) -> Self {
+        Self {
+            document: Some(stored.document),
+            revision: stored.revision,
+            updated_at: Some(stored.updated_at),
+        }
+    }
 }
 
 async fn load(
@@ -46,19 +52,8 @@ async fn load(
         .db
         .load(session.user_id)
         .await
-        .map_err(|_| unavailable())?;
-    Ok(Json(match stored {
-        Some(p) => PlannerResponse {
-            document: Some(p.document),
-            revision: p.revision,
-            updated_at: Some(p.updated_at),
-        },
-        None => PlannerResponse {
-            document: None,
-            revision: 0,
-            updated_at: None,
-        },
-    }))
+        .map_err(|_| ApiError::planner_unavailable())?;
+    Ok(Json(stored.map(PlannerResponse::from).unwrap_or_default()))
 }
 
 async fn save(
@@ -68,7 +63,7 @@ async fn save(
 ) -> Result<Json<PlannerResponse>, ApiError> {
     let session = auth.session(&headers).await?;
     let Json(body) = body.map_err(|e| {
-        ApiError::auth(
+        ApiError::new(
             e.status(),
             "invalid_request",
             "Expected a JSON object with document and nonnegative integer expected_revision.",
@@ -79,21 +74,17 @@ async fn save(
         .save(session.user_id, &body.document, body.expected_revision)
         .await
         .map_err(|e| match e {
-            SaveError::Invalid(_) => ApiError::auth(
+            SaveError::Invalid(_) => ApiError::new(
                 StatusCode::UNPROCESSABLE_ENTITY,
                 "invalid_document",
                 "The document or expected revision is invalid.",
             ),
-            SaveError::Conflict => ApiError::auth(
+            SaveError::Conflict => ApiError::new(
                 StatusCode::CONFLICT,
                 "revision_conflict",
                 "The planner has changed; load it before saving again.",
             ),
-            SaveError::Database(_) => unavailable(),
+            SaveError::Database(_) => ApiError::planner_unavailable(),
         })?;
-    Ok(Json(PlannerResponse {
-        document: Some(p.document),
-        revision: p.revision,
-        updated_at: Some(p.updated_at),
-    }))
+    Ok(Json(p.into()))
 }

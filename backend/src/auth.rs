@@ -60,7 +60,7 @@ trait AuthResult<T> {
 
 impl<T, E> AuthResult<T> for Result<T, E> {
     fn auth_unavailable(self) -> Result<T, ApiError> {
-        self.map_err(|_| unavailable())
+        self.map_err(|_| ApiError::auth_unavailable())
     }
 }
 
@@ -131,28 +131,21 @@ impl SigningKeys {
     }
 }
 fn invalid() -> ApiError {
-    ApiError::auth(
+    ApiError::new(
         StatusCode::BAD_REQUEST,
         "invalid_callback",
         "The login response is invalid or expired.",
     )
 }
-fn unavailable() -> ApiError {
-    ApiError::auth(
-        StatusCode::SERVICE_UNAVAILABLE,
-        "auth_unavailable",
-        "Authentication is temporarily unavailable.",
-    )
-}
 fn unauthorized() -> ApiError {
-    ApiError::auth(
+    ApiError::new(
         StatusCode::UNAUTHORIZED,
         "unauthenticated",
         "Sign in to access this endpoint.",
     )
 }
 fn forbidden() -> ApiError {
-    ApiError::auth(
+    ApiError::new(
         StatusCode::FORBIDDEN,
         "csrf_failed",
         "The request failed CSRF verification.",
