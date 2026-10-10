@@ -1,6 +1,6 @@
 use crate::{
     auth::{Auth, Session},
-    db::{SaveError, StoredPlanner},
+    db::{SaveError, SavedPlanner, StoredPlanner},
     error::ApiError,
 };
 use axum::{
@@ -18,6 +18,8 @@ use std::sync::Arc;
 struct SaveRequest {
     expected_revision: i64,
     document: Value,
+    #[serde(default)]
+    echo_document: bool,
 }
 
 #[derive(Default, Serialize)]
@@ -60,7 +62,7 @@ async fn save(
     State(auth): State<Arc<Auth>>,
     Extension(session): Extension<Session>,
     body: Result<Json<SaveRequest>, JsonRejection>,
-) -> Result<Json<PlannerResponse>, ApiError> {
+) -> Result<Json<SavedPlanner>, ApiError> {
     let Json(body) = body.map_err(|e| {
         ApiError::new(
             e.status(),
@@ -70,7 +72,12 @@ async fn save(
     })?;
     let p = auth
         .db
-        .save(session.user_id, &body.document, body.expected_revision)
+        .save_with_echo(
+            session.user_id,
+            &body.document,
+            body.expected_revision,
+            body.echo_document,
+        )
         .await
         .map_err(|e| match e {
             SaveError::Invalid(_) => ApiError::new(
@@ -85,5 +92,5 @@ async fn save(
             ),
             SaveError::Database(_) => ApiError::planner_unavailable(),
         })?;
-    Ok(Json(p.into()))
+    Ok(Json(p))
 }

@@ -384,14 +384,38 @@ async fn planner_http_contract(app: &Router, pool: &PgPool) {
             (a.status().as_u16(), b.status().as_u16()),
             (200, 409) | (409, 200)
         ));
-        let winner = if a.status().as_u16() == 200 { a } else { b };
+        let (winner, winner_doc) = if a.status().as_u16() == 200 {
+            (a, a_doc)
+        } else {
+            (b, b_doc)
+        };
         let saved: Value = serde_json::from_str(&winner.text().await.unwrap()).unwrap();
         assert_eq!(saved["revision"], revision + 1);
+        assert_eq!(saved.as_object().unwrap().len(), 2);
+        assert!(saved["updated_at"].is_string());
+        assert!(saved.get("document").is_none());
         assert_eq!(
             db.load(users[0]).await.unwrap().unwrap().document,
-            saved["document"]
+            winner_doc
         );
     }
+    let echo = send(
+        "PUT",
+        &tokens[0],
+        json!({"expected_revision":2,"document":doc,"echo_document":true}).to_string(),
+        "https://app.example",
+        "planner-csrf",
+    )
+    .await
+    .unwrap();
+    assert_eq!(echo.status().as_u16(), 200);
+    let echoed: Value = serde_json::from_str(&echo.text().await.unwrap()).unwrap();
+    assert_eq!(echoed["revision"], 3);
+    assert_eq!(echoed["document"], doc);
+    assert_eq!(
+        db.load(users[0]).await.unwrap().unwrap().document,
+        echoed["document"]
+    );
     let before = db.load(users[0]).await.unwrap().unwrap();
     for (content_type, raw, expected_status) in [
         ("text/plain", body(2, &doc), 415),
@@ -436,6 +460,10 @@ async fn planner_http_contract(app: &Router, pool: &PgPool) {
         ),
         (body(-1, &doc), 422),
         (json!({"document":doc}).to_string(), 422),
+        (
+            json!({"document":doc,"expected_revision":3,"echo_document":"true"}).to_string(),
+            422,
+        ),
         (
             json!({"document":doc,"expected_revision":2,"user_id":users[1]}).to_string(),
             422,
@@ -1087,13 +1115,17 @@ async fn oidc_and_persistent_browser_sessions(pool: PgPool) {
     )
     .unwrap();
     let db = Database::from_pool(pool.clone());
+    db.save(
+        before_restart["user_id"].as_i64().unwrap(),
+        &json!({"version":1,"pools":[],"events":[],"next_id":7}),
+        0,
+    )
+    .await
+    .unwrap();
     let saved_before_restart = db
-        .save(
-            before_restart["user_id"].as_i64().unwrap(),
-            &json!({"version":1,"pools":[],"events":[],"next_id":7}),
-            0,
-        )
+        .load(before_restart["user_id"].as_i64().unwrap())
         .await
+        .unwrap()
         .unwrap();
     // Recreate the backend state and reconnect: no in-memory session dependency.
     let reopened = Database::from_pool(

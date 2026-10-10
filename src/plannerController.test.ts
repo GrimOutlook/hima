@@ -2,8 +2,9 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { PlannerController } from "./plannerController";
 import { emptyStore } from "./model";
 import { localPersistence } from "./localPersistence";
-import { PersistenceError, type PlannerDocument, type PlannerPersistence, type StoredPlanner } from "./plannerPersistence";
+import { PersistenceError, type PlannerDocument, type PlannerPersistence, type StoredPlanner, type SavedPlanner } from "./plannerPersistence";
 import { defaultSettings } from "./settings";
+import * as persistence from "./plannerPersistence";
 
 function deferred<T>() {
   let resolve!: (value: T) => void;
@@ -15,6 +16,7 @@ const a = { user_id: 1, csrf_token: "a" };
 const b = { user_id: 2, csrf_token: "b" };
 const doc = (name: string): PlannerDocument => ({ ...emptyStore(), pools: [{ id: 1, name, additions: [], recurring: [], caps: [] }], next_id: 2 });
 const stored = (document: PlannerDocument | null, revision = document ? 1 : 0): StoredPlanner => ({ document, revision, updated_at: document ? "2026-10-09T12:00:00Z" : null });
+const saved = (revision: number, document?: PlannerDocument): SavedPlanner => ({ revision, updated_at: "now", ...(document ? { document } : {}) });
 let api: PlannerPersistence;
 let controller: PlannerController;
 const settle = async () => { for (let i = 0; i < 12; i++) await Promise.resolve(); };
@@ -23,7 +25,7 @@ beforeEach(() => {
   vi.useFakeTimers();
   api = {
     session: vi.fn(async () => a), load: vi.fn(async () => stored(doc("Remote"))),
-    save: vi.fn(async (document, revision) => stored(document, revision + 1)), logout: vi.fn(async () => {}),
+    save: vi.fn(async (document, revision, _session, _signal, options) => saved(revision + 1, options?.echoDocument ? document : undefined)), logout: vi.fn(async () => {}),
   };
   controller = new PlannerController(api);
 });
@@ -41,6 +43,22 @@ describe("browser-only planner lifecycle", () => {
     controller = new PlannerController(localPersistence);
   });
   afterEach(() => vi.unstubAllGlobals());
+
+  it("validates only once per save and retains invalid drafts without writing", async () => {
+    const validate = vi.spyOn(persistence, "validateDocument");
+    try {
+      await start();
+      validate.mockClear();
+      controller.edit(() => doc("Browser"));
+      expect(validate).not.toHaveBeenCalled();
+      await tick();
+      expect(validate).toHaveBeenCalledTimes(1);
+      controller.edit(() => ({ ...doc("Invalid draft"), next_id: 0 }));
+      await tick();
+      expect(controller.getSnapshot()).toMatchObject({ document: { next_id: 0 }, revision: 1, saveStatus: "failed" });
+      expect(await localPersistence.load(new AbortController().signal)).toMatchObject({ document: doc("Browser"), revision: 1 });
+    } finally { validate.mockRestore(); }
+  });
 
   it("debounces edits and returns to saved with browser persistence", async () => {
     await start();
@@ -63,9 +81,26 @@ describe("browser-only planner lifecycle", () => {
 });
 
 describe("remote planner lifecycle", () => {
+  it.each([saved(2), saved(1, doc("Local")), saved(3, doc("Local"))])("leaves migration unconfirmed for a missing echo or unexpected revision", async (result) => {
+    const migration = { document: doc("Local"), warnings: [], error: null, raw: "raw", fingerprint: "raw" };
+    const local = { read: () => migration, confirm: vi.fn() };
+    controller = new PlannerController(api, 500, local);
+    await start();
+    vi.mocked(api.save).mockResolvedValueOnce(result);
+    await controller.migrate();
+    expect(local.confirm).not.toHaveBeenCalled();
+    expect(controller.getSnapshot()).toMatchObject({ migration, document: doc("Remote"), revision: 1, resolving: false });
+  });
+
+  it("rejects unexpected ordinary-save revisions while retaining newer drafts", async () => {
+    await start();
+    vi.mocked(api.save).mockResolvedValueOnce(saved(9));
+    controller.edit(() => doc("Draft")); await tick();
+    expect(controller.getSnapshot()).toMatchObject({ document: doc("Draft"), revision: 1, saveStatus: "failed" });
+  });
   it("recovers a committed write whose acknowledgement was lost without overwriting remote data", async () => {
     await start();
-    const save = deferred<StoredPlanner>();
+    const save = deferred<SavedPlanner>();
     vi.mocked(api.save).mockReturnValueOnce(save.promise);
     controller.edit(() => doc("Committed")); await tick();
     controller.edit(() => doc("Queued after commit"));
@@ -101,7 +136,7 @@ describe("remote planner lifecycle", () => {
     await controller.migrate();
     expect(local.confirm).not.toHaveBeenCalled();
     await controller.migrate();
-    expect(api.save).toHaveBeenLastCalledWith(doc("Local"), 4, a, expect.any(AbortSignal));
+    expect(api.save).toHaveBeenLastCalledWith(doc("Local"), 4, a, expect.any(AbortSignal), { echoDocument: true });
     expect(local.confirm).toHaveBeenCalledWith(1, "original");
   });
 
@@ -133,25 +168,25 @@ describe("remote planner lifecycle", () => {
     expect(controller.getSnapshot()).toMatchObject({ document: doc("New remote"), revision: 7 });
     expect(local.confirm).not.toHaveBeenCalled();
     await controller.migrate();
-    expect(api.save).toHaveBeenLastCalledWith(doc("Local"), 7, a, expect.any(AbortSignal));
+    expect(api.save).toHaveBeenLastCalledWith(doc("Local"), 7, a, expect.any(AbortSignal), { echoDocument: true });
   });
   it("does not acknowledge an unconfirmed migration or a late save to a previous account", async () => {
     const local = { read: () => ({ document: doc("Local"), warnings: [], error: null, raw: "raw", fingerprint: "raw" }), confirm: vi.fn() };
     controller = new PlannerController(api, 500, local);
     vi.mocked(api.load).mockResolvedValue(stored(null));
     await start();
-    vi.mocked(api.save).mockResolvedValueOnce(stored(doc("Wrong"), 1));
+    vi.mocked(api.save).mockResolvedValueOnce(saved(1, doc("Wrong")));
     await controller.migrate();
     expect(local.confirm).not.toHaveBeenCalled();
     expect(controller.getSnapshot().migration).toBeTruthy();
-    const save = deferred<StoredPlanner>();
+    const save = deferred<SavedPlanner>();
     vi.mocked(api.save).mockReturnValueOnce(save.promise);
     const migrating = controller.migrate(); await settle();
     const generation = controller.getSnapshot().generation;
     vi.mocked(api.session).mockResolvedValue(b);
     vi.mocked(api.load).mockResolvedValue(stored(doc("B"), 8));
     await controller.refresh();
-    save.resolve(stored(doc("Local"), 1)); await migrating;
+    save.resolve(saved(1, doc("Local"))); await migrating;
     expect(local.confirm).not.toHaveBeenCalled();
     expect(controller.getSnapshot().document).toEqual(doc("B"));
     await controller.migrate(generation);
@@ -162,7 +197,7 @@ describe("remote planner lifecycle", () => {
     const local = { read: () => ({ document, warnings: [], error: null, raw: "raw", fingerprint: "raw" }), confirm: vi.fn() };
     controller = new PlannerController(api, 500, local);
     await start();
-    vi.mocked(api.save).mockResolvedValueOnce(stored({ next_id: document.next_id, events: document.events, pools: document.pools, version: document.version }, 2));
+    vi.mocked(api.save).mockResolvedValueOnce(saved(2, { next_id: document.next_id, events: document.events, pools: document.pools, version: document.version }));
     await controller.migrate();
     expect(local.confirm).toHaveBeenCalledWith(1, "raw");
   });
@@ -228,7 +263,7 @@ describe("remote planner lifecycle", () => {
 
   it("debounces edits and queues the latest draft behind exactly one in-flight save", async () => {
     await start();
-    const save = deferred<StoredPlanner>();
+    const save = deferred<SavedPlanner>();
     vi.mocked(api.save).mockReturnValueOnce(save.promise);
     controller.edit(() => doc("One"));
     await vi.advanceTimersByTimeAsync(250);
@@ -238,7 +273,7 @@ describe("remote planner lifecycle", () => {
     await tick();
     controller.edit(() => doc("Three")); controller.edit(() => doc("Four")); await tick();
     expect(api.save).toHaveBeenCalledTimes(1);
-    save.resolve(stored(doc("Two"), 2)); await settle();
+    save.resolve(saved(2)); await settle();
     expect(controller.getSnapshot().document).toEqual(doc("Four"));
     expect(controller.getSnapshot().saveStatus).toBe("pending");
     await tick();
@@ -248,7 +283,7 @@ describe("remote planner lifecycle", () => {
 
   it("retains newer edits after a failed write and retries them at the unchanged revision", async () => {
     await start();
-    const save = deferred<StoredPlanner>();
+    const save = deferred<SavedPlanner>();
     vi.mocked(api.save).mockReturnValueOnce(save.promise);
     controller.edit(() => doc("One")); await tick();
     controller.edit(() => doc("Two"));
@@ -273,13 +308,13 @@ describe("remote planner lifecycle", () => {
   it("ignores late save responses after an account switch and guards old editor callbacks", async () => {
     await start();
     const generation = controller.getSnapshot().generation;
-    const save = deferred<StoredPlanner>();
+    const save = deferred<SavedPlanner>();
     vi.mocked(api.save).mockReturnValueOnce(save.promise);
     controller.edit(() => doc("Account A edits")); await tick();
     vi.mocked(api.session).mockResolvedValue(b);
     vi.mocked(api.load).mockResolvedValue(stored(doc("Account B"), 8));
     await controller.refresh();
-    save.resolve(stored(doc("Account A edits"), 2)); await settle();
+    save.resolve(saved(2)); await settle();
     controller.edit(() => doc("Stale import"), generation); await tick();
     expect(controller.getSnapshot()).toMatchObject({ session: b, document: doc("Account B"), revision: 8, saveStatus: "saved" });
     expect(controller.getSnapshot().recoveries).toEqual([{ userId: 1, document: doc("Account A edits") }]);
@@ -307,13 +342,13 @@ describe("remote planner lifecycle", () => {
 
   it("ignores an in-flight save acknowledgement after logout", async () => {
     await start();
-    const save = deferred<StoredPlanner>();
+    const save = deferred<SavedPlanner>();
     vi.mocked(api.save).mockReturnValueOnce(save.promise);
     controller.edit(() => doc("In flight")); await tick();
     const signal = vi.mocked(api.save).mock.calls[0]![3];
     await controller.logout();
     expect(signal.aborted).toBe(true);
-    save.resolve(stored(doc("In flight"), 2)); await settle(); await tick();
+    save.resolve(saved(2)); await settle(); await tick();
     expect(controller.getSnapshot()).toMatchObject({ phase: "signed-out", revision: 0, session: null });
     expect(controller.getSnapshot().recoveries[0]?.document).toEqual(doc("In flight"));
   });

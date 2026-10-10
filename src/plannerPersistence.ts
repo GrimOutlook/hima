@@ -4,11 +4,14 @@ import { isValidSettings, type BackupSettings } from "./settings";
 export type PlannerDocument = Store & { settings?: BackupSettings };
 export type PlannerSession = { user_id: number; csrf_token: string };
 export type StoredPlanner = { document: PlannerDocument | null; revision: number; updated_at: string | null };
+export type SavedPlanner = { revision: number; updated_at: string; document?: PlannerDocument };
+export type SaveOptions = { echoDocument?: boolean };
 
 export interface PlannerPersistence {
   session(signal: AbortSignal): Promise<PlannerSession>;
   load(signal: AbortSignal): Promise<StoredPlanner>;
-  save(document: PlannerDocument, revision: number, session: PlannerSession, signal: AbortSignal): Promise<StoredPlanner>;
+  // Adapters validate documents on load/save. Only migration requests an echo.
+  save(document: PlannerDocument, revision: number, session: PlannerSession, signal: AbortSignal, options?: SaveOptions): Promise<SavedPlanner>;
   logout(session: PlannerSession, signal: AbortSignal, everywhere?: boolean): Promise<void>;
 }
 
@@ -23,7 +26,8 @@ export function validateDocument(value: unknown): asserts value is PlannerDocume
   const object = (v: unknown, required: string[], optional: string[] = []) => {
     if (!v || typeof v !== "object" || Array.isArray(v)) return fail();
     const obj = v as Record<string, unknown>;
-    if (required.some((key) => !(key in obj)) || Object.keys(obj).some((key) => ![...required, ...optional].includes(key))) fail();
+    const allowed = new Set([...required, ...optional]);
+    if (required.some((key) => !(key in obj)) || Object.keys(obj).some((key) => !allowed.has(key))) fail();
     return obj;
   };
   const array = (v: unknown, limit: number): unknown[] => Array.isArray(v) && v.length <= limit ? v : fail();

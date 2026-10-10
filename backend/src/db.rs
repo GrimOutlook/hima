@@ -23,6 +23,14 @@ pub struct StoredPlanner {
     pub updated_at: DateTime<Utc>,
 }
 
+#[derive(Debug, sqlx::FromRow, Serialize, PartialEq)]
+pub struct SavedPlanner {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub document: Option<Value>,
+    pub revision: i64,
+    pub updated_at: DateTime<Utc>,
+}
+
 #[derive(Debug)]
 pub enum SaveError {
     Invalid(ValidationError),
@@ -101,19 +109,35 @@ impl Database {
         user_id: i64,
         document: &Value,
         expected_revision: i64,
-    ) -> Result<StoredPlanner, SaveError> {
+    ) -> Result<SavedPlanner, SaveError> {
+        self.save_with_echo(user_id, document, expected_revision, false)
+            .await
+    }
+    /// Echo the stored JSONB only for explicit migration confirmation.
+    pub async fn save_with_echo(
+        &self,
+        user_id: i64,
+        document: &Value,
+        expected_revision: i64,
+        echo_document: bool,
+    ) -> Result<SavedPlanner, SaveError> {
         validate_document(document).map_err(SaveError::Invalid)?;
         if expected_revision < 0 {
             return Err(SaveError::Invalid(ValidationError(
                 "Expected revision must be nonnegative".into(),
             )));
         }
+        let columns = if echo_document {
+            PLANNER_COLUMNS
+        } else {
+            "NULL::jsonb AS document, revision, updated_at"
+        };
         let saved = if expected_revision == 0 {
             sqlx::query_as(&format!(
                 "INSERT INTO planners (user_id, document)
                  VALUES ($1, $2)
                  ON CONFLICT (user_id) DO NOTHING
-                 RETURNING {PLANNER_COLUMNS}"
+                  RETURNING {columns}"
             ))
             .bind(user_id)
             .bind(document)
@@ -124,7 +148,7 @@ impl Database {
                 "UPDATE planners
                  SET document = $2, revision = revision + 1, updated_at = clock_timestamp()
                  WHERE user_id = $1 AND revision = $3
-                 RETURNING {PLANNER_COLUMNS}"
+                  RETURNING {columns}"
             ))
             .bind(user_id)
             .bind(document)

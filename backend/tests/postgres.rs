@@ -80,6 +80,8 @@ async fn upgrade_preserves_planners_and_rejects_changed_migrations(pool: PgPool)
     let user = db.ensure_user("https://upgrade", "existing").await.unwrap();
     let document = json!({"version":1,"pools":[],"events":[],"next_id":9});
     let before = db.save(user, &document, 0).await.unwrap();
+    assert!(before.document.is_none());
+    let before = db.load(user).await.unwrap().unwrap();
     let auth_schema = sqlx::migrate::Migrator {
         migrations: std::borrow::Cow::Borrowed(&hima_api::db::MIGRATOR.migrations[..2]),
         ignore_missing: false,
@@ -147,6 +149,8 @@ async fn persistence_validation_and_constraints(pool: PgPool) {
     ));
     let first = db.save(user, &v, 0).await.unwrap();
     assert_eq!(first.revision, 1);
+    assert!(first.document.is_none());
+    let first = db.load(user).await.unwrap().unwrap();
     for bad in [
         json!({"version":2,"pools":[],"events":[],"next_id":1}),
         json!({"version":1,"pools":[],"events":[{"id":1,"name":"Bad","days":[{"date":"2026-01-01","allocations":[{"pool_id":42,"hours":1}]}]}],"next_id":2}),

@@ -3,7 +3,6 @@ import { errorMessage } from "./errors";
 import type { LocalMigration, LocalSource } from "./localMigration";
 import {
   PersistenceError,
-  validateDocument,
   type PlannerDocument,
   type PlannerPersistence,
   type PlannerSession,
@@ -107,7 +106,6 @@ export class PlannerController {
       return null;
     }
     const document = loaded.document ?? { ...emptyStore(), settings: { ...defaultSettings } };
-    validateDocument(document);
     return { document, revision: loaded.revision };
   }
   private handleAuthError(error: unknown) {
@@ -188,7 +186,6 @@ export class PlannerController {
   edit = (update: (document: PlannerDocument) => PlannerDocument, generation = this.state.generation) => {
     if (!this.isReady(generation) || this.state.migration) return;
     const document = update(this.state.document);
-    validateDocument(document);
     if (document === this.state.document) return;
     this.publish({
       document,
@@ -214,7 +211,7 @@ export class PlannerController {
     try {
       const result = await this.persistence.save(document, revision, session, this.abort.signal);
       if (!this.current(epoch)) return;
-      if (result.revision !== revision + 1 || result.document === null) {
+      if (result.revision !== revision + 1) {
         throw new PersistenceError("invalid_response", "The server returned an unexpected save revision. Reload before retrying.");
       }
       // Acknowledgements update metadata only, never replace newer edits.
@@ -263,7 +260,7 @@ export class PlannerController {
         void this.refresh();
         return;
       }
-      const result = await this.persistence.save(migration.document, this.state.revision, session, this.abort.signal);
+      const result = await this.persistence.save(migration.document, this.state.revision, session, this.abort.signal, { echoDocument: true });
       if (!this.current(epoch)) return;
       if (result.revision !== this.state.revision + 1 || canonical(result.document) !== canonical(migration.document)) {
         throw new Error("Migration was not confirmed by the server.");
