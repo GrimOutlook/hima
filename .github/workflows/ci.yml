@@ -159,16 +159,12 @@ jobs:
           cache: pnpm
       - name: Install frontend dependencies
         run: pnpm install --frozen-lockfile
-      - name: Install nginx if the runner image lacks it
-        run: |
-          if ! command -v nginx > /dev/null; then
-            sudo apt-get update
-            sudo apt-get install -y nginx
-          fi
+      - name: Install Nix for the pinned HTTP/2-capable nginx
+        uses: cachix/install-nix-action@b85815f71a6de0ddee80b8a80a98d43f4bcc66c7 # v31
       - name: Test production HTTPS reverse proxy and restart persistence
         run: |
           pnpm run build
-          python3 deploy/test_https_proxy.py
+          nix shell --inputs-from . nixpkgs#nginx --command python3 deploy/test_https_proxy.py
   rate-limits:
     name: Production nginx rate limits
     runs-on: ubuntu-latest
@@ -176,14 +172,10 @@ jobs:
     steps:
       - name: Check out repository
         uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
-      - name: Install nginx if the runner image lacks it
-        run: |
-          if ! command -v nginx > /dev/null; then
-            sudo apt-get update
-            sudo apt-get install -y nginx
-          fi
+      - name: Install Nix for the pinned HTTP/2-capable nginx
+        uses: cachix/install-nix-action@b85815f71a6de0ddee80b8a80a98d43f4bcc66c7 # v31
       - name: Test production nginx rate limits
-        run: python3 deploy/test_rate_limits.py
+        run: nix shell --inputs-from . nixpkgs#nginx nixpkgs#curl --command python3 deploy/test_rate_limits.py
   packages:
     name: Nix frontend and backend release packages
     runs-on: ubuntu-latest
