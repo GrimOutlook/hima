@@ -1,5 +1,5 @@
 import { useMemo } from "react";
-import { addDays, eventPoolHours, poolBalanceOn, poolTotalsOn, type Store } from "./model";
+import { addDays, eventPoolHours, poolTotalsOn, type Store } from "./model";
 
 export function usePoolCardFigures(store: Store, poolId: number, balanceDate: string) {
   return useMemo(() => {
@@ -10,9 +10,9 @@ export function usePoolCardFigures(store: Store, poolId: number, balanceDate: st
       days: event.days.filter((day) => day.date === balanceDate),
     }, poolId), 0);
     const startingBalance = dayHours > 0
-      ? poolBalanceOn({ ...store, events: store.events.map((event) => ({
+      ? poolTotalsOn({ ...store, events: store.events.map((event) => ({
           ...event, days: event.days.filter((day) => day.date !== balanceDate),
-        })) }, poolId, balanceDate)
+        })) }, poolId, balanceDate).balance
       : currentBalance;
     return { currentBalance, dayAdded, dayHours, startingBalance };
   }, [store, poolId, balanceDate]);

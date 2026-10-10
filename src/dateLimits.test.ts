@@ -1,5 +1,5 @@
 import { expect, it } from "vitest";
-import { balanceHistoryDates, balanceHistoryForDates, emptyStore, isValidDate, MAX_HISTORY_POINTS, parseStoreJson, poolBalanceOn, type Store } from "./model";
+import { balanceHistoryDates, balanceHistoryForDates, emptyStore, isValidDate, MAX_HISTORY_POINTS, parseStoreJson, poolTotalsOn, type Store } from "./model";
 import { validateDocument } from "./plannerPersistence";
 
 function datedStore(date: string): Store {
@@ -36,7 +36,7 @@ it("bounds a full supported span while preserving endpoint balances and interven
   expect(history[0]!.date).toBe("1900-01-01");
   expect(history.at(-1)?.date).toBe("2200-12-31");
   for (const point of [history[0]!, history[Math.floor(history.length / 2)]!, history.at(-1)!]) {
-    expect(point.balance).toBe(poolBalanceOn(store, 1, point.date));
+    expect(point.balance).toBe(poolTotalsOn(store, 1, point.date).balance);
   }
 });
 

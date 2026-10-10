@@ -11,16 +11,16 @@ import {
   eventBalanceWarnings,
   eventPoolHours,
   eventTotalHours,
+  firstDate,
+  formatDateParts,
   formatHours,
   isValidDate,
   nthWeekdayInMonth,
   normalizeStore,
   parseStoreJson,
   parseHours,
-  poolBalanceOn,
   poolTotalsOn,
   totalsOn,
-  validDateOrFallback,
   type LeaveEvent,
   type Pool,
   type RecurringAddition,
@@ -207,10 +207,10 @@ describe("holiday hours", () => {
 
   it.each([0, 3, 8, 10])("expires only unused hours after %s hours of same-day leave", (hours) => {
     const store = { ...emptyStore(), pools: [pool], events: hours ? [leave("2026-01-01", hours)] : [] };
-    expect(poolBalanceOn(store, 1, "2025-12-31")).toBe(0);
-    expect(poolBalanceOn(store, 1, "2026-01-01")).toBe(8 - hours);
+    expect(poolTotalsOn(store, 1, "2025-12-31").balance).toBe(0);
+    expect(poolTotalsOn(store, 1, "2026-01-01").balance).toBe(8 - hours);
     expect(poolTotalsOn(store, 1, "2026-01-02")).toEqual({ accrued: 8, used: hours, balance: Math.min(0, 8 - hours) });
-    expect(poolBalanceOn(store, 1, "2027-01-01")).toBe(Math.min(0, 8 - hours));
+    expect(poolTotalsOn(store, 1, "2027-01-01").balance).toBe(Math.min(0, 8 - hours));
   });
 
   it("uses holiday hours first and preserves permanent hours and consecutive holidays", () => {
@@ -219,9 +219,9 @@ describe("holiday hours", () => {
       { id: 3, amount: 20, date: "2025-12-01" },
       { id: 4, amount: 8, date: "2026-01-02", expires_same_day: true },
     ] }], events: [leave("2026-01-01", 3), leave("2026-01-02", 10)] };
-    expect(poolBalanceOn(store, 1, "2026-01-01")).toBe(25);
-    expect(poolBalanceOn(store, 1, "2026-01-02")).toBe(18);
-    expect(poolBalanceOn(store, 1, "2026-01-03")).toBe(18);
+    expect(poolTotalsOn(store, 1, "2026-01-01").balance).toBe(25);
+    expect(poolTotalsOn(store, 1, "2026-01-02").balance).toBe(18);
+    expect(poolTotalsOn(store, 1, "2026-01-03").balance).toBe(18);
   });
 
   it("expires recurring nth-weekday credits even after the schedule ends", () => {
@@ -230,9 +230,9 @@ describe("holiday hours", () => {
       start_date: "2026-01-01", end_date: "2027-01-01", month: 1,
       nth_weekday: "First" as const, weekday: "Friday" as const,
     }] }] };
-    expect(poolBalanceOn(store, 1, "2026-01-02")).toBe(8);
-    expect(poolBalanceOn(store, 1, "2026-01-03")).toBe(0);
-    expect(poolBalanceOn(store, 1, "2027-01-01")).toBe(8);
+    expect(poolTotalsOn(store, 1, "2026-01-02").balance).toBe(8);
+    expect(poolTotalsOn(store, 1, "2026-01-03").balance).toBe(0);
+    expect(poolTotalsOn(store, 1, "2027-01-01").balance).toBe(8);
     expect(poolTotalsOn(store, 1, "2027-01-02")).toEqual({ accrued: 16, used: 0, balance: 0 });
     const history = balanceHistory(store, "2026-01-01", 1);
     expect(history.find((point) => point.date === "2026-01-02")?.balance).toBe(8);
@@ -246,7 +246,7 @@ describe("holiday hours", () => {
     }] };
     expect(poolTotalsOn(store, 1, "2026-01-02")).toEqual({ accrued: 10, used: 0, balance: 6 });
     store.pools[0]!.additions.push({ id: 5, amount: 7, reset: true, date: "2026-01-01" });
-    expect(poolBalanceOn(store, 1, "2026-01-02")).toBe(7);
+    expect(poolTotalsOn(store, 1, "2026-01-02").balance).toBe(7);
   });
 
   it("retains expiration in exports and ignores it on reset rules", () => {
@@ -286,7 +286,7 @@ describe("event balance preview", () => {
       { date: "2026-01-02", allocations: [{ pool_id: 1, hours: 6 }] },
     ])).toEqual([{ poolId: 1, date: "2026-01-03", balance: -2 }]);
     expect(store.events).toEqual([]);
-    expect(poolBalanceOn(store, 1, "2026-01-03")).toBe(10);
+    expect(poolTotalsOn(store, 1, "2026-01-03").balance).toBe(10);
   });
 
   it("warns when an event leaves insufficient hours for later planned leave", () => {
@@ -305,7 +305,7 @@ describe("event balance preview", () => {
     expect(eventBalanceWarnings(store, [{ date: "2026-01-03", allocations: [{ pool_id: 1, hours: 11 }] }], original.id))
       .toEqual([{ poolId: 1, date: "2026-01-03", balance: -1 }]);
     expect(store.events).toEqual([original, later]);
-    expect(poolBalanceOn(store, 1, "2026-02-01")).toBe(0);
+    expect(poolTotalsOn(store, 1, "2026-02-01").balance).toBe(0);
   });
 
   it("accounts for accruals, caps and resets and excludes untouched pools", () => {
@@ -328,9 +328,18 @@ describe("calendar date validation", () => {
     expect(isValidDate("2025-2-01")).toBe(false);
   });
 
-  it("keeps the last valid date when a new selection is invalid", () => {
-    expect(validDateOrFallback("2025-02-30", "2025-02-28")).toBe("2025-02-28");
-    expect(validDateOrFallback("2025-03-01", "2025-02-28")).toBe("2025-03-01");
+  it("formats calendar parts consistently across year and month boundaries", () => {
+    expect(formatDateParts(1900, 1, 1)).toBe("1900-01-01");
+    expect(formatDateParts(2024, 2, 29)).toBe(addDays("2024-02-28", 1));
+    expect(formatDateParts(2200, 12, 31)).toBe("2200-12-31");
+  });
+
+  it("finds the first date without reordering event days", () => {
+    const days = [{ date: "2026-03-02" }, { date: "2026-01-01" }, { date: "2026-02-01" }];
+    const original = [...days];
+    expect(firstDate(days)).toBe("2026-01-01");
+    expect(days).toEqual(original);
+    expect(firstDate([])).toBeUndefined();
   });
 });
 
@@ -426,7 +435,7 @@ describe("recurring accruals", () => {
     }];
     const store = normalizeStore({ pools: [pool], events });
 
-    expect(poolBalanceOn(store, 1, "2026-02-06")).toBe(15);
+    expect(poolTotalsOn(store, 1, "2026-02-06").balance).toBe(15);
     expect(poolTotalsOn(store, 1, "2026-02-06")).toEqual({ accrued: 23, used: 8, balance: 15 });
     expect(totalsOn(store, "2026-02-06")).toEqual({ accrued: 23, used: 8, balance: 15 });
   });
@@ -446,7 +455,7 @@ describe("recurring accruals", () => {
     }];
 
     expect(poolTotalsOn(normalizeStore({ pools: [pool], events }), 1, "2026-01-02").accrued).toBe(8);
-    expect(poolBalanceOn(normalizeStore({ pools: [pool], events }), 1, "2026-01-16")).toBe(5);
+    expect(poolTotalsOn(normalizeStore({ pools: [pool], events }), 1, "2026-01-16").balance).toBe(5);
   });
 
   it("keeps open-ended caps active and resumes accrual after usage", () => {
@@ -465,8 +474,8 @@ describe("recurring accruals", () => {
       }],
     });
     expect(store.pools[0]?.caps[0]?.end_date).toBeUndefined();
-    expect(poolBalanceOn(store, 1, "2026-12-31")).toBe(10);
-    expect(poolBalanceOn(store, 1, "2027-01-01")).toBe(6);
+    expect(poolTotalsOn(store, 1, "2026-12-31").balance).toBe(10);
+    expect(poolTotalsOn(store, 1, "2027-01-01").balance).toBe(6);
     expect(poolTotalsOn(store, 1, "2027-01-08")).toEqual({ accrued: 14, used: 4, balance: 10 });
   });
 
@@ -533,10 +542,10 @@ describe("use-by dates", () => {
       recurring: [{ id: 5, reset: true, amount: 12.25, cadence: "Monthly", start_date: "2026-01-04" }],
       caps: [{ id: 6, max_balance: 10, start_date: "2026-01-01" }],
     }] });
-    expect(poolBalanceOn(store, 1, "2026-01-02")).toBe(7.5);
-    expect(poolBalanceOn(store, 1, "2026-01-03")).toBe(9.5);
+    expect(poolTotalsOn(store, 1, "2026-01-02").balance).toBe(7.5);
+    expect(poolTotalsOn(store, 1, "2026-01-03").balance).toBe(9.5);
     expect(poolTotalsOn(store, 1, "2026-01-04")).toEqual({ accrued: 12, used: 0, balance: 12.25 });
-    expect(poolBalanceOn(store, 1, "2026-02-04")).toBe(12.25);
+    expect(poolTotalsOn(store, 1, "2026-02-04").balance).toBe(12.25);
     expect(parseStoreJson(JSON.stringify(store))).toEqual(store);
   });
 
@@ -553,7 +562,7 @@ describe("use-by dates", () => {
       { date: "2026-01-15", allocations: [{ pool_id: 1, hours: 4 }] },
       { date: "2026-01-31", allocations: [{ pool_id: 1, hours: 2 }] },
     ] }] });
-    expect(poolBalanceOn(store, 1, "2026-01-30")).toBe(16);
+    expect(poolTotalsOn(store, 1, "2026-01-30").balance).toBe(16);
     expect(poolTotalsOn(store, 1, "2026-01-31")).toEqual({ accrued: 25, used: 6, balance: 0 });
     expect(poolTotalsOn(store, 1, "2026-02-01")).toEqual({ accrued: 33, used: 6, balance: 8 });
     expect(parseStoreJson(JSON.stringify(store))).toEqual(store);
@@ -574,8 +583,8 @@ describe("use-by dates", () => {
       additions: dates.map((date, index) => ({ id: index + 2, date, amount: 10 })),
       recurring: [{ id: 4, reset: true, cadence, start_date: "2026-01-01", end_date: dates[0] }],
     }] });
-    expect(poolBalanceOn(store, 1, dates[0]!)).toBe(0);
-    expect(poolBalanceOn(store, 1, dates[1]!)).toBe(10);
+    expect(poolTotalsOn(store, 1, dates[0]!).balance).toBe(0);
+    expect(poolTotalsOn(store, 1, dates[1]!).balance).toBe(10);
   });
 
   it("supports nth-weekday resets and allows capped accrual to resume", () => {
@@ -585,10 +594,10 @@ describe("use-by dates", () => {
       recurring: [{ id: 4, reset: true, cadence: "YearlyNthWeekday", start_date: "2026-01-01", month: 1, nth_weekday: "First", weekday: "Friday" }],
       caps: [{ id: 5, max_balance: 10, start_date: "2026-01-01" }],
     }] });
-    expect(poolBalanceOn(store, 1, "2026-01-01")).toBe(10);
-    expect(poolBalanceOn(store, 1, "2026-01-02")).toBe(0);
-    expect(poolBalanceOn(store, 1, "2026-01-03")).toBe(10);
-    expect(poolBalanceOn(store, 1, "2027-01-01")).toBe(0);
+    expect(poolTotalsOn(store, 1, "2026-01-01").balance).toBe(10);
+    expect(poolTotalsOn(store, 1, "2026-01-02").balance).toBe(0);
+    expect(poolTotalsOn(store, 1, "2026-01-03").balance).toBe(10);
+    expect(poolTotalsOn(store, 1, "2027-01-01").balance).toBe(0);
   });
 });
 
@@ -612,8 +621,8 @@ describe("balances", () => {
     });
 
     expect(totalsOn(store, "2026-02-01")).toEqual({ accrued: 14, used: 2, balance: 12 });
-    expect(poolBalanceOn(store, 1, "2026-02-01")).toBe(6.75);
-    expect(poolBalanceOn(store, 3, "2026-02-02")).toBe(2.25);
+    expect(poolTotalsOn(store, 1, "2026-02-01").balance).toBe(6.75);
+    expect(poolTotalsOn(store, 3, "2026-02-02").balance).toBe(2.25);
     expect(totalsOn(store, "2026-02-02").balance).toBe(9);
   });
 });
