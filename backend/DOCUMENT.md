@@ -110,7 +110,8 @@ An account without a saved planner returns 200 with
 
 Requires `Content-Type: application/json`, the session cookie, an exact `Origin`
 matching `HIMA_PUBLIC_ORIGIN`, and `X-CSRF-Token` obtained from GET `/api/me`.
-The body has exactly these two required fields:
+The body has these two required fields and an optional boolean `echo_document`
+(default false):
 
 ```json
 {"expected_revision":0,"document":{"version":1,"pools":[],"events":[],"next_id":1}}
@@ -119,8 +120,12 @@ The body has exactly these two required fields:
 `expected_revision` is a nonnegative signed 64-bit integer. Zero means create only;
 positive values must match an existing planner. A positive revision on an empty
 account and zero on an existing planner both conflict. Successful saves return
-200 with the same response shape as GET, the submitted document, revision 1 for
-creation or the previous revision plus one, and the new timestamp. A successful
+200 with only `revision` (1 for creation or the previous revision plus one) and
+`updated_at`, for example `{"revision":1,"updated_at":"2026-10-09T12:00:00Z"}`.
+Ordinary saves do not fetch the document back from PostgreSQL or echo it over HTTP.
+Migration explicitly sends `"echo_document":true`; that response additionally
+includes the actual stored JSONB `document` from the same atomic write, so the
+client can compare its content before confirming the local migration. A successful
 save advances the revision even if the document is identical. The default request
 body limit is 2 MiB. Clients should reload and reconcile after a conflict rather
 than blindly retrying with a new revision.

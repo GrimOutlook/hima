@@ -55,7 +55,7 @@ export const localPersistence: PlannerPersistence = {
     validateDocument(document);
     return { document, revision: revision(), updated_at: new Date().toISOString() };
   },
-  async save(document, expectedRevision) {
+  async save(document, expectedRevision, _session, _signal, options) {
     validateDocument(document);
     if (revision() !== expectedRevision) throw new PersistenceError("revision_conflict", "Another tab or window changed the browser planner.", 409);
     const { settings, ...store } = document;
@@ -65,7 +65,7 @@ export const localPersistence: PlannerPersistence = {
       else storage.setItem(SETTINGS_KEY, JSON.stringify(settings));
       storage.setItem(REVISION_KEY, String(expectedRevision + 1));
     });
-    return { document, revision: expectedRevision + 1, updated_at: new Date().toISOString() };
+    return { ...(options?.echoDocument ? { document } : {}), revision: expectedRevision + 1, updated_at: new Date().toISOString() };
   },
   async logout() {},
 };

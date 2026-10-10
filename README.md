@@ -52,6 +52,15 @@ The generated site is written to `dist/`. Run `pnpm run preview` to serve the pr
 
 ## Architecture and production hosting
 
+Planner persistence adapters validate incoming documents on load and outgoing
+documents once at save time. The controller keeps invalid drafts exportable and
+reports a failed save rather than validating each edit again. Ordinary saves
+acknowledge only revision/timestamp metadata and never replace newer edits.
+Local-data migration explicitly requests a stored-document echo and confirms only
+after the expected next revision and canonical JSON content match; failed,
+conflicting, or stale-account responses leave the local copy unconfirmed.
+See [the HTTP/document contract](backend/DOCUMENT.md) for `echo_document` details.
+
 The balance chart uses a dynamic import started when the app module loads, so
 its download overlaps session and planner requests. React Suspense consumes that
 same promise when the planner is ready. Vite splits the chart automatically;
