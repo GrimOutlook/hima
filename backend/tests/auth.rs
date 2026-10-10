@@ -1158,7 +1158,9 @@ async fn oidc_and_persistent_browser_sessions(pool: PgPool) {
     assert_eq!(planner.status(), StatusCode::OK);
     let planner: Value =
         serde_json::from_slice(&planner.into_body().collect().await.unwrap().to_bytes()).unwrap();
-    assert_eq!(planner, serde_json::to_value(saved_before_restart).unwrap());
+    let mut expected_planner = serde_json::to_value(saved_before_restart).unwrap();
+    expected_planner["session"] = me.clone();
+    assert_eq!(planner, expected_planner);
     assert_eq!(
         request(&restored, "POST", "/api/future-mutation", &session, &[])
             .await
@@ -1217,6 +1219,12 @@ async fn oidc_and_persistent_browser_sessions(pool: PgPool) {
     let rotated_me: Value =
         serde_json::from_slice(&response.into_body().collect().await.unwrap().to_bytes()).unwrap();
     assert_eq!(me["user_id"], rotated_me["user_id"]);
+    assert_ne!(me["csrf_token"], rotated_me["csrf_token"]);
+    let response = request(&restored, "GET", "/api/planner", &rotated, &[]).await;
+    let rotated_planner: Value =
+        serde_json::from_slice(&response.into_body().collect().await.unwrap().to_bytes()).unwrap();
+    assert_eq!(rotated_planner["document"], planner["document"]);
+    assert_eq!(rotated_planner["session"], rotated_me);
     let logout = request(
         &restored,
         "POST",
