@@ -52,7 +52,11 @@ import {
   type Store,
 } from "./model";
 
-const BalanceChart = lazy(() => import("./BalanceChart").then((module) => ({ default: module.BalanceChart })));
+// Download in parallel with account/planner loading, without a static chart dependency.
+const balanceChartModule = import("./BalanceChart").then((module) => ({ default: module.BalanceChart }));
+// A failed preload must not become an unhandled rejection before React renders it.
+void balanceChartModule.catch(() => {});
+const BalanceChart = lazy(() => balanceChartModule);
 
 type ModalState =
   | { type: "settings" }

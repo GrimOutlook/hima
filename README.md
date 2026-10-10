@@ -52,6 +52,16 @@ The generated site is written to `dist/`. Run `pnpm run preview` to serve the pr
 
 ## Architecture and production hosting
 
+The balance chart uses a dynamic import started when the app module loads, so
+its download overlaps session and planner requests. React Suspense consumes that
+same promise when the planner is ready. Vite splits the chart automatically;
+do not force recharts into a manual chunk that pulls React into the chart's
+static dependency graph. The built entry and HTML must not statically import
+or modulepreload the chart chunk (the app intentionally starts its download).
+Verify the actual production chunk graph with `pnpm exec vite build --manifest`
+and `node scripts/verify-chart-chunks.mjs`; repeat with
+`pnpm exec vite build --mode pages --manifest` for the Pages variant.
+
 The frontend ledger indexes validated event days by pool once per events-array
 revision. Each pool's immutable inputs and that events array key a weak cache of
 sorted actions and running snapshots through the supported maximum date (2200).
