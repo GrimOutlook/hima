@@ -77,6 +77,7 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y nginx
+          python3 deploy/test_rate_limits.py
           pnpm run build
           python3 deploy/test_https_proxy.py
       - run: cargo build --release --locked --bins
