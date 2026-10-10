@@ -33,6 +33,33 @@ Run `pnpm run dev:local` and visit `http://127.0.0.1:5173/hima/` for browser-onl
 development. Run `pnpm run build:pages` to build `dist/` with the `/hima/` base
 path. Default `dev` and `build` commands use the self-hosted account variant.
 
+**Pages security limitations:** The production Pages build injects a
+`Content-Security-Policy` meta tag at the start of `<head>`, before scripts,
+stylesheets and preloads. It mirrors the self-hosted nginx policy's
+`default-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; base-uri 'none'; form-action 'self'`.
+Scripts, fonts and connections therefore default to same-origin sources;
+inline scripts and external resources are blocked, while inline styles and
+data-URL images remain allowed. This policy does not isolate same-origin
+Pages sites or their storage.
+
+GitHub Pages cannot configure custom response headers. Meta CSP cannot enforce
+`frame-ancestors`, so this build has no clickjacking protection and can be
+embedded in another site's frame. HSTS and `X-Content-Type-Options: nosniff`
+also cannot be supplied by meta tags; any platform-provided headers are outside
+this build's control. Self-hosting with [nginx](deploy/nginx.conf) supplies
+these response headers, including `frame-ancestors 'none'`.
+The meta policy is build-only; development keeps Vite's HMR working.
+
+Verify emitted HTML with `pnpm run build` followed by
+`node scripts/verify-csp.mjs production`, then `pnpm run build:pages` followed
+by `node scripts/verify-csp.mjs pages`. The checks enforce policy parity with
+nginx, exactly one Pages policy, ordering before active content, and no inline
+scripts. CI runs these checks for both variants and the deployment artifact.
+For a browser check, serve the Pages output with
+`pnpm exec vite preview --mode pages` and visit `/hima/`; verify that the
+planner, chart and fonts load and the browser blocks inline scripts and
+cross-origin connections under CSP.
+
 CI checks both builds and deploys Pages after checks pass on pushes to `main`.
 Before the first deployment, the repository owner must enable Pages:
 
