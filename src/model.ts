@@ -678,11 +678,22 @@ export function nthWeekdayInMonth(
   return `${String(year).padStart(4, "0")}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
 }
 
-export function eventTotalHours(event: LeaveEvent): number {
-  return event.days.reduce(
-    (total, day) => total + day.allocations.reduce((dayTotal, allocation) => dayTotal + allocation.hours, 0),
-    0,
-  );
+export function dayTotalHours(day: LeaveDay): number {
+  return day.allocations.reduce((total, allocation) => total + allocation.hours, 0);
+}
+
+export function dayPoolHours(day: LeaveDay, poolId: number): number {
+  return day.allocations
+    .filter((allocation) => allocation.pool_id === poolId)
+    .reduce((total, allocation) => total + allocation.hours, 0);
+}
+
+export function eventPoolHours(event: Pick<LeaveEvent, "days">, poolId: number): number {
+  return event.days.reduce((total, day) => total + dayPoolHours(day, poolId), 0);
+}
+
+export function eventTotalHours(event: Pick<LeaveEvent, "days">): number {
+  return event.days.reduce((total, day) => total + dayTotalHours(day), 0);
 }
 
 export function totalsOn(store: Store, date: string): { accrued: number; used: number; balance: number } {
@@ -890,9 +901,7 @@ function poolLedgerForDates(pool: Pool, events: LeaveEvent[], dates: string[]): 
   for (const event of events) {
     for (const day of event.days) {
       if (!isValidDate(day.date) || day.date > throughDate) continue;
-      const hours = day.allocations
-        .filter((allocation) => allocation.pool_id === pool.id)
-        .reduce((total, allocation) => total + allocation.hours, 0);
+      const hours = dayPoolHours(day, pool.id);
       if (hours > 0) actionForDate(day.date).used += hours;
     }
   }

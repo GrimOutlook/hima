@@ -5,8 +5,12 @@ import {
   balanceHistoryDates,
   balanceHistoryForDates,
   capRangesOverlap,
+  dayPoolHours,
+  dayTotalHours,
   emptyStore,
   eventBalanceWarnings,
+  eventPoolHours,
+  eventTotalHours,
   formatHours,
   isValidDate,
   nthWeekdayInMonth,
@@ -42,6 +46,38 @@ function recurring(
 ): RecurringAddition {
   return { id: 1, amount, cadence, start_date, ...(end_date ? { end_date } : {}) };
 }
+
+describe("leave hour totals", () => {
+  it("sums split and repeated pool allocations across all event days", () => {
+    const event: LeaveEvent = { id: 1, name: "Split leave", days: [
+      { date: "2026-01-02", allocations: [
+        { pool_id: 2, hours: 1.25 },
+        { pool_id: 3, hours: 4.5 },
+        { pool_id: 2, hours: 0.5 },
+      ] },
+      { date: "2026-01-01", allocations: [{ pool_id: 2, hours: 2.75 }] },
+      { date: "2026-01-02", allocations: [{ pool_id: 3, hours: 0.25 }] },
+    ] };
+
+    expect(dayPoolHours(event.days[0]!, 2)).toBe(1.75);
+    expect(dayPoolHours(event.days[0]!, 3)).toBe(4.5);
+    expect(dayPoolHours(event.days[0]!, 99)).toBe(0);
+    expect(dayTotalHours(event.days[0]!)).toBe(6.25);
+    expect(eventPoolHours(event, 2)).toBe(4.5);
+    expect(eventPoolHours(event, 3)).toBe(4.75);
+    expect(eventPoolHours(event, 99)).toBe(0);
+    expect(eventTotalHours(event)).toBe(9.25);
+  });
+
+  it("returns zero for empty days and events, including review drafts", () => {
+    const day = { date: "2026-01-01", allocations: [] };
+    expect(dayPoolHours(day, 2)).toBe(0);
+    expect(dayTotalHours(day)).toBe(0);
+    expect(eventPoolHours({ days: [] }, 2)).toBe(0);
+    expect(eventTotalHours({ days: [] })).toBe(0);
+    expect(eventTotalHours({ days: [day] })).toBe(0);
+  });
+});
 
 describe("incremental uncapped balance history", () => {
   it.each(["Weekly", "Fortnightly", "Monthly", "Yearly", "YearlyNthWeekday"] as const)(
