@@ -131,6 +131,21 @@ load balancer, or tracing system. Do not enable request/header/body debug loggin
 API/auth 4xx/5xx must pass through, not become the SPA's `index.html`. Static
 responses use revalidation so a deployment does not leave a cached old index.
 
+The HTTPS server permits only TLS 1.2 and 1.3. All HTTPS responses, including
+errors, send `Strict-Transport-Security: max-age=63072000; includeSubDomains`,
+`X-Content-Type-Options: nosniff`, and this Content Security Policy:
+
+```text
+default-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; frame-ancestors 'none'; base-uri 'none'; form-action 'self'
+```
+
+Fonts and scripts are self-hosted; framing is forbidden. HSTS covers subdomains,
+so ensure they support HTTPS before deploying. It protects subsequent visits
+after a browser receives the header over HTTPS, not an initial HTTP visit.
+When adding a location with its own `add_header`, repeat all three security
+headers with `always`, as the static location does: nginx otherwise drops their
+server-level inheritance.
+
 TLS is terminated at nginx, and the upstream is HTTP on loopback. Cookies and
 OIDC redirect URIs are derived from `HIMA_PUBLIC_ORIGIN`, **not** Host,
 Forwarded, or X-Forwarded-* headers. Production emits `__Host-hima-session` and
@@ -148,7 +163,8 @@ SQLx database (stop any API on port 3000):
 DATABASE_URL=postgres://TEST_ROLE:TEST_PASSWORD@127.0.0.1:5432/TEST_DB python3 deploy/test_https_proxy.py
 ```
 
-The test checks HTTPS static serving, login/callback cookies, CSRF-protected
+The test checks security headers on HTML, JS/CSS and API/auth proxy errors,
+TLS 1.2/1.3, HTTPS static serving, login/callback cookies, CSRF-protected
 planner save, HTTP-service restart with the existing session/document, logout,
 and absence of callback URLs in nginx logs. The test role needs `CREATEDB`.
 
