@@ -45,9 +45,10 @@ export function CalendarPicker({ value, onChange, label = "BALANCE ON", variant 
   const focusDayPending = useRef(false);
   const closing = useRef(false);
 
-  function closeCalendar() {
+  function closeCalendar(restoreFocus = false) {
     closing.current = true;
     setIsOpen(false);
+    if (restoreFocus) triggerRef.current?.focus();
   }
   const [error, setError] = useState("");
   const [position, setPosition] = useState<CalendarPosition>({ top: 0, left: 0, width: CALENDAR_WIDTH });
@@ -56,9 +57,28 @@ export function CalendarPicker({ value, onChange, label = "BALANCE ON", variant 
   const suppressPointerClick = useRef(false);
   const visibleSelectedDates = dragDates ?? selectedDates;
 
+  const resetDrag = useCallback(() => {
+    dragRef.current = null;
+    setDragDates(null);
+  }, []);
+
+  function disabledDateReason(date: string): string | null {
+    if (ignoreWeekends && isWeekend(date)) return "Choose a weekday. Weekends are ignored in Settings.";
+    if (min && date < min) return `Choose a date on or after ${prettyDate(min)}.`;
+    return null;
+  }
+
+  function isDateSelected(date: string): boolean {
+    return visibleSelectedDates ? visibleSelectedDates.includes(date) : date === value;
+  }
+
+  function weekdayOffset(date: string): number {
+    return (new Date(`${date}T12:00:00Z`).getUTCDay() - weekStart + 7) % 7;
+  }
+
   function updateDragDate(date: string) {
     const drag = dragRef.current;
-    if (!drag || (min && date < min) || (ignoreWeekends && isWeekend(date))) return;
+    if (!drag || disabledDateReason(date)) return;
     const first = date < drag.start ? date : drag.start;
     const last = date > drag.start ? date : drag.start;
     const range = new Set<string>();
@@ -74,10 +94,9 @@ export function CalendarPicker({ value, onChange, label = "BALANCE ON", variant 
 
   useEffect(() => {
     if (!isOpen) {
-      dragRef.current = null;
-      setDragDates(null);
+      resetDrag();
     }
-  }, [isOpen]);
+  }, [isOpen, resetDrag]);
 
   const updatePosition = useCallback(() => {
     const trigger = triggerRef.current;
@@ -130,8 +149,7 @@ export function CalendarPicker({ value, onChange, label = "BALANCE ON", variant 
       if (event.defaultPrevented) return;
       if (event.key !== "Escape") return;
       event.preventDefault();
-      closeCalendar();
-      triggerRef.current?.focus();
+      closeCalendar(true);
     }
 
     function containFocus(event: FocusEvent) {
@@ -160,7 +178,7 @@ export function CalendarPicker({ value, onChange, label = "BALANCE ON", variant 
   const firstYearOption = Math.min(Math.max(MIN_YEAR, year - 40), MAX_YEAR - 80);
   const yearOptions = Array.from({ length: 81 }, (_, index) => firstYearOption + index);
   const daysInMonth = new Date(Date.UTC(year, month, 0)).getUTCDate();
-  const firstWeekday = (new Date(Date.UTC(year, month - 1, 1)).getUTCDay() - weekStart + 7) % 7;
+  const firstWeekday = weekdayOffset(viewMonth);
   const today = todayDate();
   const todaySelection = ignoreWeekends ? nextWeekday(today) : today;
   const calendarDays = Array.from({ length: 42 }, (_, index) => {
@@ -183,11 +201,11 @@ export function CalendarPicker({ value, onChange, label = "BALANCE ON", variant 
     setIsOpen(true);
   }
 
-  const enabledDays = calendarDays.filter((date): date is string => Boolean(date && (!min || date >= min) && (!ignoreWeekends || !isWeekend(date))));
+  const enabledDays = calendarDays.filter((date): date is string => date !== null && disabledDateReason(date) === null);
   const tabDate = enabledDays.includes(focusedDate) ? focusedDate : enabledDays[0];
 
   function navigateDay(event: React.KeyboardEvent<HTMLButtonElement>, date: string) {
-    const weekday = (new Date(`${date}T12:00:00Z`).getUTCDay() - weekStart + 7) % 7;
+    const weekday = weekdayOffset(date);
     let candidate: string;
     let direction = 1;
     switch (event.key) {
@@ -211,12 +229,9 @@ export function CalendarPicker({ value, onChange, label = "BALANCE ON", variant 
   }
 
   function selectDate(candidate: string): boolean {
-    if (ignoreWeekends && isWeekend(candidate)) {
-      setError("Choose a weekday. Weekends are ignored in Settings.");
-      return false;
-    }
-    if (min && candidate < min) {
-      setError(`Choose a date on or after ${prettyDate(min)}.`);
+    const disabledReason = disabledDateReason(candidate);
+    if (disabledReason) {
+      setError(disabledReason);
       return false;
     }
     if (!isValidDate(candidate)) {
@@ -234,8 +249,7 @@ export function CalendarPicker({ value, onChange, label = "BALANCE ON", variant 
       return true;
     }
     onChange(candidate);
-    closeCalendar();
-    triggerRef.current?.focus();
+    closeCalendar(true);
     return true;
   }
 
@@ -340,14 +354,14 @@ export function CalendarPicker({ value, onChange, label = "BALANCE ON", variant 
               <button
                 className={[
                   "calendar-day",
-                  (visibleSelectedDates ? visibleSelectedDates.includes(date) : date === value) ? "is-selected" : "",
+                  isDateSelected(date) ? "is-selected" : "",
                   date === today ? "is-today" : "",
                 ].filter(Boolean).join(" ")}
                 key={date}
                 type="button"
                 aria-label={prettyDate(date)}
-                aria-pressed={visibleSelectedDates ? visibleSelectedDates.includes(date) : date === value}
-                disabled={Boolean(min && date < min) || (ignoreWeekends && isWeekend(date))}
+                aria-pressed={isDateSelected(date)}
+                disabled={disabledDateReason(date) !== null}
                 data-date={date}
                 tabIndex={date === tabDate ? 0 : -1}
                 onFocus={() => setFocusedDate(date)}
@@ -370,18 +384,11 @@ export function CalendarPicker({ value, onChange, label = "BALANCE ON", variant 
                 onPointerUp={(event) => {
                   const drag = dragRef.current;
                   if (!drag || drag.pointerId !== event.pointerId) return;
-                  dragRef.current = null;
+                  resetDrag();
                   onDatesChange?.(drag.dates);
-                  setDragDates(null);
                 }}
-                onPointerCancel={() => {
-                  dragRef.current = null;
-                  setDragDates(null);
-                }}
-                onLostPointerCapture={() => {
-                  dragRef.current = null;
-                  setDragDates(null);
-                }}
+                onPointerCancel={resetDrag}
+                onLostPointerCapture={resetDrag}
                 onClick={(event) => {
                   if (event.detail > 0 && suppressPointerClick.current) {
                     suppressPointerClick.current = false;
@@ -400,20 +407,15 @@ export function CalendarPicker({ value, onChange, label = "BALANCE ON", variant 
           {(optional || selectedDates) && <div className="calendar-footer">
             {optional && <button className="calendar-today-button" type="button" onClick={() => {
               onChange("");
-              closeCalendar();
-              triggerRef.current?.focus();
+              closeCalendar(true);
             }}>Clear date</button>}
             {selectedDates && <div className="calendar-footer-actions">
               {onDatesChange && <button className="calendar-footer-button calendar-clear-button" type="button" onClick={() => {
-                dragRef.current = null;
-                setDragDates(null);
+                resetDrag();
                 setError("");
                 onDatesChange([]);
               }}>Clear</button>}
-              <button className="calendar-footer-button calendar-done-button" type="button" onClick={() => {
-                closeCalendar();
-                triggerRef.current?.focus();
-              }}>Done</button>
+              <button className="calendar-footer-button calendar-done-button" type="button" onClick={() => closeCalendar(true)}>Done</button>
             </div>}
           </div>}
         </div>,

@@ -4,7 +4,7 @@ import { createRoot } from "react-dom/client";
 import { expect, it, vi } from "vitest";
 import { CalendarPicker } from "./CalendarPicker";
 import { ModalFrame } from "./Modals";
-import { IgnoreWeekendsContext } from "./settings";
+import { FirstDayOfWeekContext, IgnoreWeekendsContext } from "./settings";
 
 it.each(["1900-01-01", "2200-12-31"])("keeps month and keyboard navigation within the supported range at %s", async (value) => {
   vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
@@ -147,6 +147,80 @@ it("navigates dates across months, traps focus, and closes only the nested calen
     expect(document.activeElement).toBe(trigger);
     expect(close).not.toHaveBeenCalled();
     expect(change).not.toHaveBeenCalled();
+  } finally {
+    await act(async () => root.unmount());
+    container.remove();
+    vi.unstubAllGlobals();
+  }
+});
+
+it.each(["Sunday", "Monday"] as const)("aligns the grid and Home/End navigation with a %s week start", async (weekStart) => {
+  vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
+  const container = document.createElement("div");
+  document.body.append(container);
+  const root = createRoot(container);
+  try {
+    await act(async () => root.render(<FirstDayOfWeekContext.Provider value={weekStart}>
+      <CalendarPicker value="2026-06-10" onChange={vi.fn()} />
+    </FirstDayOfWeekContext.Provider>));
+    await act(async () => container.querySelector<HTMLButtonElement>("button")!.click());
+    expect(document.querySelectorAll(".calendar-day-empty").length).toBe(12);
+    const cells = [...document.querySelector(".calendar-days")!.children];
+    expect((cells[weekStart === "Sunday" ? 1 : 0] as HTMLElement).dataset.date).toBe("2026-06-01");
+    for (const [key, date] of [["Home", weekStart === "Sunday" ? "2026-06-07" : "2026-06-08"],
+      ["End", weekStart === "Sunday" ? "2026-06-13" : "2026-06-14"]]) {
+      await act(async () => document.activeElement!.dispatchEvent(new KeyboardEvent("keydown", { key, bubbles: true })));
+      expect((document.activeElement as HTMLElement).dataset.date).toBe(date);
+    }
+  } finally {
+    await act(async () => root.unmount());
+    container.remove();
+    vi.unstubAllGlobals();
+  }
+});
+
+it("resets drag previews on cancellation, capture loss, clear, and close while committing pointer releases", async () => {
+  vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
+  const container = document.createElement("div");
+  document.body.append(container);
+  const root = createRoot(container);
+  const change = vi.fn();
+  const pointer = async (button: HTMLButtonElement, type: string) => {
+    const event = new MouseEvent(type, { bubbles: true, button: 0 });
+    Object.defineProperties(event, { pointerId: { value: 1 }, isPrimary: { value: true } });
+    await act(async () => button.dispatchEvent(event));
+  };
+  try {
+    await act(async () => root.render(<CalendarPicker value="2026-06-10" onChange={vi.fn()}
+      selectedDates={["2026-06-10"]} onDatesChange={change} />));
+    const trigger = container.querySelector<HTMLButtonElement>("button")!;
+    await act(async () => trigger.click());
+    const day = () => document.querySelector<HTMLButtonElement>('[data-date="2026-06-11"]')!;
+    for (const type of ["pointercancel", "lostpointercapture"]) {
+      day().setPointerCapture = vi.fn();
+      await pointer(day(), "pointerdown");
+      expect(day().getAttribute("aria-pressed")).toBe("true");
+      expect(day().classList.contains("is-selected")).toBe(true);
+      await pointer(day(), type);
+      expect(day().getAttribute("aria-pressed")).toBe("false");
+      expect(day().classList.contains("is-selected")).toBe(false);
+      await pointer(day(), "pointerup");
+      expect(change).not.toHaveBeenCalled();
+    }
+    await pointer(day(), "pointerdown");
+    await pointer(day(), "pointerup");
+    expect(change).toHaveBeenCalledExactlyOnceWith(["2026-06-10", "2026-06-11"]);
+    await pointer(day(), "lostpointercapture");
+    expect(day().getAttribute("aria-pressed")).toBe("false");
+    await pointer(day(), "pointerdown");
+    await act(async () => document.querySelector<HTMLButtonElement>(".calendar-clear-button:not(.calendar-top-today)")!.click());
+    expect(change).toHaveBeenLastCalledWith([]);
+    expect(day().getAttribute("aria-pressed")).toBe("false");
+    await pointer(day(), "pointerdown");
+    await act(async () => document.querySelector<HTMLButtonElement>(".calendar-done-button")!.click());
+    expect(document.activeElement).toBe(trigger);
+    await act(async () => trigger.click());
+    expect(day().getAttribute("aria-pressed")).toBe("false");
   } finally {
     await act(async () => root.unmount());
     container.remove();
