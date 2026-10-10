@@ -13,15 +13,6 @@ export default defineConfig(({ mode }) => ({
       "/auth": "http://127.0.0.1:3000",
     },
   },
-  build: {
-    rolldownOptions: {
-      output: {
-        manualChunks(id) {
-          if (id.includes("/node_modules/recharts/")) return "charts";
-        },
-      },
-    },
-  },
   test: {
     environment: "node",
   },
