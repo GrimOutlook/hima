@@ -62,6 +62,13 @@ Verify the actual production chunk graph with `pnpm exec vite build --manifest`
 and `node scripts/verify-chart-chunks.mjs`; repeat with
 `pnpm exec vite build --mode pages --manifest` for the Pages variant.
 
+The memoized balance chart consumes pool histories aligned with `historyDates`.
+Exact date lookups reuse date-index maps; sparse/weekday range boundaries use
+binary search. Selection and brush updates reuse prepared series data, and the
+visible Y-axis bounds use a loop rather than spreading every pool value into a
+function call. `src/BalanceChart.test.tsx` covers a 3660-day, 50-pool view,
+weekday index alignment and unchanged-parent/selection data reuse.
+
 The frontend ledger indexes validated event days by pool once per events-array
 revision. Each pool's immutable inputs and that events array key a weak cache of
 sorted actions and running snapshots through the supported maximum date (2200).

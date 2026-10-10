@@ -121,12 +121,12 @@ function Planner({ planner }: { planner: ReturnType<typeof useStoredPlanner> }) 
   const local = planner.mode === "local";
   const mounted = useRef(true);
   useEffect(() => { mounted.current = true; return () => { mounted.current = false; }; }, []);
-  function dispatch(action: StoreAction): string | null {
+  const dispatch = useCallback((action: StoreAction): string | null => {
     const error = storeActionError(store, action);
     if (error) return error;
     setStore((current) => reduceStore(current, action));
     return null;
-  }
+  }, [store, setStore]);
   const [draggedPoolId, setDraggedPoolId] = useState<number | null>(null);
   const draggedPool = store.pools.find((pool) => pool.id === draggedPoolId);
   const poolDragSensors = useSensors(
@@ -153,6 +153,14 @@ function Planner({ planner }: { planner: ReturnType<typeof useStoredPlanner> }) 
   const importSettingsRef = useRef(false);
   const timelineListRef = useRef<HTMLDivElement>(null);
   const chartHistoryEnd = todayDate();
+  const selectToday = useCallback(() => {
+    setHighlightedEventId(null);
+    setEventSelection(null);
+    setBalanceDate(ignoreWeekends ? nextWeekday(chartHistoryEnd) : chartHistoryEnd);
+  }, [ignoreWeekends, chartHistoryEnd]);
+  const changePoolVisibility = useCallback((poolId: number, visible: boolean) => {
+    dispatch({ type: "set-pool-visibility", poolId, visible });
+  }, [dispatch]);
   const balance = totalsOn(store, balanceDate);
   const historyDates = useMemo(
     () => balanceHistoryDates({ ...store, pools: store.pools.map((pool) => ({ ...pool, hidden_from_graph: false })) }, chartHistoryEnd),
@@ -432,13 +440,9 @@ function Planner({ planner }: { planner: ReturnType<typeof useStoredPlanner> }) 
           today={chartHistoryEnd}
           selectedDate={balanceDate}
           onDateChange={setBalanceDate}
-          onToday={() => {
-            setHighlightedEventId(null);
-            setEventSelection(null);
-            setBalanceDate(ignoreWeekends ? nextWeekday(chartHistoryEnd) : chartHistoryEnd);
-          }}
+          onToday={selectToday}
           pools={store.pools}
-          onPoolVisibilityChange={(poolId, visible) => { dispatch({ type: "set-pool-visibility", poolId, visible }); }}
+          onPoolVisibilityChange={changePoolVisibility}
           poolHistories={poolHistories}
           selectedEvent={selectedEvent}
           zoomEvent={zoomEvent}
