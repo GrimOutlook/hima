@@ -1,0 +1,7 @@
+[advisories]
+# rsa is pulled in by openidconnect for public-key signature verification.
+# RUSTSEC-2023-0071 affects private-key operations (decryption/signing), which
+# production does not perform. RSA signing occurs only in local OIDC test fixtures.
+# No patched release exists; remove this exception when upstream provides a fix
+# or re-evaluate it before adding any production RSA private-key operations.
+ignore = ["RUSTSEC-2023-0071"]
