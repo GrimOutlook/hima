@@ -1,15 +1,18 @@
-import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState, type ChangeEvent } from "react";
+import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState, type ChangeEvent, type ComponentProps } from "react";
 import { closestCenter, defaultDropAnimationSideEffects, DndContext, DragOverlay, KeyboardSensor, PointerSensor, useSensor, useSensors } from "@dnd-kit/core";
 import { defaultAnimateLayoutChanges, SortableContext, sortableKeyboardCoordinates, useSortable, verticalListSortingStrategy } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import { CalendarPicker } from "./CalendarPicker";
 import { poolColor } from "./poolColors";
-import { parseBackupJson, serializeBackupJson } from "./backup";
+import { parseBackupJson } from "./backup";
+import { downloadBackup, downloadJson } from "./backupDownload";
+import { ConflictPanel, MigrationScreen, saveStatusLabel } from "./PlannerScreens";
+import { EventRow } from "./EventRow";
+import { formatPercent, pluralize, selectOnRowClick } from "./presentation";
 import { useStoredPlanner } from "./useStoredPlanner";
 import { clearBrowserData, exportRawBrowserData } from "./localPersistence";
 import { usePoolCardFigures } from "./usePoolCardFigures";
-import { defaultSettings, FirstDayOfWeekContext, IgnoreWeekendsContext, nextWeekday } from "./settings";
-import type { PlannerDocument } from "./plannerPersistence";
+import { FirstDayOfWeekContext, IgnoreWeekendsContext, nextWeekday } from "./settings";
 import {
   AdditionModal,
   PoolCapModal,
@@ -32,13 +35,10 @@ import {
   compareDated,
   compareDates,
   compareStartDates,
-  dayLabel,
-  eventDateRangeLabel,
   eventPoolHours,
   eventTotalHours,
   firstDate,
   formatHours,
-  monthLabel,
   poolTotalsOn,
   prettyDate,
   recurringScheduleDescription,
@@ -81,66 +81,39 @@ function App() {
       Unsaved changes from account {recovery.userId} are retained in this page.
       <button className="button" type="button" onClick={() => downloadBackup(recovery.document)}>Export retained backup</button>
     </p>)}
-    {planner.phase === "ready" && planner.migration ? <main className="page-content">
-      <h1>Choose your planner for account {planner.session?.user_id}</h1>
-      <p>Existing browser data and settings were found. Local copies remain readable to anyone using this browser, including other accounts. After a successful upload you can remove them and their recovery backups. {planner.revision === 0 ? "This account has no remote planner." : "This account also has a remote planner. Uploading local data replaces that remote copy."}</p>
-      <button className="button" onClick={() => downloadJson(planner.migration!.raw)}>Export original local backup</button>
-      {planner.migration.document && <><p>Local copy: {planner.migration.document.pools.length} pools; {planner.migration.document.events.length} events.</p><button className="button" onClick={() => downloadBackup(planner.migration!.document!)}>Export migrated local backup</button></>}
-      <button className="button" onClick={() => downloadBackup(planner.document)}>Export remote backup</button>
-      {planner.migration.warnings.map((warning, index) => <p role="alert" key={index}>{warning}</p>)}
-      {(planner.error || planner.migration.error) && <p role="alert">{planner.error || planner.migration.error}</p>}
-      <button className="button" disabled={planner.resolving || !planner.migration.document} onClick={() => { if (window.confirm("Upload the displayed local copy and settings, replacing the remote planner? Export backups first if needed.")) void planner.migrate(); }}>Upload local planner and settings</button>
-      <button className="button" disabled={planner.resolving} onClick={planner.chooseRemote}>Use remote / cancel migration</button>
-      {!local && <button className="button" onClick={() => void planner.logout()}>Sign out</button>}
-    </main> : planner.phase === "ready" ? <>
+    {planner.phase === "ready" && planner.migration ? <MigrationScreen planner={planner} /> : planner.phase === "ready" ? <>
       {planner.migratedLocal && <section aria-label="Remove migrated browser data">
         <p role="status">Your local planner was saved to your account. Remove the local copy and recovery backups? Keeping them leaves them readable to anyone using this browser and available to other accounts.</p>
         {planner.error && <p role="alert">{planner.error}</p>}
         <button className="button" onClick={() => planner.finishLocalMigration(true)}>Remove local copy and recovery backups</button>
         <button className="button" onClick={() => planner.finishLocalMigration(false)}>Keep local copy</button>
       </section>}
-      {planner.saveStatus === "conflict" && <section aria-label="Resolve revision conflict">
-        <p role="alert">{local ? "Another tab or window changed this browser's planner." : "Remote data changed."} Your unsaved work is retained. Saving is paused until you choose a copy.</p>
-        <button className="button" onClick={() => downloadBackup(planner.document)}>Export unsaved work</button>
-        <button className="button" disabled={planner.resolving} onClick={() => void planner.fetchLatest()}>{local ? "Fetch latest browser copy" : "Fetch latest remote copy"}</button>
-        {planner.latest && <>
-          <p>Latest {local ? "browser" : "remote"} revision: {planner.latest.revision}. Pools: {planner.latest.document.pools.length}; events: {planner.latest.document.events.length}.</p>
-          <button className="button" onClick={() => downloadBackup(planner.latest!.document)}>Export latest {local ? "browser" : "remote"} backup</button>
-          <button className="button" onClick={() => { if (window.confirm(`Load the latest ${local ? "browser" : "remote"} copy? Your unsaved work will remain available as a retained backup in this page.`)) planner.resolveConflict(false); }}>Load latest {local ? "browser" : "remote"} copy</button>
-          <button className="button" onClick={() => { if (window.confirm(`Replace the latest ${local ? "browser" : "remote"} copy with your unsaved work? Export both copies first if needed.`)) planner.resolveConflict(true); }}>Replace {local ? "browser copy" : "remote"} with my work</button>
-        </>}
-      </section>}
+      {planner.saveStatus === "conflict" && <ConflictPanel planner={planner} />}
       <Planner key={planner.generation} planner={planner} />
     </> : <main className="page-content">
       <h1>hima</h1>
-      {planner.phase === "loading" ? <p role="status">{local ? "Loading your planner…" : "Loading your account and planner…"}</p> : planner.phase === "logging-out" ? <p role="status">Signing out…</p> : <>
-        {planner.phase === "error" ? <><p role="alert">Could not load your planner: {planner.error}</p><button className="button" type="button" onClick={planner.retry}>Retry loading</button>{local && <><button className="button" type="button" onClick={() => recoverBrowserData(false)}>Export raw browser data</button><button className="button" type="button" onClick={() => recoverBrowserData(true)}>Start fresh</button></>}</> : <><p>Sign in to load and save your planner.</p><a className="button button-primary" href="/auth/login">Sign in</a></>}
+      {planner.phase === "loading" ? (
+        <p role="status">{local ? "Loading your planner…" : "Loading your account and planner…"}</p>
+      ) : planner.phase === "logging-out" ? <p role="status">Signing out…</p> : <>
+        {planner.phase === "error" ? <>
+          <p role="alert">Could not load your planner: {planner.error}</p>
+          <button className="button" type="button" onClick={planner.retry}>Retry loading</button>
+          {local && <>
+            <button className="button" type="button" onClick={() => recoverBrowserData(false)}>Export raw browser data</button>
+            <button className="button" type="button" onClick={() => recoverBrowserData(true)}>Start fresh</button>
+          </>}
+        </> : <>
+          <p>Sign in to load and save your planner.</p>
+          <a className="button button-primary" href="/auth/login">Sign in</a>
+        </>}
       </>}
     </main>}
   </>;
 }
 
-function downloadBackup(document: PlannerDocument) {
-  downloadJson(serializeBackupJson(document, document.settings ?? defaultSettings));
-}
-
-function downloadJson(json: string) {
-  const blob = new Blob([json], { type: "application/json" });
-  const url = URL.createObjectURL(blob);
-  const link = window.document.createElement("a");
-  link.href = url;
-  link.download = `hima-backup-${todayDate()}.json`;
-  window.document.body.append(link);
-  link.click();
-  link.remove();
-  window.setTimeout(() => URL.revokeObjectURL(url), 0);
-}
-
 function Planner({ planner }: { planner: ReturnType<typeof useStoredPlanner> }) {
   const { store, setStore, saveStatus, settings: { firstDayOfWeek, ignoreWeekends, defaultTimeline } } = planner;
-  const setFirstDayOfWeek = (firstDayOfWeek: typeof planner.settings.firstDayOfWeek) => planner.setSettings({ firstDayOfWeek });
-  const setIgnoreWeekends = (ignoreWeekends: boolean) => planner.setSettings({ ignoreWeekends });
-  const setDefaultTimeline = (defaultTimeline: typeof planner.settings.defaultTimeline) => planner.setSettings({ defaultTimeline });
+  const local = planner.mode === "local";
   const mounted = useRef(true);
   useEffect(() => { mounted.current = true; return () => { mounted.current = false; }; }, []);
   function dispatch(action: StoreAction): string | null {
@@ -203,11 +176,13 @@ function Planner({ planner }: { planner: ReturnType<typeof useStoredPlanner> }) 
   const visibleUsedHours = usesFilterPool
     ? poolTotalsOn(store, usesFilterPool.id, balanceDate).used
     : balance.used;
-  const usagePool = modal?.type === "pool-usage"
+  const modalPool = modal && "poolId" in modal
     ? store.pools.find((pool) => pool.id === modal.poolId)
     : undefined;
-  const informationPool = modal?.type === "pool-info"
-    ? store.pools.find((pool) => pool.id === modal.poolId)
+  const usagePool = modal?.type === "pool-usage" ? modalPool : undefined;
+  const informationPool = modal?.type === "pool-info" ? modalPool : undefined;
+  const editingCap = modal?.type === "edit-cap"
+    ? modalPool?.caps.find((cap) => cap.id === modal.capId)
     : undefined;
 
   const scrollToClosestEvent = useCallback((date: string) => {
@@ -237,14 +212,6 @@ function Planner({ planner }: { planner: ReturnType<typeof useStoredPlanner> }) 
     scrollToClosestEvent(balanceDate);
   }, [balanceDate, scrollToClosestEvent]);
 
-  function createPool() {
-    setModal({ type: "new-pool" });
-  }
-
-  function reorderPool(poolId: number, targetId: number) {
-    dispatch({ type: "reorder-pool", poolId, targetId });
-  }
-
   function poolCardProps(pool: Pool): PoolCardProps {
     return {
       pool, balanceDate, store,
@@ -253,10 +220,7 @@ function Planner({ planner }: { planner: ReturnType<typeof useStoredPlanner> }) 
       onSelect: () => setSelectedUsesPoolId((current) => current === pool.id ? null : pool.id),
       onViewUsage: () => setModal({ type: "pool-usage", poolId: pool.id }),
       onViewInformation: () => setModal({ type: "pool-info", poolId: pool.id }),
-      onEdit: () => setModal({ type: "edit-pool", poolId: pool.id }),
       onAddTime: () => setModal({ type: "add-time", poolId: pool.id }),
-      onEditAddition: (additionId) => setModal({ type: "edit-addition", poolId: pool.id, additionId }),
-      onEditRecurring: (ruleId) => setModal({ type: "edit-recurring", poolId: pool.id, ruleId }),
     };
   }
 
@@ -282,10 +246,6 @@ function Planner({ planner }: { planner: ReturnType<typeof useStoredPlanner> }) 
     }));
   }
 
-  function exportData() {
-    downloadBackup(store);
-  }
-
   async function importData(event: ChangeEvent<HTMLInputElement>) {
     const input = event.currentTarget;
     const file = input.files?.[0];
@@ -299,7 +259,11 @@ function Planner({ planner }: { planner: ReturnType<typeof useStoredPlanner> }) 
       if (!mounted.current) return;
       const restoreSettings = shouldImportSettings && settings !== undefined;
       const confirmed = window.confirm(
-        `${warnings.length ? `${warnings.join("\n")}\n\n` : ""}Imported amounts are rounded to hundredths of an hour.\n\nReplace ${planner.mode === "local" ? "this browser's" : "this account's"} planner with ${imported.pools.length} ${imported.pools.length === 1 ? "pool" : "pools"} and ${imported.events.length} ${imported.events.length === 1 ? "event" : "events"}${restoreSettings ? " and restore the backup settings" : ""}? Export a backup first to keep the current copy.`,
+        `${warnings.length ? `${warnings.join("\n")}\n\n` : ""}Imported amounts are rounded to hundredths of an hour.\n\n` +
+        `Replace ${local ? "this browser's" : "this account's"} planner with ` +
+        `${imported.pools.length} ${pluralize(imported.pools.length, "pool")} and ` +
+        `${imported.events.length} ${pluralize(imported.events.length, "event")}` +
+        `${restoreSettings ? " and restore the backup settings" : ""}? Export a backup first to keep the current copy.`,
       );
       if (!confirmed) return;
       planner.importBackup(imported, restoreSettings ? settings : undefined);
@@ -312,33 +276,41 @@ function Planner({ planner }: { planner: ReturnType<typeof useStoredPlanner> }) 
     }
   }
 
+  function saveAction(action: StoreAction, nextModal: ModalState | null = null): string | null {
+    const error = dispatch(action);
+    if (error) return error;
+    setModal(nextModal);
+    return null;
+  }
+
+  function confirmDelete(message: string, action: StoreAction, nextModal: ModalState | null = null) {
+    if (window.confirm(message)) saveAction(action, nextModal);
+  }
+
   function removePool(poolId: number, poolName: string) {
-    if (!window.confirm(`Remove ‘${poolName}’ and event days assigned to it?`)) return;
-    dispatch({ type: "remove-pool", poolId });
-    setModal(null);
+    confirmDelete(`Remove ‘${poolName}’ and event days assigned to it?`, { type: "remove-pool", poolId });
   }
 
   function removeAddition(poolId: number, additionId: number, recurring: boolean) {
-    if (!window.confirm(recurring ? "Remove this recurring addition?" : "Remove this one-time addition?")) return;
-    dispatch({ type: "remove-addition", poolId, additionId, recurring });
-    setModal({ type: "pool-info", poolId });
+    confirmDelete(
+      recurring ? "Remove this recurring addition?" : "Remove this one-time addition?",
+      { type: "remove-addition", poolId, additionId, recurring },
+      { type: "pool-info", poolId },
+    );
   }
 
   function savePool(form: PoolFormData): string | null {
-    const error = dispatch({ type: "save-pool", poolId: modal?.type === "edit-pool" ? modal.poolId : undefined,
+    return saveAction({ type: "save-pool", poolId: modal?.type === "edit-pool" ? modal.poolId : undefined,
       ...form });
-    if (error) return error;
-    setModal(null);
-    return null;
   }
 
   function saveCap(cap: PoolCapFormData): string | null {
     if (modal?.type !== "add-time" && modal?.type !== "edit-cap") return "This pool is no longer available.";
     const capId = modal.type === "edit-cap" ? modal.capId : undefined;
-    const error = dispatch({ type: "save-cap", poolId: modal.poolId, capId, cap });
-    if (error) return error;
-    setModal(capId === undefined ? null : { type: "pool-info", poolId: modal.poolId });
-    return null;
+    return saveAction(
+      { type: "save-cap", poolId: modal.poolId, capId, cap },
+      capId === undefined ? null : { type: "pool-info", poolId: modal.poolId },
+    );
   }
 
   function saveAddition(form: AdditionFormData): string | null {
@@ -352,17 +324,11 @@ function Planner({ planner }: { planner: ReturnType<typeof useStoredPlanner> }) 
     const poolId = modal.poolId;
     const target = modal.type === "edit-addition" ? { type: "one-time" as const, id: modal.additionId }
       : modal.type === "edit-recurring" ? { type: "recurring" as const, id: modal.ruleId } : undefined;
-    const error = dispatch({ type: "save-addition", poolId, target, form });
-    if (error) return error;
-    setModal(null);
-    return null;
+    return saveAction({ type: "save-addition", poolId, target, form });
   }
 
   function saveEvent(name: string, days: LeaveDay[]): string | null {
-    const error = dispatch({ type: "save-event", eventId: modal?.type === "edit-event" ? modal.eventId : undefined, name, days });
-    if (error) return error;
-    setModal(null);
-    return null;
+    return saveAction({ type: "save-event", eventId: modal?.type === "edit-event" ? modal.eventId : undefined, name, days });
   }
 
   function openEditEvent(event: LeaveEvent) {
@@ -386,11 +352,11 @@ function Planner({ planner }: { planner: ReturnType<typeof useStoredPlanner> }) 
         <div className="topbar-right">
           <span className="privacy-note" role="status">
             {saveStatus === "saved" && <span className="privacy-dot" />}
-            {saveStatus === "saved" ? planner.revision === 0 ? "No changes to save" : planner.mode === "local" ? "Saved in this browser" : "Saved to your account" : saveStatus === "conflict" ? "Save conflict" : saveStatus === "failed" ? "Save failed" : "Changes pending"}
+            {saveStatusLabel(saveStatus, planner.revision, local)}
           </span>
-          {(saveStatus === "failed" || saveStatus === "conflict") && <button className="button" type="button" onClick={exportData}>Export backup</button>}
+          {(saveStatus === "failed" || saveStatus === "conflict") && <button className="button" type="button" onClick={() => downloadBackup(store)}>Export backup</button>}
           {saveStatus === "failed" && <button className="button" type="button" onClick={planner.retry}>Retry save</button>}
-          {planner.mode === "remote" && <button className="button" type="button" onClick={() => { void planner.logout(); }}>Sign out</button>}
+          {!local && <button className="button" type="button" onClick={() => { void planner.logout(); }}>Sign out</button>}
           <button ref={settingsButtonRef} className="icon-button" type="button" title="Settings" aria-label="Open settings" aria-haspopup="dialog" onClick={() => setModal({ type: "settings" })}>
             <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
               <path d="m9 3-.5 2-2 1.2-2-.6-2 3.5L4 10.5v3l-1.5 1.4 2 3.5 2-.6 2 1.2.5 2h6l.5-2 2-1.2 2 .6 2-3.5-1.5-1.4v-3l1.5-1.4-2-3.5-2 .6-2-1.2L15 3Z" />
@@ -408,7 +374,11 @@ function Planner({ planner }: { planner: ReturnType<typeof useStoredPlanner> }) 
         </div>
       </header>
       {saveStatus === "failed" && <p role="alert">Changes could not be saved: {planner.error} Your edits are retained. Retry saving or export a backup before closing this page.</p>}
-      {saveStatus === "conflict" && <p role="alert">{planner.mode === "local" ? "Another tab or window changed this browser's planner. Your edits are retained and saving is paused to protect both copies. Export a backup before reloading to load the latest browser planner." : "The remote planner changed. Your edits are retained and saving is paused to protect both copies. Export a backup before reloading to load the latest remote planner."}</p>}
+      {saveStatus === "conflict" && <p role="alert">
+        {local ? "Another tab or window changed this browser's planner." : "The remote planner changed."}
+        {" "}Your edits are retained and saving is paused to protect both copies.
+        Export a backup before reloading to load the latest {local ? "browser" : "remote"} planner.
+      </p>}
 
       <main id="top" className="page-content">
         <section className="page-intro">
@@ -478,7 +448,7 @@ function Planner({ planner }: { planner: ReturnType<typeof useStoredPlanner> }) 
             <div className="section-overline">THE BIG PICTURE</div>
             <div className="pools-heading">
               <h2>Your pools</h2>
-              <button className="button button-primary button-small" type="button" onClick={createPool}>
+              <button className="button button-primary button-small" type="button" onClick={() => setModal({ type: "new-pool" })}>
                 <span className="button-plus">+</span>
                 Add pool
               </button>
@@ -515,7 +485,9 @@ function Planner({ planner }: { planner: ReturnType<typeof useStoredPlanner> }) 
               onDragStart={({ active }) => setDraggedPoolId(Number(active.id))}
               onDragCancel={() => setDraggedPoolId(null)}
               onDragEnd={({ active, over }) => {
-                if (over && active.id !== over.id) reorderPool(Number(active.id), Number(over.id));
+                if (over && active.id !== over.id) {
+                  dispatch({ type: "reorder-pool", poolId: Number(active.id), targetId: Number(over.id) });
+                }
                 setDraggedPoolId(null);
               }}
             >
@@ -525,7 +497,7 @@ function Planner({ planner }: { planner: ReturnType<typeof useStoredPlanner> }) 
                 <div className="empty-illustration">✳</div>
                 <h3>Start with a pool</h3>
                 <p>Give your leave a home. Add a one-off balance now, or set up regular accruals as you go.</p>
-                <button className="button button-primary" type="button" onClick={createPool}>
+                <button className="button button-primary" type="button" onClick={() => setModal({ type: "new-pool" })}>
                   <span className="button-plus">+</span>
                   Create your first pool
                 </button>
@@ -578,88 +550,25 @@ function Planner({ planner }: { planner: ReturnType<typeof useStoredPlanner> }) 
                 </div>
               ) : (
                 <div className="timeline-list" ref={timelineListRef}>
-                  {visibleTimeline.map((event) => {
-                    const includedDays = event.days.filter((day) => day.date <= balanceDate).length;
-                    const statusClass = includedDays === event.days.length
-                      ? "event-status event-status-counted"
-                      : includedDays > 0
-                        ? "event-status event-status-partial"
-                        : "event-status";
-                    const status = includedDays === event.days.length
-                      ? "Included in balance"
-                      : includedDays > 0
-                        ? "Partly included"
-                        : "After selected date";
-                    const startDate = firstDate(event.days) ?? "";
-                    const fullEvent = store.events.find((candidate) => candidate.id === event.id) ?? event;
-                    const totalHours = eventTotalHours(fullEvent);
-                    const poolShares = store.pools.map((pool) => ({
-                      pool,
-                      hours: eventPoolHours(fullEvent, pool.id),
-                    })).filter((share) => share.hours > 0);
-                    return (
-                      // The title button provides keyboard selection; the row click is a pointer shortcut.
-                      // eslint-disable-next-line jsx-a11y/click-events-have-key-events, jsx-a11y/no-noninteractive-element-interactions
-                      <article className={`event-row${selectedEvent?.id === event.id ? " event-row-selected" : ""}`} key={event.id}
-                        data-event-id={event.id}
-                        onClick={(click) => {
-                          if (click.target instanceof Element && click.target.closest("button")) return;
-                          selectEvent(event.id);
-                        }}>
-                        <div className="event-date-block">
-                          <span className="event-month">{monthLabel(startDate)}</span>
-                          <strong>{dayLabel(startDate)}</strong>
-                        </div>
-                        <div className="event-info">
-                          <strong><button className="pool-select-button" type="button"
-                            aria-label={`Highlight ${event.name} in graph`}
-                            aria-pressed={selectedEvent?.id === event.id}
-                            onClick={() => selectEvent(event.id)}
-                          >{event.name}</button></strong>
-                          <span>{eventDateRangeLabel(event)}</span>
-                          <span className={statusClass}>{status}</span>
-                        </div>
-                        <div className="event-amount">−{formatHours(eventTotalHours(event))} h</div>
-                        <div className="event-actions">
-                          <button
-                            className="text-button event-zoom-button"
-                            type="button"
-                            aria-label={`${eventSelection?.id === event.id && eventSelection.zoom ? "Widen timeline around" : "Zoom to"} ${event.name}`}
-                            onClick={() => zoomToEvent(event.id)}
-                          >
-                            {eventSelection?.id === event.id && eventSelection.zoom ? "Widen" : "Zoom"}
-                          </button>
-                          <button
-                            className="icon-button"
-                            type="button"
-                            title="Edit event"
-                            aria-label={`Edit ${event.name}`}
-                            onClick={() => openEditEvent(event)}
-                          >
-                            ✎
-                          </button>
-                        </div>
-                        {totalHours > 0 && (
-                          <div className="event-pool-bar" role="img" aria-label={poolShares.map(({ pool, hours }) =>
-                            `${pool.name}: ${formatHours(hours)} hours (${(hours / totalHours * 100).toFixed(1)}%)`,
-                          ).join(", ")}>
-                            {poolShares.map(({ pool, hours }) => (
-                              <span
-                                key={pool.id}
-                                style={{ width: `${hours / totalHours * 100}%`, backgroundColor: poolColor(pool.id, pool.color) }}
-                                title={`${pool.name}: ${formatHours(hours)} h (${(hours / totalHours * 100).toFixed(1)}%)`}
-                              />
-                            ))}
-                          </div>
-                        )}
-                      </article>
-                    );
-                  })}
+                  {visibleTimeline.map((event) => (
+                    <EventRow
+                      key={event.id}
+                      event={event}
+                      fullEvent={store.events.find((candidate) => candidate.id === event.id) ?? event}
+                      pools={store.pools}
+                      balanceDate={balanceDate}
+                      selected={selectedEvent?.id === event.id}
+                      zoomed={eventSelection?.id === event.id && eventSelection.zoom}
+                      onSelect={() => selectEvent(event.id)}
+                      onZoom={() => zoomToEvent(event.id)}
+                      onEdit={() => openEditEvent(event)}
+                    />
+                  ))}
                 </div>
               )}
 
               <div className="events-panel-footer">
-                <span>{visibleTimeline.length} {visibleTimeline.length === 1 ? "event" : "events"}</span>
+                <span>{visibleTimeline.length} {pluralize(visibleTimeline.length, "event")}</span>
                 <span>{formatHours(visibleUsedHours)} h used by selected date</span>
               </div>
             </div>
@@ -673,12 +582,33 @@ function Planner({ planner }: { planner: ReturnType<typeof useStoredPlanner> }) 
         </footer>
       </main>
 
-      {modal?.type === "settings" && <SettingsModal firstDayOfWeek={firstDayOfWeek} onChange={setFirstDayOfWeek} ignoreWeekends={ignoreWeekends} onIgnoreWeekendsChange={setIgnoreWeekends} defaultTimeline={defaultTimeline} onDefaultTimelineChange={setDefaultTimeline} onExport={exportData} onImport={(importSettings) => {
-        importSettingsRef.current = importSettings;
-        importInputRef.current?.click();
-      }} browserOnly={planner.mode === "local"} onLogoutEverywhere={planner.mode === "remote" ? () => { void planner.logoutEverywhere(); } : undefined} onClose={closeSettings} />}
+      {modal?.type === "settings" && <SettingsModal
+        firstDayOfWeek={firstDayOfWeek}
+        onChange={(firstDayOfWeek) => planner.setSettings({ firstDayOfWeek })}
+        ignoreWeekends={ignoreWeekends}
+        onIgnoreWeekendsChange={(ignoreWeekends) => planner.setSettings({ ignoreWeekends })}
+        defaultTimeline={defaultTimeline}
+        onDefaultTimelineChange={(defaultTimeline) => planner.setSettings({ defaultTimeline })}
+        onExport={() => downloadBackup(store)}
+        onImport={(importSettings) => {
+          importSettingsRef.current = importSettings;
+          importInputRef.current?.click();
+        }}
+        browserOnly={local}
+        onLogoutEverywhere={!local ? () => { void planner.logoutEverywhere(); } : undefined}
+        onClose={closeSettings}
+      />}
       {informationPool && (
-        <PoolInformationModal {...poolCardProps(informationPool)} onEditCap={(capId) => setModal({ type: "edit-cap", poolId: informationPool.id, capId })} onClose={() => setModal(null)} />
+        <PoolInformationModal
+          pool={informationPool}
+          store={store}
+          balanceDate={balanceDate}
+          onEdit={() => setModal({ type: "edit-pool", poolId: informationPool.id })}
+          onEditAddition={(additionId) => setModal({ type: "edit-addition", poolId: informationPool.id, additionId })}
+          onEditRecurring={(ruleId) => setModal({ type: "edit-recurring", poolId: informationPool.id, ruleId })}
+          onEditCap={(capId) => setModal({ type: "edit-cap", poolId: informationPool.id, capId })}
+          onClose={() => setModal(null)}
+        />
       )}
       {modal?.type === "new-pool" && (
         <PoolModal
@@ -692,12 +622,12 @@ function Planner({ planner }: { planner: ReturnType<typeof useStoredPlanner> }) 
         <PoolModal
           key={`edit-pool-${modal.poolId}`}
           editing
-          initialName={store.pools.find((pool) => pool.id === modal.poolId)?.name ?? ""}
-          initialColor={poolColor(modal.poolId, store.pools.find((pool) => pool.id === modal.poolId)?.color)}
-          initialHiddenFromGraph={store.pools.find((pool) => pool.id === modal.poolId)?.hidden_from_graph}
-          initialHiddenFromTotal={store.pools.find((pool) => pool.id === modal.poolId)?.hidden_from_total}
-          initialNewAdditionsExpireSameDay={store.pools.find((pool) => pool.id === modal.poolId)?.new_additions_expire_same_day}
-          onDelete={() => removePool(modal.poolId, store.pools.find((pool) => pool.id === modal.poolId)?.name ?? "")}
+          initialName={modalPool?.name ?? ""}
+          initialColor={poolColor(modal.poolId, modalPool?.color)}
+          initialHiddenFromGraph={modalPool?.hidden_from_graph}
+          initialHiddenFromTotal={modalPool?.hidden_from_total}
+          initialNewAdditionsExpireSameDay={modalPool?.new_additions_expire_same_day}
+          onDelete={() => removePool(modal.poolId, modalPool?.name ?? "")}
           onClose={() => setModal(null)}
           onSave={savePool}
         />
@@ -710,25 +640,23 @@ function Planner({ planner }: { planner: ReturnType<typeof useStoredPlanner> }) 
           onClose={() => setModal(null)}
         />
       )}
-      {modal?.type === "edit-cap" && (() => {
-        const pool = store.pools.find((candidate) => candidate.id === modal.poolId);
-        const cap = pool?.caps.find((candidate) => candidate.id === modal.capId);
-        return pool && cap ? <PoolCapModal
-          key={`edit-cap-${cap.id}`}
-          poolName={pool.name}
+      {modal?.type === "edit-cap" && modalPool && editingCap && (
+        <PoolCapModal
+          key={`edit-cap-${editingCap.id}`}
+          poolName={modalPool.name}
           editing
-          onDelete={() => {
-            if (!window.confirm("Remove this balance cap?")) return;
-            dispatch({ type: "remove-cap", poolId: pool.id, capId: cap.id });
-            setModal({ type: "pool-info", poolId: pool.id });
-          }}
-          initialAmount={String(cap.max_balance)}
-          initialDate={cap.start_date}
-          initialEndDate={cap.end_date}
-          onClose={() => setModal({ type: "pool-info", poolId: pool.id })}
+          onDelete={() => confirmDelete(
+            "Remove this balance cap?",
+            { type: "remove-cap", poolId: modalPool.id, capId: editingCap.id },
+            { type: "pool-info", poolId: modalPool.id },
+          )}
+          initialAmount={String(editingCap.max_balance)}
+          initialDate={editingCap.start_date}
+          initialEndDate={editingCap.end_date}
+          onClose={() => setModal({ type: "pool-info", poolId: modalPool.id })}
           onSave={saveCap}
-        /> : null;
-      })()}
+        />
+      )}
       {(modal?.type === "add-time" ||
         modal?.type === "edit-addition" ||
         modal?.type === "edit-recurring") && (
@@ -751,11 +679,9 @@ function Planner({ planner }: { planner: ReturnType<typeof useStoredPlanner> }) 
           pools={store.pools}
           editing={modal.type === "edit-event"}
           eventId={modal.type === "edit-event" ? modal.eventId : undefined}
-          onDelete={modal.type === "edit-event" ? () => {
-            if (!window.confirm("Remove this event?")) return;
-            dispatch({ type: "remove-event", eventId: modal.eventId });
-            setModal(null);
-          } : undefined}
+          onDelete={modal.type === "edit-event" ? () => confirmDelete(
+            "Remove this event?", { type: "remove-event", eventId: modal.eventId },
+          ) : undefined}
           initialName={modal.type === "edit-event" ? modal.name : ""}
           initialDays={modal.type === "new-event" ? modal.initialDays : modal.days}
           onClose={() => setModal(null)}
@@ -777,10 +703,7 @@ interface PoolCardProps {
   onSelect: () => void;
   onViewUsage: () => void;
   onViewInformation: () => void;
-  onEdit: () => void;
   onAddTime: () => void;
-  onEditAddition: (id: number) => void;
-  onEditRecurring: (id: number) => void;
 }
 
 function PoolCard(props: PoolCardProps) {
@@ -811,6 +734,7 @@ function PoolCardContent({
   const balanceIncreased = currentBalance > startingBalance - dayAdded;
   const eventHours = selectedEvent ? eventPoolHours(selectedEvent, pool.id) : 0;
   const eventTotal = selectedEvent ? eventTotalHours(selectedEvent) : 0;
+  const eventPercent = eventHours > 0 ? formatPercent(eventHours, eventTotal) : "0.0";
   return (
     // The title button provides keyboard selection; the card click is a pointer shortcut.
     // eslint-disable-next-line jsx-a11y/click-events-have-key-events, jsx-a11y/no-noninteractive-element-interactions
@@ -823,10 +747,7 @@ function PoolCardContent({
         height: overlay ? "100%" : undefined,
       }}
       className={`pool-card${isSelected ? " pool-card-selected" : ""}${overlay ? " pool-card-dragging" : ""}`}
-      onClick={(event) => {
-        if (event.target instanceof Element && event.target.closest("button, summary")) return;
-        onSelect();
-      }}
+      onClick={selectOnRowClick(onSelect, "button, summary")}
     >
       <div className="pool-card-header">
         <div className="pool-title-group">
@@ -889,14 +810,25 @@ function PoolCardContent({
             <strong>−{formatHours(eventHours)}h Total</strong>
           </div>
           <div className="pool-event-subtraction-track" role="img"
-            aria-label={`${selectedEvent.name} draws ${formatHours(eventHours)} hours from ${pool.name}, ${(eventHours / eventTotal * 100).toFixed(1)}% of the event total`}>
+            aria-label={`${selectedEvent.name} draws ${formatHours(eventHours)} hours from ${pool.name}, ${eventPercent}% of the event total`}>
             <span style={{ width: `${eventHours / eventTotal * 100}%`, backgroundColor: poolColor(pool.id, pool.color) }} />
           </div>
-          <span className="pool-event-subtraction-caption">{(eventHours / eventTotal * 100).toFixed(1)}% of event hours</span>
+          <span className="pool-event-subtraction-caption">{eventPercent}% of event hours</span>
         </div>
       )}
     </article>
   );
+}
+
+interface PoolInformationModalProps {
+  pool: Pool;
+  store: Store;
+  balanceDate: string;
+  onEdit: () => void;
+  onEditAddition: (id: number) => void;
+  onEditRecurring: (id: number) => void;
+  onClose: () => void;
+  onEditCap: (id: number) => void;
 }
 
 function PoolInformationModal({
@@ -908,7 +840,7 @@ function PoolInformationModal({
   onEditRecurring,
   onClose,
   onEditCap,
-}: PoolCardProps & { onClose: () => void; onEditCap: (id: number) => void }) {
+}: PoolInformationModalProps) {
   const lifetimeTotals = poolTotalsOn(store, pool.id, balanceDate);
   return (
     <ModalFrame
@@ -979,33 +911,30 @@ function PoolInformationModal({
   );
 }
 
-interface AdditionModalForStateProps {
+interface AdditionModalForStateProps extends Pick<ComponentProps<typeof AdditionModal>, "onClose" | "onSave"> {
   onDelete: (id: number, recurring: boolean) => void;
   onSaveCap: (cap: PoolCapFormData) => string | null;
   modal: Extract<ModalState, { type: "add-time" | "edit-addition" | "edit-recurring" }>;
   pools: Pool[];
-  onClose: () => void;
-  onSave: (addition: AdditionFormData) => string | null;
 }
 
 function AdditionModalForState({ modal, pools, onClose, onSave, onSaveCap, onDelete }: AdditionModalForStateProps) {
   const pool = pools.find((candidate) => candidate.id === modal.poolId);
   if (!pool) return null;
+  const sharedProps = { poolName: pool.name, onClose, onSave };
 
   if (modal.type === "edit-addition") {
     const addition = pool.additions.find((candidate) => candidate.id === modal.additionId);
     if (!addition) return null;
     return (
       <AdditionModal
-        poolName={pool.name}
+        {...sharedProps}
         mode="edit-one-time"
         onDelete={() => onDelete(addition.id, false)}
         initialReset={addition.reset}
         initialExpiresSameDay={addition.expires_same_day}
         initialAmount={formatHours(addition.amount)}
         initialDate={addition.date}
-        onClose={onClose}
-        onSave={onSave}
       />
     );
   }
@@ -1014,7 +943,7 @@ function AdditionModalForState({ modal, pools, onClose, onSave, onSaveCap, onDel
     if (!rule) return null;
     return (
       <AdditionModal
-        poolName={pool.name}
+        {...sharedProps}
         mode="edit-recurring"
         onDelete={() => onDelete(rule.id, true)}
         initialReset={rule.reset}
@@ -1026,13 +955,11 @@ function AdditionModalForState({ modal, pools, onClose, onSave, onSaveCap, onDel
         initialMonth={rule.month}
         initialNthWeekday={rule.nth_weekday}
         initialWeekday={rule.weekday}
-        onClose={onClose}
-        onSave={onSave}
       />
     );
   }
   return (
-    <AdditionModal poolName={pool.name} mode="add" onClose={onClose} onSave={onSave} onSaveCap={onSaveCap} />
+    <AdditionModal {...sharedProps} mode="add" onSaveCap={onSaveCap} />
   );
 }
 

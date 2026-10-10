@@ -3,6 +3,7 @@ import { HexColorInput, HexColorPicker } from "react-colorful";
 import { CalendarPicker } from "./CalendarPicker";
 import { SettingTooltip } from "./SettingTooltip";
 import { POOL_COLORS } from "./poolColors";
+import { pluralize } from "./presentation";
 import { TIMELINE_PRESETS, type TimelinePreset } from "./settings";
 import {
   addDays,
@@ -1093,7 +1094,7 @@ export function EventModal({
         </>}
         {step === 3 && <section className="event-review" aria-label="Event overview">
           <h3>{name.trim()}</h3>
-          <p>{reviewDays.length} {reviewDays.length === 1 ? "day" : "days"} · {formatHours(eventTotalHours({ days: reviewDays }))} hours total</p>
+          <p>{reviewDays.length} {pluralize(reviewDays.length, "day")} · {formatHours(eventTotalHours({ days: reviewDays }))} hours total</p>
           {reviewDays.map((day) => <div className="event-day-card" key={day.date}>
             <strong>{prettyDate(day.date)}</strong>
             {day.allocations.map((allocation) => <div className="event-review-allocation" key={allocation.pool_id}><span>{pools.find((pool) => pool.id === allocation.pool_id)?.name}</span><strong>{formatHours(allocation.hours)} h</strong></div>)}
