@@ -9,7 +9,9 @@
   },
   "scripts": {
     "dev": "vite",
+    "dev:local": "vite --mode pages",
     "build": "tsc -b && vite build",
+    "build:pages": "tsc -b && vite build --mode pages",
     "preview": "vite preview",
     "test": "vitest run",
     "lint": "eslint . --max-warnings 0",

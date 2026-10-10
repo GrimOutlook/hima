@@ -124,7 +124,7 @@ export function ModalFrame({
   );
 }
 
-export function SettingsModal({ firstDayOfWeek, onChange, ignoreWeekends, onIgnoreWeekendsChange, defaultTimeline, onDefaultTimelineChange, onExport, onImport, onLogoutEverywhere, onClose }: {
+export function SettingsModal({ firstDayOfWeek, onChange, ignoreWeekends, onIgnoreWeekendsChange, defaultTimeline, onDefaultTimelineChange, onExport, onImport, browserOnly, onLogoutEverywhere, onClose }: {
   firstDayOfWeek: Weekday;
   onChange: (day: Weekday) => void;
   ignoreWeekends: boolean;
@@ -134,6 +134,7 @@ export function SettingsModal({ firstDayOfWeek, onChange, ignoreWeekends, onIgno
   onExport: () => void;
   onImport: (importSettings: boolean) => void;
   onLogoutEverywhere?: () => void;
+  browserOnly?: boolean;
   onClose: () => void;
 }) {
   const [importSettings, setImportSettings] = useState(false);
@@ -177,6 +178,7 @@ export function SettingsModal({ firstDayOfWeek, onChange, ignoreWeekends, onIgno
       <p className="wizard-hint">Export your data as a JSON backup or import a saved backup.</p>
       <div className="modal-actions">
         <button className="button button-outline" type="button" onClick={onExport}>Export JSON</button>
+        {browserOnly && <p>Data is stored only in this browser and is lost if site data is cleared. Export backups regularly.</p>}
         <button className="button button-outline" type="button" onClick={() => {
           setImportSettings(false);
           setShowImportOptions(true);

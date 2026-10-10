@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { PlannerController } from "./plannerController";
 import { emptyStore } from "./model";
+import { localPersistence } from "./localPersistence";
 import { defaultSettings, PersistenceError, type PlannerDocument, type PlannerPersistence, type StoredPlanner } from "./plannerPersistence";
 
 function deferred<T>() {
@@ -27,6 +28,38 @@ beforeEach(() => {
 });
 afterEach(() => { controller.stop(); vi.useRealTimers(); });
 async function start() { controller.start(); await settle(); }
+
+describe("browser-only planner lifecycle", () => {
+  beforeEach(() => {
+    const values = new Map<string, string>();
+    vi.stubGlobal("localStorage", {
+      getItem: (key: string) => values.get(key) ?? null,
+      setItem: (key: string, value: string) => values.set(key, value),
+      removeItem: (key: string) => values.delete(key),
+    });
+    controller = new PlannerController(localPersistence);
+  });
+  afterEach(() => vi.unstubAllGlobals());
+
+  it("debounces edits and returns to saved with browser persistence", async () => {
+    await start();
+    controller.edit(() => doc("Browser"));
+    expect(controller.getSnapshot().saveStatus).not.toBe("saved");
+    await tick();
+    expect(controller.getSnapshot()).toMatchObject({ revision: 1, saveStatus: "saved", migration: null });
+    expect(await localPersistence.load(new AbortController().signal)).toMatchObject({ document: doc("Browser"), revision: 1 });
+  });
+
+  it("retains edits when another tab saves before the debounce completes", async () => {
+    await start();
+    controller.edit(() => doc("My work"));
+    await localPersistence.save(doc("Other tab"), 0, a, new AbortController().signal);
+    await tick();
+    expect(controller.getSnapshot()).toMatchObject({ document: doc("My work"), saveStatus: "conflict" });
+    await controller.fetchLatest();
+    expect(controller.getSnapshot().latest).toEqual({ document: doc("Other tab"), revision: 1 });
+  });
+});
 
 describe("remote planner lifecycle", () => {
   it("recovers a committed write whose acknowledgement was lost without overwriting remote data", async () => {

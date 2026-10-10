@@ -8,6 +8,27 @@ Use the graph's **Show** dropdown to choose which pools appear in the chart. The
 
 For holidays, create a pool (for example, **Holidays**) and enable **Holiday Mode** in its pool settings. This applies to the starting balance and new one-time additions or repeating schedules, including a fixed yearly date or an nth weekday each year. Changing the setting leaves existing additions unchanged. Hours can be used on the holiday itself; the unused portion expires the next day. Leave uses expiring hours before regular hours in the same pool. Expiration does not count as leave usage or erase other hours, and lifetime accrued still includes the hours originally added.
 
+## Hosted browser-only version
+
+The GitHub Pages variant is hosted at **https://grimoutlook.github.io/hima/**.
+Planner data and settings are stored only in this browser's `localStorage`;
+no planner data is sent to a server and no account is required. Clearing site
+data removes your planner, so export JSON backups regularly from Settings.
+Use JSON export/import to move data between this site and a self-hosted instance:
+their different origins prevent automatic migration. Concurrent edits in another
+tab or window use the revision-conflict recovery controls.
+
+Run `pnpm run dev:local` and visit `http://127.0.0.1:5173/hima/` for browser-only
+development. Run `pnpm run build:pages` to build `dist/` with the `/hima/` base
+path. Default `dev` and `build` commands use the self-hosted account variant.
+
+CI checks both builds and deploys Pages after checks pass on pushes to `main`.
+Before the first deployment, the repository owner must enable Pages:
+
+```sh
+gh api -X POST repos/GrimOutlook/hima/pages -f build_type=workflow
+```
+
 ## Run locally
 
 Install Node.js 22.13+ and pnpm 12.10.1 (the version declared in `package.json`), then install the dependencies and start the development server. This project uses pnpm; `pnpm-lock.yaml` is the dependency lockfile to keep committed when updating dependencies. The Nix development shell includes both Node.js and pnpm.
@@ -62,7 +83,7 @@ When updating `pnpm-lock.yaml`, also update the `pnpmDeps` hash in `flake.nix`: 
 
 Tests use Node for pure model, settings, and store mutation checks. Component and hook test files opt into jsdom with `@vitest-environment jsdom`. Regression coverage includes fractional-hour balances, shared per-pool history dates, independent graph visibility and total exclusion, modal validation and focus, and calendar selection and keyboard navigation. Run a focused suite with, for example, `pnpm test src/App.test.tsx src/CalendarPicker.test.tsx`.
 
-The app requires the API and an authenticated account. On first login, existing `hima.store.v1` and `hima.settings.v1` data triggers an explicit choice before editing. Upload the local planner/settings, or use the remote copy and cancel migration. Both copies can be exported before replacement. Unversioned planners and older event formats use the supported backup importer; any repair warnings are displayed before confirmation. Invalid/unsupported local data blocks upload and remains available as a raw original backup (containing the exact browser key values). Settings-only storage can also migrate. Failure or cancellation never changes the originals. After a confirmed successful upload, choose to remove the browser originals, recovery `.backup` keys, and migration acknowledgements, or keep them. Kept copies remain readable to anyone using this browser and are offered to other accounts. Removal refuses to delete originals changed since the upload. Per-account acknowledgements store only a SHA-256 digest; old raw acknowledgements are upgraded when local data is read. Cancelling offers migration again on the next page load; local data never uploads automatically.
+The self-hosted variant requires the API and an authenticated account. On first login, existing `hima.store.v1` and `hima.settings.v1` data triggers an explicit choice before editing. Upload the local planner/settings, or use the remote copy and cancel migration. Both copies can be exported before replacement. Unversioned planners and older event formats use the supported backup importer; any repair warnings are displayed before confirmation. Invalid/unsupported local data blocks upload and remains available as a raw original backup (containing the exact browser key values). Settings-only storage can also migrate. Failure or cancellation never changes the originals. After a confirmed successful upload, choose to remove the browser originals, recovery `.backup` keys, and migration acknowledgements, or keep them. Kept copies remain readable to anyone using this browser and are offered to other accounts. Removal refuses to delete originals changed since the upload. Per-account acknowledgements store only a SHA-256 digest; old raw acknowledgements are upgraded when local data is read. Cancelling offers migration again on the next page load; local data never uploads automatically.
 
 Account data loads before editing is enabled. An account with no planner starts with an empty draft and defaults (Monday, weekends included, ±6 month); loading alone never creates or overwrites a server planner. First day of week, ignore weekends, default timeline, and planner visibility flags synchronize with account data. Temporary selections and open dialogs remain session UI state.
 
@@ -264,6 +285,8 @@ Database tests are explicitly enabled with `--ignored`; a normal offline
 | Cross-user HTTP isolation and simultaneous create/update revision races | `backend/tests/auth.rs` (`planner_http_contract`) |
 | Loading/retry, queued edits, stale responses, account changes, conflicts and lost save acknowledgements | `src/plannerController.test.ts`, `src/useStoredPlanner.test.tsx` |
 | Explicit local migration, failed uploads/conflict recovery, retained source data | `src/plannerController.test.ts`, `src/localMigration.test.ts` |
+| Browser-only storage, strict validation, storage failures and cross-tab conflicts | `src/localPersistence.test.ts`, `src/plannerController.test.ts` |
+| Browser-only UI, raw export and corrupt-data recovery | `src/App.test.tsx` |
 | HTTPS routing, cookies, save/restart/logout and callback log redaction | `deploy/test_https_proxy.py` |
 
 Run the database suites together against a disposable PostgreSQL 17 instance:

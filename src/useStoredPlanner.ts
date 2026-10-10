@@ -1,13 +1,13 @@
 import { useCallback, useEffect, useState, useSyncExternalStore, type SetStateAction } from "react";
 import type { Store } from "./model";
 import type { BackupSettings } from "./backup";
-import { plannerApi } from "./plannerApi";
+import { persistence as selectedPersistence, storageMode } from "./persistence";
 import { PlannerController } from "./plannerController";
 import { browserLocalSource } from "./localMigration";
 import { defaultSettings, type PlannerPersistence } from "./plannerPersistence";
 
-export function useStoredPlanner(persistence: PlannerPersistence = plannerApi) {
-  const [controller] = useState(() => new PlannerController(persistence, 500, browserLocalSource));
+export function useStoredPlanner(persistence: PlannerPersistence = selectedPersistence, mode: "local" | "remote" = storageMode) {
+  const [controller] = useState(() => new PlannerController(persistence, 500, mode === "remote" ? browserLocalSource : undefined));
   const snapshot = useSyncExternalStore(controller.subscribe, controller.getSnapshot);
   useEffect(() => {
     controller.start();
@@ -34,7 +34,7 @@ export function useStoredPlanner(persistence: PlannerPersistence = plannerApi) {
   }, [controller, generation]);
   const logout = useCallback(() => controller.logout(generation), [controller, generation]);
   const logoutEverywhere = useCallback(() => controller.logout(generation, true), [controller, generation]);
-  return { ...snapshot, store: snapshot.document, settings: snapshot.document.settings ?? defaultSettings,
+  return { ...snapshot, mode, store: snapshot.document, settings: snapshot.document.settings ?? defaultSettings,
     setStore, setSettings, importBackup, retry: controller.retry, logout, logoutEverywhere,
     migrate: () => controller.migrate(generation), chooseRemote: () => controller.chooseRemote(generation),
     finishLocalMigration: (remove: boolean) => controller.finishLocalMigration(remove, generation),
