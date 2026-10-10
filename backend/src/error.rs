@@ -23,7 +23,7 @@ struct ErrorDetail {
 }
 
 impl ApiError {
-    pub fn auth(status: StatusCode, code: &'static str, message: &'static str) -> Self {
+    pub fn new(status: StatusCode, code: &'static str, message: &'static str) -> Self {
         Self {
             status,
             code,
@@ -31,19 +31,37 @@ impl ApiError {
         }
     }
     pub fn not_found() -> Self {
-        Self {
-            status: StatusCode::NOT_FOUND,
-            code: "not_found",
-            message: "The requested endpoint does not exist.",
-        }
+        Self::new(
+            StatusCode::NOT_FOUND,
+            "not_found",
+            "The requested endpoint does not exist.",
+        )
     }
 
     pub fn method_not_allowed() -> Self {
-        Self {
-            status: StatusCode::METHOD_NOT_ALLOWED,
-            code: "method_not_allowed",
-            message: "The HTTP method is not supported for this endpoint.",
-        }
+        Self::new(
+            StatusCode::METHOD_NOT_ALLOWED,
+            "method_not_allowed",
+            "The HTTP method is not supported for this endpoint.",
+        )
+    }
+
+    pub fn unavailable(code: &'static str, message: &'static str) -> Self {
+        Self::new(StatusCode::SERVICE_UNAVAILABLE, code, message)
+    }
+
+    pub fn auth_unavailable() -> Self {
+        Self::unavailable(
+            "auth_unavailable",
+            "Authentication is temporarily unavailable.",
+        )
+    }
+
+    pub fn planner_unavailable() -> Self {
+        Self::unavailable(
+            "planner_unavailable",
+            "Planner storage is temporarily unavailable.",
+        )
     }
 }
 
