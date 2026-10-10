@@ -2,6 +2,8 @@ import { createPortal } from "react-dom";
 import { useCallback, useContext, useEffect, useId, useLayoutEffect, useRef, useState } from "react";
 import { addDays, addMonths, formatDateParts, isValidDate, MIN_YEAR, MAX_YEAR, MONTH_NAMES, prettyDate, todayDate, WEEKDAYS } from "./model";
 import { FirstDayOfWeekContext, IgnoreWeekendsContext, isWeekend, nextWeekday } from "./settings";
+import { useAnchoredPopup } from "./useAnchoredPopup";
+import { useFocusTrap } from "./useFocusTrap";
 
 interface CalendarPickerProps {
   value: string;
@@ -38,6 +40,7 @@ export function CalendarPicker({ value, onChange, label = "BALANCE ON", variant 
   const rootRef = useRef<HTMLDivElement>(null);
   const triggerRef = useRef<HTMLButtonElement>(null);
   const calendarRef = useRef<HTMLDivElement>(null);
+  const { handleTab } = useFocusTrap(calendarRef);
   const lastValidDate = useRef(isValidDate(value) ? value : todayDate());
   const [isOpen, setIsOpen] = useState(false);
   const [viewMonth, setViewMonth] = useState(startOfMonth(lastValidDate.current));
@@ -122,10 +125,7 @@ export function CalendarPicker({ value, onChange, label = "BALANCE ON", variant 
     }
   }, [variant, onChange, value]);
 
-  useLayoutEffect(() => {
-    if (!isOpen) return;
-    updatePosition();
-  }, [isOpen, updatePosition]);
+  useAnchoredPopup(isOpen, updatePosition);
 
   useLayoutEffect(() => {
     if (!isOpen || !focusDayPending.current) return;
@@ -159,16 +159,12 @@ export function CalendarPicker({ value, onChange, label = "BALANCE ON", variant 
     document.addEventListener("pointerdown", closeOnOutsidePointer);
     document.addEventListener("keydown", closeOnEscape, true);
     document.addEventListener("focusin", containFocus);
-    window.addEventListener("resize", updatePosition);
-    window.addEventListener("scroll", updatePosition, true);
     return () => {
       document.removeEventListener("pointerdown", closeOnOutsidePointer);
       document.removeEventListener("keydown", closeOnEscape, true);
       document.removeEventListener("focusin", containFocus);
-      window.removeEventListener("resize", updatePosition);
-      window.removeEventListener("scroll", updatePosition, true);
     };
-  }, [isOpen, updatePosition, closeCalendar]);
+  }, [isOpen, closeCalendar]);
 
   const monthParts = viewMonth.split("-").map(Number);
   const year = monthParts[0] ?? 0;
@@ -281,16 +277,7 @@ export function CalendarPicker({ value, onChange, label = "BALANCE ON", variant 
           aria-modal="true"
           tabIndex={-1}
           aria-label={`Choose ${label.toLowerCase()}`}
-          onKeyDown={(event) => {
-            if (event.key !== "Tab") return;
-            const controls = Array.from(calendarRef.current?.querySelectorAll<HTMLElement>('button:not(:disabled), select, [tabindex="0"]') ?? []).filter((control) => control.tabIndex >= 0);
-            const first = controls[0];
-            const last = controls[controls.length - 1];
-            if (event.shiftKey ? document.activeElement === first : document.activeElement === last) {
-              event.preventDefault();
-              (event.shiftKey ? last : first)?.focus();
-            }
-          }}
+          onKeyDown={handleTab}
           style={{ top: position.top, left: position.left, width: position.width }}
         >
           <button className="calendar-footer-button calendar-clear-button calendar-top-today" type="button" disabled={Boolean(min && todaySelection < min)} onClick={() => selectDate(todaySelection)}>
