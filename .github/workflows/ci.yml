@@ -2,10 +2,15 @@ name: CI
 
 on:
   push:
+    branches: [main]
   pull_request:
 
 permissions:
   contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.head_ref || github.run_id }}
+  cancel-in-progress: true
 
 jobs:
   backend:
@@ -37,6 +42,10 @@ jobs:
         uses: dtolnay/rust-toolchain@686976e191b89faba57d3206551f0f330d8cb249 # stable
         with:
           components: rustfmt, clippy
+      - name: Cache Cargo registry and build artifacts
+        uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+        with:
+          workspaces: backend
       - run: cargo fmt --check
       - run: cargo clippy --locked --all-targets -- -D warnings
       - run: cargo test --locked
@@ -76,12 +85,13 @@ jobs:
       - name: Test production HTTPS reverse proxy and restart persistence
         working-directory: .
         run: |
-          sudo apt-get update
-          sudo apt-get install -y nginx
+          if ! command -v nginx > /dev/null; then
+            sudo apt-get update
+            sudo apt-get install -y nginx
+          fi
           python3 deploy/test_rate_limits.py
           pnpm run build
           python3 deploy/test_https_proxy.py
-      - run: cargo build --release --locked --bins
   packages:
     name: Nix frontend and backend release packages
     runs-on: ubuntu-latest
@@ -89,6 +99,10 @@ jobs:
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
       - uses: cachix/install-nix-action@b85815f71a6de0ddee80b8a80a98d43f4bcc66c7 # v31
+      - name: Restore and save Nix store
+        uses: nix-community/cache-nix-action@7df957e333c1e5da7721f60227dbba6d06080569 # v7
+        with:
+          primary-key: nix-${{ runner.os }}-${{ hashFiles('flake.nix', 'flake.lock', 'backend/Cargo.lock', 'pnpm-lock.yaml') }}
       - run: nix build .#frontend .#backend
   checks:
     name: Lint, typecheck, test, and build
@@ -160,6 +174,8 @@ jobs:
       - name: Set up Rust
         uses: dtolnay/rust-toolchain@686976e191b89faba57d3206551f0f330d8cb249 # stable
       - name: Install cargo-audit
-        run: cargo install cargo-audit --version 0.22.2 --locked
+        uses: taiki-e/install-action@ab6895351a88b908e96a4697860d4ffea5e57dbe # v2.87.27
+        with:
+          tool: cargo-audit@0.22.2
       - name: Audit Rust dependencies
         run: cargo audit --file backend/Cargo.lock
