@@ -31,6 +31,7 @@ import {
   balanceHistoryForDates,
   dayLabel,
   eventDateRangeLabel,
+  eventPoolHours,
   eventTotalHours,
   formatHours,
   monthLabel,
@@ -591,9 +592,7 @@ function Planner({ planner }: { planner: ReturnType<typeof useStoredPlanner> }) 
                     const totalHours = eventTotalHours(fullEvent);
                     const poolShares = store.pools.map((pool) => ({
                       pool,
-                      hours: fullEvent.days.reduce((total, day) => total + day.allocations
-                        .filter((allocation) => allocation.pool_id === pool.id)
-                        .reduce((sum, allocation) => sum + allocation.hours, 0), 0),
+                      hours: eventPoolHours(fullEvent, pool.id),
                     })).filter((share) => share.hours > 0);
                     return (
                       // The title button provides keyboard selection; the row click is a pointer shortcut.
@@ -807,9 +806,7 @@ function PoolCardContent({
   const { currentBalance, dayAdded, dayHours, startingBalance } = usePoolCardFigures(store, pool.id, balanceDate);
   const balanceChanged = currentBalance !== startingBalance - dayAdded;
   const balanceIncreased = currentBalance > startingBalance - dayAdded;
-  const eventHours = selectedEvent?.days.reduce((total, day) => total + day.allocations
-    .filter((allocation) => allocation.pool_id === pool.id)
-    .reduce((sum, allocation) => sum + allocation.hours, 0), 0) ?? 0;
+  const eventHours = selectedEvent ? eventPoolHours(selectedEvent, pool.id) : 0;
   const eventTotal = selectedEvent ? eventTotalHours(selectedEvent) : 0;
   return (
     // The title button provides keyboard selection; the card click is a pointer shortcut.

@@ -6,6 +6,8 @@ import { POOL_COLORS } from "./poolColors";
 import { TIMELINE_PRESETS, type TimelinePreset } from "./settings";
 import {
   addDays,
+  dayPoolHours,
+  eventTotalHours,
   formatHours,
   isValidDate,
   MONTH_NAMES,
@@ -397,9 +399,7 @@ export function PoolUsageModal({ pool, events, onClose }: PoolUsageModalProps) {
   const usageByEventDay = new Map<string, { eventId: number; eventName: string; date: string; hours: number }>();
   for (const event of events) {
     for (const day of event.days) {
-      const hours = day.allocations
-        .filter((allocation) => allocation.pool_id === pool.id)
-        .reduce((total, allocation) => total + allocation.hours, 0);
+      const hours = dayPoolHours(day, pool.id);
       if (hours === 0) continue;
       const key = `${event.id}:${day.date}`;
       const existing = usageByEventDay.get(key);
@@ -1093,7 +1093,7 @@ export function EventModal({
         </>}
         {step === 3 && <section className="event-review" aria-label="Event overview">
           <h3>{name.trim()}</h3>
-          <p>{reviewDays.length} {reviewDays.length === 1 ? "day" : "days"} · {formatHours(reviewDays.reduce((total, day) => total + day.allocations.reduce((sum, allocation) => sum + allocation.hours, 0), 0))} hours total</p>
+          <p>{reviewDays.length} {reviewDays.length === 1 ? "day" : "days"} · {formatHours(eventTotalHours({ days: reviewDays }))} hours total</p>
           {reviewDays.map((day) => <div className="event-day-card" key={day.date}>
             <strong>{prettyDate(day.date)}</strong>
             {day.allocations.map((allocation) => <div className="event-review-allocation" key={allocation.pool_id}><span>{pools.find((pool) => pool.id === allocation.pool_id)?.name}</span><strong>{formatHours(allocation.hours)} h</strong></div>)}
