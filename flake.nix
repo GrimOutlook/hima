@@ -56,6 +56,8 @@
             cargoLock.lockFile = ./backend/Cargo.lock;
             nativeBuildInputs = [ pkgs.pkg-config ];
             buildInputs = [ pkgs.openssl ];
+            # CI runs the test suite in the backend job; skip the second release-mode test build.
+            doCheck = false;
             meta.description = "hima API and embedded PostgreSQL migration executable";
           };
           frontend = pkgs.stdenv.mkDerivation (finalAttrs: {
