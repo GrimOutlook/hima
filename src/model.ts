@@ -88,7 +88,7 @@ export interface BalancePoint {
   projected: boolean;
 }
 
-export const STORAGE_KEY = "hima.store.v1";
+export { STORAGE_KEY } from "./browserStorage";
 export const STORE_VERSION = 1;
 export const MIN_YEAR = 1900;
 export const MAX_YEAR = 2200;
