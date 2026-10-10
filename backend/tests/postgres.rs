@@ -2,6 +2,68 @@ use hima_api::db::{Database, SaveError};
 use serde_json::json;
 use sqlx::PgPool;
 
+#[sqlx::test(migrations = "./migrations")]
+#[ignore = "requires DATABASE_URL with PostgreSQL role creation privileges"]
+async fn runtime_role_can_write_but_cannot_change_schema(pool: PgPool) {
+    // Role creation is transactional: rollback also cleans up this global role.
+    let mut tx = pool.begin().await.unwrap();
+    let database: String = sqlx::query_scalar("SELECT current_database()")
+        .fetch_one(&mut *tx)
+        .await
+        .unwrap();
+    let role = format!("hima_runtime_{database}");
+    assert!(role.chars().all(|c| c.is_ascii_alphanumeric() || c == '_'));
+    for statement in [
+        format!("CREATE ROLE {role}"),
+        "REVOKE CREATE ON SCHEMA public FROM PUBLIC".into(),
+        format!("GRANT USAGE ON SCHEMA public TO {role}"),
+        format!("GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public TO {role}"),
+        format!("SET LOCAL ROLE {role}"),
+    ] {
+        sqlx::query(&statement).execute(&mut *tx).await.unwrap();
+    }
+    sqlx::query(
+        "INSERT INTO users (oidc_issuer, oidc_subject) VALUES ('least-privilege', 'runtime')",
+    )
+    .execute(&mut *tx)
+    .await
+    .unwrap();
+    sqlx::query("UPDATE users SET oidc_subject='updated' WHERE oidc_issuer='least-privilege'")
+        .execute(&mut *tx)
+        .await
+        .unwrap();
+    let count: i64 = sqlx::query_scalar("SELECT count(*) FROM users WHERE oidc_subject='updated'")
+        .fetch_one(&mut *tx)
+        .await
+        .unwrap();
+    assert_eq!(count, 1);
+    sqlx::query("DELETE FROM users WHERE oidc_issuer='least-privilege'")
+        .execute(&mut *tx)
+        .await
+        .unwrap();
+    for statement in [
+        "CREATE TABLE public.forbidden (id integer)",
+        "ALTER TABLE users ADD COLUMN forbidden integer",
+        "DROP TABLE users CASCADE",
+        "TRUNCATE users CASCADE",
+    ] {
+        sqlx::query("SAVEPOINT denied")
+            .execute(&mut *tx)
+            .await
+            .unwrap();
+        let error = sqlx::query(statement).execute(&mut *tx).await.unwrap_err();
+        assert_eq!(
+            error.as_database_error().unwrap().code().as_deref(),
+            Some("42501")
+        );
+        sqlx::query("ROLLBACK TO SAVEPOINT denied")
+            .execute(&mut *tx)
+            .await
+            .unwrap();
+    }
+    tx.rollback().await.unwrap();
+}
+
 #[sqlx::test(migrations = false)]
 #[ignore = "requires DATABASE_URL with PostgreSQL CREATEDB privileges"]
 async fn upgrade_preserves_planners_and_rejects_changed_migrations(pool: PgPool) {

@@ -54,19 +54,37 @@ Provision PostgreSQL 17 with a durable data directory/volume; do not recreate it
 on API deployment. As the database administrator, run:
 
 ```sql
+CREATE ROLE hima_migrate LOGIN;
 CREATE ROLE hima LOGIN;
 ```
 
-Set its password interactively with `psql`'s `\password hima` (avoids shell history
+Set both passwords interactively with `psql`'s `\password hima` and
+`\password hima_migrate` (avoids shell history
 and SQL logs), then:
 
 ```sql
-CREATE DATABASE hima OWNER hima;
+CREATE DATABASE hima OWNER hima_migrate;
+\connect hima
+REVOKE ALL ON DATABASE hima FROM PUBLIC;
+GRANT CONNECT ON DATABASE hima TO hima;
+REVOKE ALL ON SCHEMA public FROM PUBLIC;
+ALTER SCHEMA public OWNER TO hima_migrate;
+GRANT USAGE ON SCHEMA public TO hima;
+ALTER DEFAULT PRIVILEGES FOR ROLE hima_migrate IN SCHEMA public
+  GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO hima;
+-- Also covers existing tables when adopting this setup:
+GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public TO hima;
 ```
 
-The example uses one dedicated role with database/schema ownership for embedded
-migrations and runtime access. No production `CREATEDB` or superuser privilege
-is needed. Limit `pg_hba.conf` access to the application host with SCRAM
+The migration role owns the database, schema and migration-created tables; the
+runtime role has only connection, schema usage and table DML rights, with no
+role membership, ownership, CREATE, TRUNCATE or DDL permissions. The user ID uses
+an identity column, so runtime inserts need no direct sequence grants.
+Neither role needs `CREATEDB` or superuser.
+For an existing deployment, stop the API and transfer database/schema/table
+ownership from `hima` to `hima_migrate` as administrator (`REASSIGN OWNED BY hima
+TO hima_migrate` in this dedicated database), then apply the grants above.
+Limit `pg_hba.conf` access to the application host with SCRAM
 authentication. Integration tests use a separate disposable role with `CREATEDB`.
 
 At the OIDC provider register an Authorization Code client, S256 PKCE, `openid`
@@ -77,7 +95,7 @@ proxy. Provider discovery/JWKS/token endpoints must be reachable by the backend;
 the authorization endpoint must be reachable by browsers. Keep the issuer/client
 identity stable across releases so users retain their existing accounts.
 
-Create a system user/group `hima` with no login, then install
+Create separate system users/groups `hima` and `hima-migrate` with no login, then install
 [`api.env.example`](api.env.example) as `/etc/hima/api.env`, root-owned mode 0600.
 Edit it with real database credentials and the optional OIDC client secret. URL
 encode reserved characters in the database password. systemd reads the file
@@ -85,6 +103,10 @@ before changing user. For a secret manager, render this file on the host with
 the same permissions before starting the service. Never put secrets in Git,
 Nix expressions/store paths, command-line arguments, `dist/`, or `VITE_` variables.
 The application reads environment variables; it does not load `.env` itself.
+Install [`migrate.env.example`](migrate.env.example) as `/etc/hima/migrate.env`,
+root-owned mode 0600, with the migration role's `MIGRATION_DATABASE_URL`.
+Never include that URL in `api.env`. The separate migration service/user keeps
+DDL credentials out of the API environment and away from its Unix user.
 The [README configuration tables](../README.md#oidc-login-and-browser-sessions)
 cover every OIDC variable; `HIMA_BIND_ADDR` and `RUST_LOG` are optional.
 
@@ -98,17 +120,22 @@ sudo nix build .#frontend --out-link /opt/hima/releases/RELEASE/frontend
 sudo nix build .#backend --out-link /opt/hima/releases/RELEASE/backend
 sudo ln -s /opt/hima/releases/RELEASE /opt/hima/current
 sudo install -m 0644 deploy/hima-api.service /etc/systemd/system/hima-api.service
+sudo install -m 0644 deploy/hima-migrate.service /etc/systemd/system/hima-migrate.service
 sudo systemctl daemon-reload
 sudo systemctl enable --now hima-api
 sudo systemctl status hima-api
 sudo journalctl -u hima-api -n 50
+sudo systemd-analyze security hima-api.service hima-migrate.service
 ```
 
 The output links are GC roots. Keep them for every retained release. For native
 builds use the same layout with actual files, readable/executable by `hima` and
-nginx. `ExecStartPre` runs the release's migrator with `DATABASE_URL` before every
-API start. SQLx applies only pending migrations and uses a database migration
-lock; failures prevent startup. Startup also requires database connectivity and
+nginx and the migration user. The API requires the one-shot migration service,
+which uses only `migrate.env` and exits after applying migrations. SQLx applies
+only pending migrations and uses a database migration lock; failures prevent
+startup. Explicitly run the migration service during updates/recovery as below;
+do not rely on dependency activation to rerun it during an API restart.
+Startup also requires database connectivity and
 successful OIDC discovery. The unit restarts failed processes, waits for network
 startup, and sends SIGTERM for graceful shutdown. Remote/local PostgreSQL must be
 ready before starting; add `After=postgresql.service` for your host's local unit
@@ -202,12 +229,12 @@ and absence of callback URLs in nginx logs. The test role needs `CREATEDB`.
 1. Build and verify a new release, including disposable-database tests.
 2. Take and verify a backup as below. Review new migrations for compatibility;
    stop the API for incompatible changes. Coordinate all API instances if scaled.
-3. Switch `current` atomically and restart; startup applies embedded migrations:
+3. Switch `current` atomically, run migrations, then restart the API:
 
    ```sh
    sudo ln -s /opt/hima/releases/NEW_RELEASE /opt/hima/current.next
    sudo mv -Tf /opt/hima/current.next /opt/hima/current
-   sudo systemctl restart hima-api
+   sudo systemctl start hima-migrate && sudo systemctl restart hima-api
    ```
 
 4. Run the health and login/save/restart checks below. After secret or environment
@@ -234,7 +261,7 @@ These commands assume a local server and the dedicated role:
 
 ```sh
 umask 077
-pg_dump -h 127.0.0.1 -U hima -d hima --format=custom --no-owner --no-acl --file=hima.dump
+pg_dump -h 127.0.0.1 -U hima_migrate -d hima --format=custom --no-owner --no-acl --file=hima.dump
 pg_restore --list hima.dump
 ```
 
@@ -249,18 +276,22 @@ Test restoration into an isolated database, with no publicly reachable API:
 
 ```sh
 # Run createdb as a database administrator, not the restricted runtime role.
-createdb -h 127.0.0.1 -U postgres --owner=hima hima_restore
-pg_restore -h 127.0.0.1 -U hima -d hima_restore --no-owner --no-acl --exit-on-error hima.dump
+createdb -h 127.0.0.1 -U postgres --owner=hima_migrate hima_restore
+pg_restore -h 127.0.0.1 -U hima_migrate -d hima_restore --no-owner --no-acl --exit-on-error hima.dump
+# As administrator, apply the database/schema/default/table grants above to
+# hima_restore before checking access as the runtime role.
 psql -h 127.0.0.1 -U hima -d hima_restore -c 'SELECT count(*) FROM planners;'
 psql -h 127.0.0.1 -U hima -d hima_restore -c 'SELECT version, success FROM _sqlx_migrations ORDER BY version;'
 ```
 
 For actual recovery stop **all** API instances first. Restore to a fresh database
-owned by `hima`, point `DATABASE_URL` to it via the secret file, and start the
+owned by `hima_migrate`, reapply the schema and default/table grants above in it,
+point both connection URLs to it via their separate secret files, and run
+`systemctl start hima-migrate && systemctl start hima-api` with the
 release compatible with the backup. Its migrator applies any pending forward
 migrations; verify logs and acceptance checks before reopening traffic. Do not
 restore over a database with active writes. Roles aren't included in `pg_dump`:
-reprovision the dedicated role/password if recovering to a new server. Keep the
+reprovision both roles/passwords if recovering to a new server. Keep the
 original database until recovery has been verified. Sessions in the dump retain
 their original expiry; expired sessions require login. Recovery also rewinds
 logout/revocation state to backup time. If revocation must be preserved, delete
