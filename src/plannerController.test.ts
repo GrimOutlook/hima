@@ -32,6 +32,55 @@ beforeEach(() => {
 afterEach(() => { controller.stop(); vi.useRealTimers(); });
 async function start() { controller.start(); await settle(); }
 
+it.each([null, doc("Remote")])("loads verified startup data in two requests (%j)", async (document) => {
+  vi.mocked(api.load).mockResolvedValue({ ...stored(document), session: a });
+  await start();
+  expect(controller.getSnapshot()).toMatchObject({ phase: "ready", session: a });
+  expect(api.session).toHaveBeenCalledTimes(1);
+  expect(api.load).toHaveBeenCalledTimes(1);
+  expect(api.save).not.toHaveBeenCalled();
+});
+
+it.each([b, { ...a, csrf_token: "new-login" }])("rejects a load selected by a different session (%j)", async (changed) => {
+  const load = deferred<StoredPlanner>();
+  vi.mocked(api.load).mockReturnValueOnce(load.promise);
+  controller.start(); await settle();
+  vi.mocked(api.session).mockResolvedValue(changed);
+  vi.mocked(api.load).mockResolvedValue({ ...stored(doc("Current")), session: changed });
+  load.resolve({ ...stored(doc("Wrong session")), session: changed });
+  await settle();
+  expect(controller.getSnapshot()).toMatchObject({ phase: "ready", session: changed, document: doc("Current") });
+  expect(api.session).toHaveBeenCalledTimes(2);
+  expect(api.load).toHaveBeenCalledTimes(2);
+  controller.edit(() => doc("Edited")); await tick();
+  expect(api.save).toHaveBeenCalledWith(doc("Edited"), 1, changed, expect.any(AbortSignal));
+});
+
+it("rejects an intervening account's document even when the cookie switches back before completion", async () => {
+  const load = deferred<StoredPlanner>();
+  vi.mocked(api.load).mockReturnValueOnce(load.promise);
+  controller.start(); await settle();
+  vi.mocked(api.load).mockResolvedValue({ ...stored(doc("A")), session: a });
+  load.resolve({ ...stored(doc("B")), session: b });
+  await settle();
+  expect(controller.getSnapshot()).toMatchObject({ phase: "ready", session: a, document: doc("A") });
+  expect(api.load).toHaveBeenCalledTimes(2);
+  expect(api.save).not.toHaveBeenCalled();
+});
+
+it("discards late embedded-identity loads after stop and restart", async () => {
+  const old = deferred<StoredPlanner>();
+  vi.mocked(api.load).mockReturnValueOnce(old.promise);
+  controller.start(); await settle();
+  controller.stop();
+  vi.mocked(api.session).mockResolvedValue(b);
+  vi.mocked(api.load).mockResolvedValue({ ...stored(doc("B")), session: b });
+  controller.start(); await settle();
+  old.resolve({ ...stored(doc("A")), session: a }); await settle();
+  expect(controller.getSnapshot()).toMatchObject({ phase: "ready", session: b, document: doc("B") });
+  expect(api.save).not.toHaveBeenCalled();
+});
+
 describe("browser-only planner lifecycle", () => {
   beforeEach(() => {
     const values = new Map<string, string>();

@@ -175,20 +175,21 @@ compressed images/fonts are not selected. `gzip_vary on` adds
 also permits compression for API requests arriving through a proxy with `Via`.
 This compresses response bodies, not planner upload requests or their size limit.
 
-`/api/me` (including query strings) explicitly disables gzip because its JSON
+`/api/me` and `/api/planner` (including query strings) explicitly disable gzip because their JSON
 contains the session CSRF token. TLS compression of a secret-bearing response
 can expose it through BREACH-style length attacks. nginx strips `Accept-Encoding`
 on all API/auth upstream requests, ensuring the upstream cannot independently
 compress this exception. The nested location inherits the existing proxy headers,
-rate limits, cache/log policy and security headers. Planner JSON remains eligible
-for gzip; future endpoints carrying secrets need the same review and exclusion.
+rate limits, cache/log policy and security headers. Planner loads include the
+session identity for startup verification; future endpoints carrying secrets
+need the same review and exclusion.
 
 Precompressed hashed assets were considered and are deferred: runtime gzip works
 with both current native and Nix release artifacts without adding `.gz` build
 outputs or requiring the optional `gzip_static` module. Brotli likewise requires
 an additional module and build/deployment coordination. Neither is enabled by this
 recipe; if adopted later, generate sidecars only for hashed assets, verify content
-negotiation and preserve the `/api/me` exception and existing cache policy.
+negotiation and preserve both session-bearing endpoint exceptions and existing cache policy.
 
 The database-independent regression test below also checks gzip negotiation and
 round-trip bodies for JS/CSS/SVG and planner JSON, identity responses, the CSRF

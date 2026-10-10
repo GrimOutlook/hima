@@ -21,15 +21,21 @@ function stored(value: unknown): StoredPlanner {
     throw new PersistenceError("invalid_response", "The server returned invalid planner metadata.");
   }
   if (body.document !== null) validateDocument(body.document);
+  validateSession(body.session);
   return body as StoredPlanner;
+}
+
+function validateSession(body: unknown): asserts body is PlannerSession {
+  const session = body as Partial<PlannerSession> | null;
+  if (!session || !Number.isSafeInteger(session.user_id) || session.user_id! <= 0 || typeof session.csrf_token !== "string" || !session.csrf_token) {
+    throw new PersistenceError("invalid_response", "The server returned an invalid session.");
+  }
 }
 
 export const plannerApi: PlannerPersistence = {
   async session(signal) {
     const body = await request("/api/me", signal) as PlannerSession | null;
-    if (!body || !Number.isSafeInteger(body.user_id) || body.user_id <= 0 || typeof body.csrf_token !== "string" || !body.csrf_token) {
-      throw new PersistenceError("invalid_response", "The server returned an invalid session.");
-    }
+    validateSession(body);
     return body;
   },
   async load(signal) { return stored(await request("/api/planner", signal)); },
