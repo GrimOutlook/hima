@@ -1,19 +1,15 @@
 [Unit]
-Description=hima account and planner API
+Description=hima database migrations
 Wants=network-online.target
 After=network-online.target
-Requires=hima-migrate.service
-After=hima-migrate.service
+Before=hima-api.service
 
 [Service]
-Type=simple
-User=hima
-Group=hima
-EnvironmentFile=/etc/hima/api.env
-ExecStart=/opt/hima/current/backend/bin/hima-api
-Restart=on-failure
-RestartSec=5
-TimeoutStopSec=30
+Type=oneshot
+User=hima-migrate
+Group=hima-migrate
+EnvironmentFile=/etc/hima/migrate.env
+ExecStart=/opt/hima/current/backend/bin/migrate
 NoNewPrivileges=true
 PrivateTmp=true
 ProtectSystem=strict
@@ -31,6 +27,3 @@ MemoryDenyWriteExecute=true
 RestrictNamespaces=true
 RestrictSUIDSGID=true
 UMask=0077
-
-[Install]
-WantedBy=multi-user.target

@@ -117,7 +117,7 @@ static production build or `pnpm run preview`.
    set -a
    . backend/.env
    set +a
-   cargo run --locked --manifest-path backend/Cargo.toml --bin migrate
+   MIGRATION_DATABASE_URL="$DATABASE_URL" cargo run --locked --manifest-path backend/Cargo.toml --bin migrate
    cargo run --locked --manifest-path backend/Cargo.toml --bin hima-api
    ```
 
@@ -210,10 +210,11 @@ Use PostgreSQL 17 (also used in CI). For a local development database:
 ```sh
 docker run -d --name hima-postgres -e POSTGRES_PASSWORD=hima-dev -e POSTGRES_DB=hima -p 127.0.0.1:5432:5432 -v hima-postgres-data:/var/lib/postgresql/data postgres:17
 export DATABASE_URL=postgres://postgres:hima-dev@127.0.0.1:5432/hima
-cargo run --locked --manifest-path backend/Cargo.toml --bin migrate
+MIGRATION_DATABASE_URL="$DATABASE_URL" cargo run --locked --manifest-path backend/Cargo.toml --bin migrate
 ```
 
-The migration command connects using `DATABASE_URL` and applies embedded SQLx
+The migration command connects using `MIGRATION_DATABASE_URL` (required; no runtime
+URL fallback) and applies embedded SQLx
 migrations from `backend/migrations/`; rerunning is safe. The database must exist,
 and the migration role needs schema/table creation privileges. Deployment should
 run migrations before starting services that use storage. The HTTP liveness service
