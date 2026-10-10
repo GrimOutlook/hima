@@ -271,6 +271,11 @@ per-user isolation, atomic revisions, invalid-write preservation, and reconnect 
 
 ### Persistence regression coverage
 
+The frontend and offline Rust suites consume the same named valid/invalid JSON
+documents in [`fixtures/document-validation`](fixtures/document-validation/README.md).
+Add shared cases there when changing strict document validation to keep both
+implementations aligned.
+
 The required CI jobs run frontend lint/typecheck/tests/build, Rust
 format/Clippy/offline tests/release builds, PostgreSQL integration tests, both
 development and production HTTPS proxy tests, and Nix release package builds.
