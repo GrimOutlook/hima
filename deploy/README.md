@@ -238,8 +238,11 @@ and absence of callback URLs in nginx logs. The test role needs `CREATEDB`.
    ```
 
 4. Run the health and login/save/restart checks below. After secret or environment
-   changes, also restart the API. Restart after provider signing-key rotation if
-   it introduces keys absent from the startup JWKS.
+   changes, also restart the API. Provider signing keys refresh automatically
+   every hour and on an unknown key or failed signature (at most once per minute
+   per API process). Successful refreshes replace the key set, removing revoked
+   keys. Failed refreshes retain the previous keys and emit a warning; monitor
+   these warnings during provider outages. Signing-key rotation needs no restart.
 
 Planners and sessions stay in PostgreSQL. A restart does not clear either; a
 session expires seven days after login, and logout/login rotation revokes only

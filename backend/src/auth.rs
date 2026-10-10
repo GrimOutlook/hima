@@ -12,12 +12,16 @@ use openidconnect::{
     AccessTokenHash, AuthorizationCode, AuthorizationCodeHash, ClientId, ClientSecret, CsrfToken,
     EndpointMaybeSet, EndpointNotSet, EndpointSet, IssuerUrl, Nonce, OAuth2TokenResponse,
     PkceCodeChallenge, PkceCodeVerifier, RedirectUrl, TokenResponse,
-    core::{CoreClient, CoreProviderMetadata},
+    core::{CoreClient, CoreJsonWebKeySet, CoreProviderMetadata},
 };
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
-use std::{sync::Arc, time::Duration};
+use std::{
+    sync::Arc,
+    time::{Duration, Instant},
+};
 use subtle::ConstantTimeEq;
+use tokio::sync::Mutex;
 
 type Client = CoreClient<
     EndpointSet,
@@ -29,12 +33,63 @@ type Client = CoreClient<
 >;
 pub struct Auth {
     client: Client,
+    signing: Mutex<SigningKeys>,
     http: openidconnect::reqwest::Client,
     pub(crate) db: Database,
     origin: String,
     secure: bool,
     client_id: String,
     issuer: String,
+}
+const KEY_REFRESH_INTERVAL: Duration = Duration::from_secs(3600);
+const KEY_REFRESH_MIN_INTERVAL: Duration = Duration::from_secs(60);
+
+struct SigningKeys {
+    metadata: CoreProviderMetadata,
+    client: Client,
+    last_attempt: Instant,
+}
+
+impl SigningKeys {
+    async fn verification_client(
+        &mut self,
+        token: &openidconnect::core::CoreIdToken,
+        nonce: &Nonce,
+        http: &openidconnect::reqwest::Client,
+    ) -> Client {
+        if matches!(
+            token.claims(&self.client.id_token_verifier(), nonce),
+            Err(
+                openidconnect::ClaimsVerificationError::SignatureVerification(
+                    openidconnect::SignatureVerificationError::NoMatchingKey
+                        | openidconnect::SignatureVerificationError::CryptoError(_)
+                )
+            )
+        ) {
+            self.refresh(http).await;
+        }
+        self.client.clone()
+    }
+
+    async fn refresh(&mut self, http: &openidconnect::reqwest::Client) {
+        if self.last_attempt.elapsed() < KEY_REFRESH_MIN_INTERVAL {
+            return;
+        }
+        // Serialize fetches and rate-limit failures as well as successes.
+        self.last_attempt = Instant::now();
+        match CoreJsonWebKeySet::fetch_async(self.metadata.jwks_uri(), http).await {
+            Ok(keys) => {
+                self.metadata = self.metadata.clone().set_jwks(keys);
+                // This client is used only for verification, never token exchange.
+                self.client = CoreClient::from_provider_metadata(
+                    self.metadata.clone(),
+                    self.client.client_id().clone(),
+                    None,
+                );
+            }
+            Err(_) => tracing::warn!("OIDC signing-key refresh failed; retaining previous keys"),
+        }
+    }
 }
 fn invalid() -> ApiError {
     ApiError::auth(
@@ -137,6 +192,7 @@ impl Auth {
             return Err("OIDC endpoints must use HTTPS (HTTP allowed only on loopback)".into());
         }
         let issuer = metadata.issuer().as_str().to_owned();
+        let signing_metadata = metadata.clone();
         let client = CoreClient::from_provider_metadata(
             metadata,
             ClientId::new(id.clone()),
@@ -146,7 +202,12 @@ impl Auth {
             RedirectUrl::new(format!("{origin}/auth/callback"))
                 .map_err(|_| "invalid callback URL")?,
         );
-        Ok(Arc::new(Self {
+        let auth = Arc::new(Self {
+            signing: Mutex::new(SigningKeys {
+                metadata: signing_metadata,
+                client: client.clone(),
+                last_attempt: Instant::now() - KEY_REFRESH_MIN_INTERVAL,
+            }),
             client,
             http,
             db,
@@ -154,7 +215,16 @@ impl Auth {
             secure,
             client_id: id,
             issuer,
-        }))
+        });
+        let weak = Arc::downgrade(&auth);
+        tokio::spawn(async move {
+            loop {
+                tokio::time::sleep(KEY_REFRESH_INTERVAL).await;
+                let Some(auth) = weak.upgrade() else { break };
+                auth.signing.lock().await.refresh(&auth.http).await;
+            }
+        });
+        Ok(auth)
     }
     fn name(&self, login: bool) -> &'static str {
         match (self.secure, login) {
@@ -199,6 +269,119 @@ fn read_cookie<'a>(headers: &'a HeaderMap, cookie_name: &str) -> Option<&'a str>
         }
     }
     found.filter(|v| v.len() >= 32 && v.len() <= 128)
+}
+
+#[cfg(test)]
+mod key_tests {
+    use super::*;
+    use axum::routing::get;
+    use base64::{Engine, engine::general_purpose::URL_SAFE_NO_PAD as B64};
+    use rsa::{
+        RsaPrivateKey,
+        pkcs1v15::SigningKey,
+        signature::{SignatureEncoding, Signer},
+        traits::PublicKeyParts,
+    };
+    use serde_json::json;
+    use std::sync::atomic::{AtomicUsize, Ordering};
+
+    #[tokio::test]
+    async fn refresh_replaces_revoked_keys_and_retains_keys_on_failure_without_redirects() {
+        let key = RsaPrivateKey::new(&mut rand::thread_rng(), 2048).unwrap();
+        let jwks = json!({"keys":[{"kty":"RSA","kid":"rotated","use":"sig","alg":"RS256",
+            "n":B64.encode(key.n().to_bytes_be()),"e":B64.encode(key.e().to_bytes_be())}]});
+        let requests = Arc::new(AtomicUsize::new(0));
+        let mode = Arc::new(AtomicUsize::new(0));
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let issuer = format!("http://{}", listener.local_addr().unwrap());
+        let app = Router::new().route(
+            "/keys",
+            get({
+                let requests = requests.clone();
+                let mode = mode.clone();
+                let jwks = jwks.clone();
+                move || {
+                    let requests = requests.clone();
+                    let mode = mode.clone();
+                    let jwks = jwks.clone();
+                    async move {
+                        requests.fetch_add(1, Ordering::SeqCst);
+                        match mode.load(Ordering::SeqCst) {
+                            0 => Json(jwks).into_response(),
+                            1 => StatusCode::SERVICE_UNAVAILABLE.into_response(),
+                            3 => Json(json!({"keys":[]})).into_response(),
+                            _ => Redirect::temporary("/keys").into_response(),
+                        }
+                    }
+                }
+            }),
+        );
+        let task = tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
+        let metadata: CoreProviderMetadata = serde_json::from_value(json!({
+            "issuer":issuer,"authorization_endpoint":format!("{issuer}/authorize"),
+            "token_endpoint":format!("{issuer}/token"),"jwks_uri":format!("{issuer}/keys"),
+            "response_types_supported":["code"],"subject_types_supported":["public"],
+            "id_token_signing_alg_values_supported":["RS256"]
+        }))
+        .unwrap();
+        let metadata = metadata.set_jwks(serde_json::from_value(json!({"keys":[]})).unwrap());
+        let mut signing = SigningKeys {
+            client: CoreClient::from_provider_metadata(
+                metadata.clone(),
+                ClientId::new("test".into()),
+                None,
+            ),
+            metadata,
+            last_attempt: Instant::now() - KEY_REFRESH_MIN_INTERVAL,
+        };
+        let http = openidconnect::reqwest::Client::builder()
+            .redirect(openidconnect::reqwest::redirect::Policy::none())
+            .build()
+            .unwrap();
+        let now = chrono::Utc::now().timestamp();
+        let input = format!("{}.{}", B64.encode(json!({"alg":"RS256","kid":"rotated"}).to_string()),
+            B64.encode(json!({"iss":issuer,"sub":"user","aud":"test","iat":now,"exp":now+300,"nonce":"nonce"}).to_string()));
+        let signature = SigningKey::<Sha256>::new(key).sign(input.as_bytes());
+        let token: openidconnect::core::CoreIdToken =
+            format!("{input}.{}", B64.encode(signature.to_bytes()))
+                .parse()
+                .unwrap();
+        let nonce = Nonce::new("nonce".into());
+        assert!(
+            token
+                .claims(&signing.client.id_token_verifier(), &nonce)
+                .is_err()
+        );
+        let refreshed = signing.verification_client(&token, &nonce, &http).await;
+        assert!(token.claims(&refreshed.id_token_verifier(), &nonce).is_ok());
+        assert!(
+            token
+                .claims(&signing.client.id_token_verifier(), &nonce)
+                .is_ok()
+        );
+        for failure in [1, 2] {
+            mode.store(failure, Ordering::SeqCst);
+            signing.last_attempt = Instant::now() - KEY_REFRESH_MIN_INTERVAL;
+            signing.refresh(&http).await;
+            assert!(
+                token
+                    .claims(&signing.client.id_token_verifier(), &nonce)
+                    .is_ok()
+            );
+            signing.refresh(&http).await;
+            assert_eq!(requests.load(Ordering::SeqCst), failure + 1);
+        }
+        // A successful empty set removes the previously trusted signing key.
+        mode.store(3, Ordering::SeqCst);
+        signing.last_attempt = Instant::now() - KEY_REFRESH_MIN_INTERVAL;
+        signing.refresh(&http).await;
+        assert!(
+            token
+                .claims(&signing.client.id_token_verifier(), &nonce)
+                .is_err()
+        );
+        task.abort();
+    }
 }
 
 #[cfg(test)]
@@ -370,8 +553,13 @@ async fn callback(
         .await
         .map_err(|_| invalid())?;
     let id_token = token.id_token().ok_or_else(invalid)?;
-    let verifier = auth
-        .client
+    let mut signing = auth.signing.lock().await;
+    let nonce = Nonce::new(nonce);
+    let verification_client = signing
+        .verification_client(id_token, &nonce, &auth.http)
+        .await;
+    drop(signing);
+    let verifier = verification_client
         .id_token_verifier()
         .set_issue_time_verifier_fn(|iat| {
             let now = chrono::Utc::now();
@@ -383,9 +571,7 @@ async fn callback(
                 Ok(())
             }
         });
-    let claims = id_token
-        .claims(&verifier, &Nonce::new(nonce))
-        .map_err(|_| invalid())?;
+    let claims = id_token.claims(&verifier, &nonce).map_err(|_| invalid())?;
     // The library validates signature, algorithm, issuer, audience, expiry and nonce.
     if claims
         .authorized_party()
