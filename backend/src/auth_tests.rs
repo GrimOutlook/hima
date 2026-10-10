@@ -93,7 +93,7 @@ mod key_tests {
 
     #[tokio::test]
     async fn refresh_replaces_revoked_keys_and_retains_keys_on_failure_without_redirects() {
-        let key = RsaPrivateKey::new(&mut rand::thread_rng(), 2048).unwrap();
+        let key = RsaPrivateKey::new(&mut rsa::rand_core::OsRng, 2048).unwrap();
         let jwks = json!({"keys":[{"kty":"RSA","kid":"rotated","use":"sig","alg":"RS256",
             "n":B64.encode(key.n().to_bytes_be()),"e":B64.encode(key.e().to_bytes_be())}]});
         let requests = Arc::new(AtomicUsize::new(0));
@@ -147,7 +147,7 @@ mod key_tests {
         let now = chrono::Utc::now().timestamp();
         let input = format!("{}.{}", B64.encode(json!({"alg":"RS256","kid":"rotated"}).to_string()),
             B64.encode(json!({"iss":issuer,"sub":"user","aud":"test","iat":now,"exp":now+300,"nonce":"nonce"}).to_string()));
-        let signature = SigningKey::<Sha256>::new(key).sign(input.as_bytes());
+        let signature = SigningKey::<rsa::sha2::Sha256>::new(key).sign(input.as_bytes());
         let token: openidconnect::core::CoreIdToken =
             format!("{input}.{}", B64.encode(signature.to_bytes()))
                 .parse()

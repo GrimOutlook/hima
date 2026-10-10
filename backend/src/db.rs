@@ -3,7 +3,7 @@ use crate::planner::{ValidationError, validate_document};
 use chrono::{DateTime, Utc};
 use serde::Serialize;
 use serde_json::Value;
-use sqlx::{PgPool, postgres::PgPoolOptions};
+use sqlx::{AssertSqlSafe, PgPool, postgres::PgPoolOptions};
 
 pub static MIGRATOR: sqlx::migrate::Migrator = sqlx::migrate!("./migrations");
 
@@ -95,9 +95,10 @@ impl Database {
         .await
     }
     pub async fn load(&self, user_id: i64) -> Result<Option<StoredPlanner>, sqlx::Error> {
-        sqlx::query_as(&format!(
+        // Only the compile-time column constant enters SQL; user_id stays bound.
+        sqlx::query_as(AssertSqlSafe(format!(
             "SELECT {PLANNER_COLUMNS} FROM planners WHERE user_id = $1"
-        ))
+        )))
         .bind(user_id)
         .fetch_optional(&self.pool)
         .await
@@ -127,29 +128,31 @@ impl Database {
                 "Expected revision must be nonnegative".into(),
             )));
         }
+        // Both projections are fixed SQL literals. All request values stay bound
+        // below; no identifiers or SQL fragments come from the document/user.
         let columns = if echo_document {
             PLANNER_COLUMNS
         } else {
             "NULL::jsonb AS document, revision, updated_at"
         };
         let saved = if expected_revision == 0 {
-            sqlx::query_as(&format!(
+            sqlx::query_as(AssertSqlSafe(format!(
                 "INSERT INTO planners (user_id, document)
                  VALUES ($1, $2)
                  ON CONFLICT (user_id) DO NOTHING
                   RETURNING {columns}"
-            ))
+            )))
             .bind(user_id)
             .bind(document)
             .fetch_optional(&self.pool)
             .await?
         } else {
-            sqlx::query_as(&format!(
+            sqlx::query_as(AssertSqlSafe(format!(
                 "UPDATE planners
                  SET document = $2, revision = revision + 1, updated_at = clock_timestamp()
                  WHERE user_id = $1 AND revision = $3
                   RETURNING {columns}"
-            ))
+            )))
             .bind(user_id)
             .bind(document)
             .bind(expected_revision)

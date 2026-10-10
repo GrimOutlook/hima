@@ -2,12 +2,13 @@
 name = "hima-api"
 version = "0.1.0"
 edition = "2024"
+rust-version = "1.94"
 publish = false
 default-run = "hima-api"
 
 [dependencies]
 openidconnect = "4"
-sha2 = "0.10"
+sha2 = "0.11"
 hex = "0.4"
 subtle = "2"
 axum = { version = "0.8", features = ["json"] }
@@ -16,7 +17,7 @@ hyper-util = { version = "0.1", features = ["tokio", "service", "server-graceful
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 chrono = { version = "0.4", default-features = false, features = ["std", "serde"] }
-sqlx = { version = "0.8", default-features = false, features = ["runtime-tokio", "tls-rustls-ring", "postgres", "json", "chrono", "migrate", "macros"] }
+sqlx = { version = "0.9", default-features = false, features = ["runtime-tokio", "tls-rustls-ring", "postgres", "json", "chrono", "migrate", "macros"] }
 tokio = { version = "1", features = ["macros", "rt-multi-thread", "net", "signal"] }
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter", "json"] }
@@ -24,8 +25,7 @@ tracing-subscriber = { version = "0.3", features = ["env-filter", "json"] }
 [dev-dependencies]
 futures-util = { version = "0.3", default-features = false, features = ["std"] }
 tokio = { version = "1", features = ["test-util", "io-util"] }
-base64 = "0.22"
-rand = "0.8"
+base64 = "0.23"
 rsa = { version = "0.9", features = ["sha2"] }
 http-body-util = "0.1"
 tower = { version = "0.5", features = ["util"] }
