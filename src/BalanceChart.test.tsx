@@ -80,3 +80,76 @@ it("handles an empty timeline and an event outside the available history", async
     vi.unstubAllGlobals();
   }
 });
+
+it("keeps every preset in its semantic group and preserves date boundaries on sparse history", async () => {
+  vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
+  const container = document.createElement("div");
+  const root = createRoot(container);
+  const cases = [
+    ["General", "Show the entire available timeline", "Jan 01, 2025 – Jan 01, 2028"],
+    ["General", "Show one year centered on today: six months before and six months after", "May 01, 2026 – May 01, 2027"],
+    ["Past", "Show January 1 of this year through today", "Jan 01, 2026 – Oct 09, 2026"],
+    ["Past", "Show the past six months through today", "May 01, 2026 – Oct 09, 2026"],
+    ["Past", "Show the past three months through today", "Aug 01, 2026 – Oct 09, 2026"],
+    ["Past", "Show the past year through today", "Jan 01, 2026 – Oct 09, 2026"],
+    ["Past", "Show the past five years through today", "Jan 01, 2025 – Oct 09, 2026"],
+    ["Past", "Show January 1 through December 31 of last year", "Jan 01, 2025 – Jan 01, 2026"],
+    ["Future", "Show today through December 31 of this year", "Oct 09, 2026 – Jan 01, 2027"],
+    ["Future", "Show today through six months from now", "Oct 09, 2026 – May 01, 2027"],
+    ["Future", "Show today through three months from now", "Oct 09, 2026 – Feb 01, 2027"],
+    ["Future", "Show today through one year from now", "Oct 09, 2026 – Nov 01, 2027"],
+    ["Future", "Show today through five years from now", "Oct 09, 2026 – Jan 01, 2028"],
+    ["Future", "Show January 1 through December 31 of next year", "Jan 01, 2027 – Jan 01, 2028"],
+  ];
+  try {
+    await act(async () => root.render(<BalanceChart
+      defaultTimeline="all time" historyDates={["2025-01-01", "2026-01-01", "2026-05-01", "2026-08-01",
+        "2026-10-09", "2027-01-01", "2027-02-01", "2027-05-01", "2027-11-01", "2028-01-01"]}
+      today="2026-10-09" selectedDate="2026-10-09" onDateChange={vi.fn()} onToday={vi.fn()}
+      pools={[]} poolHistories={{}} onPoolVisibilityChange={vi.fn()}
+    />));
+    expect(container.querySelectorAll(".history-timeline-buttons button")).toHaveLength(cases.length);
+    for (const [group, title, range] of cases) {
+      const button = [...container.querySelectorAll<HTMLButtonElement>(".history-timeline-buttons button")]
+        .find((button) => button.title === title)!;
+      expect(button.closest(".history-timeline-group")?.getAttribute("aria-label")).toBe(group);
+      await act(async () => button.click());
+      expect(button.getAttribute("aria-pressed")).toBe("true");
+      expect(container.querySelector(".history-range")?.textContent).toContain(range);
+    }
+  } finally {
+    await act(async () => root.unmount());
+    vi.unstubAllGlobals();
+  }
+});
+
+it("closes both dropdowns on Escape and external blur but keeps internal focus open", async () => {
+  vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
+  const container = document.createElement("div");
+  const root = createRoot(container);
+  try {
+    await act(async () => root.render(<BalanceChart
+      defaultTimeline="all time" historyDates={["2026-10-09"]}
+      today="2026-10-09" selectedDate="2026-10-09" onDateChange={vi.fn()} onToday={vi.fn()}
+      pools={[{ id: 1, name: "Leave", color: "#123456", additions: [], recurring: [], caps: [] }]}
+      poolHistories={{}} onPoolVisibilityChange={vi.fn()}
+    />));
+    for (const selector of [".history-pool-dropdown", ".history-timeline-dropdown"]) {
+      const dropdown = container.querySelector(selector)!;
+      const trigger = dropdown.querySelector<HTMLButtonElement>("button")!;
+      const child = dropdown.querySelector("input, .history-timeline-buttons button")!;
+      await act(async () => trigger.click());
+      expect(trigger.getAttribute("aria-expanded")).toBe("true");
+      await act(async () => trigger.dispatchEvent(new FocusEvent("focusout", { bubbles: true, relatedTarget: child })));
+      expect(trigger.getAttribute("aria-expanded")).toBe("true");
+      await act(async () => child.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true })));
+      expect(trigger.getAttribute("aria-expanded")).toBe("false");
+      await act(async () => trigger.click());
+      await act(async () => child.dispatchEvent(new FocusEvent("focusout", { bubbles: true, relatedTarget: null })));
+      expect(trigger.getAttribute("aria-expanded")).toBe("false");
+    }
+  } finally {
+    await act(async () => root.unmount());
+    vi.unstubAllGlobals();
+  }
+});

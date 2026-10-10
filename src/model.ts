@@ -5,7 +5,7 @@ export { STORAGE_KEY } from "./browserStorage";
 export {
   MIN_YEAR, MAX_YEAR, MIN_DATE, MAX_DATE, formatDateParts,
   compareDates, compareDated, compareStartDates, firstDate, isValidDate,
-  todayDate, addDays, addMonths, prettyDate, monthLabel, dayLabel, nthWeekdayInMonth,
+  todayDate, addDays, addMonths, prettyDate, monthLabel, monthYearLabel, dayLabel, nthWeekdayInMonth,
 } from "./dates";
 export { hasCentPrecision, parseHours, formatHours, formatSignedHours } from "./hours";
 export { isHexColor, emptyStore, allocateIds, capRangesOverlap } from "./store";
