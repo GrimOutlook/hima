@@ -1,5 +1,7 @@
 import { parseBackupJson } from "./backup";
-import { emptyStore, STORAGE_KEY } from "./model";
+import { ACK_PREFIX, SETTINGS_KEY, STORAGE_KEY, serializeRawBrowserData } from "./browserStorage";
+import { exportRawBrowserData } from "./localPersistence";
+import { emptyStore } from "./model";
 import { defaultSettings, validateDocument, type PlannerDocument } from "./plannerPersistence";
 
 export type LocalMigration = { document: PlannerDocument | null; warnings: string[]; error: string | null; raw: string; fingerprint: string };
@@ -8,10 +10,7 @@ export interface LocalSource {
   confirm(userId: number, fingerprint: string): void;
   remove?(raw: string): void;
 }
-const SETTINGS_KEY = "hima.settings.v1";
-const ACK_PREFIX = "hima.migration.v1.";
 const digest = async (raw: string) => Array.from(new Uint8Array(await crypto.subtle.digest("SHA-256", new TextEncoder().encode(raw))), (byte) => byte.toString(16).padStart(2, "0")).join("");
-const original = () => JSON.stringify({ [STORAGE_KEY]: localStorage.getItem(STORAGE_KEY), [SETTINGS_KEY]: localStorage.getItem(SETTINGS_KEY) }, null, 2);
 export const browserLocalSource: LocalSource = {
   async read(userId) {
     try {
@@ -25,9 +24,9 @@ export const browserLocalSource: LocalSource = {
         }
       }
       const store = localStorage.getItem(STORAGE_KEY);
-      const settings = localStorage.getItem("hima.settings.v1");
+      const settings = localStorage.getItem(SETTINGS_KEY);
       if (store === null && settings === null) return null;
-      const raw = JSON.stringify({ [STORAGE_KEY]: store, "hima.settings.v1": settings }, null, 2);
+      const raw = serializeRawBrowserData(store, settings);
       const fingerprint = await digest(raw);
       if (localStorage.getItem(`${ACK_PREFIX}${userId}`) === fingerprint) return null;
       const warnings: string[] = [];
@@ -43,10 +42,10 @@ export const browserLocalSource: LocalSource = {
     } catch { return null; }
   },
   confirm(userId, fingerprint) {
-    try { localStorage.setItem(`hima.migration.v1.${userId}`, fingerprint); } catch { /* Offer again next login if storage is unavailable. */ }
+    try { localStorage.setItem(`${ACK_PREFIX}${userId}`, fingerprint); } catch { /* Offer again next login if storage is unavailable. */ }
   },
   remove(raw) {
-    if (original() !== raw) throw new Error("Browser data changed since migration. The newer local copy was kept.");
+    if (exportRawBrowserData() !== raw) throw new Error("Browser data changed since migration. The newer local copy was kept.");
     const keys = Object.keys(localStorage).filter((key) =>
       key === STORAGE_KEY || key === SETTINGS_KEY || key.startsWith(ACK_PREFIX) ||
       [STORAGE_KEY, SETTINGS_KEY].some((source) => key === `${source}.backup` || key.startsWith(`${source}.backup.`)));

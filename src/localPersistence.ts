@@ -1,8 +1,7 @@
-import { STORAGE_KEY } from "./model";
+import { REVISION_KEY, SETTINGS_KEY, STORAGE_KEY, serializeRawBrowserData } from "./browserStorage";
 import { PersistenceError, validateDocument, type PlannerPersistence } from "./plannerPersistence";
 
-export const SETTINGS_KEY = "hima.settings.v1";
-export const REVISION_KEY = "hima.local.revision";
+export { REVISION_KEY, SETTINGS_KEY } from "./browserStorage";
 
 function storage<T>(operation: (storage: Storage) => T): T {
   try { return operation(localStorage); }
@@ -26,7 +25,7 @@ function parse(raw: string): unknown {
 }
 
 export function exportRawBrowserData(): string {
-  return storage((storage) => JSON.stringify({ [STORAGE_KEY]: storage.getItem(STORAGE_KEY), [SETTINGS_KEY]: storage.getItem(SETTINGS_KEY) }, null, 2));
+  return storage((storage) => serializeRawBrowserData(storage.getItem(STORAGE_KEY), storage.getItem(SETTINGS_KEY)));
 }
 
 export function clearBrowserData(): void {
