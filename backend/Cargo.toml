@@ -7,7 +7,7 @@ default-run = "hima-api"
 
 [dependencies]
 openidconnect = "4"
-sha2 = "0.10"
+sha2 = "0.11"
 hex = "0.4"
 subtle = "2"
 axum = { version = "0.8", features = ["json"] }
