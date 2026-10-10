@@ -50,6 +50,25 @@ pnpm run build
 
 The generated site is written to `dist/`. Run `pnpm run preview` to serve the production build locally.
 
+### Self-hosted fonts
+
+`src/main.tsx` imports only the Latin, normal-style font faces used by the UI.
+The weight audit of `assets/main.css` and `src/` found DM Sans 400 (body and
+chart ticks), 500 (units and calendar navigation), 600 (controls and labels),
+and 700 (emphasis); Manrope uses 600 (breakdown values), 700 (headings and
+balances), and 800 (branding). Manrope 400/500 are unused. Both families retain
+`font-display: swap` and local WOFF2/WOFF assets. Characters outside the Latin
+font files use the existing sans-serif fallback; planner text remains Unicode.
+
+On the issue #198 baseline, the production stylesheet was 74,426 bytes
+(27,619 bytes with Node's default gzip) with 38 font faces. The Latin-only
+imports reduce this to seven font faces and 37,733 bytes (8,574 gzipped):
+49% smaller uncompressed and 69% smaller gzipped. The Pages build is 37,803
+bytes (8,580 gzipped) because of its `/hima/` asset prefix. Verify both variants with
+`pnpm run build` and `pnpm run build:pages`, then run
+`node scripts/verify-font-assets.mjs` after each build to check the emitted
+families/weights, local font files, face count and stylesheet size budget.
+
 ## Architecture and production hosting
 
 Planner persistence adapters validate incoming documents on load and outgoing

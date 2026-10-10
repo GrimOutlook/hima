@@ -216,10 +216,14 @@ jobs:
         run: pnpm run build --manifest
       - name: Verify chart chunk isolation
         run: node scripts/verify-chart-chunks.mjs
+      - name: Verify font assets and stylesheet size
+        run: node scripts/verify-font-assets.mjs
       - name: Build Pages variant
         run: pnpm run build:pages --manifest
       - name: Verify Pages chart chunk isolation
         run: node scripts/verify-chart-chunks.mjs
+      - name: Verify Pages font assets and stylesheet size
+        run: node scripts/verify-font-assets.mjs
   pages-build:
     needs: [checks]
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
