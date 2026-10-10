@@ -1,5 +1,83 @@
 use super::*;
 
+#[sqlx::test(migrations = "./migrations")]
+#[ignore = "requires DATABASE_URL with PostgreSQL CREATEDB privileges"]
+async fn unsafe_handlers_reuse_the_middleware_session(pool: sqlx::PgPool) {
+    use axum::{body::Body, middleware};
+    use serde_json::json;
+    use tower::ServiceExt;
+
+    let metadata: CoreProviderMetadata = serde_json::from_value(json!({
+        "issuer":"https://issuer.example", "authorization_endpoint":"https://issuer.example/auth",
+        "token_endpoint":"https://issuer.example/token", "jwks_uri":"https://issuer.example/keys",
+        "response_types_supported":["code"], "subject_types_supported":["public"],
+        "id_token_signing_alg_values_supported":["RS256"]
+    }))
+    .unwrap();
+    let client =
+        CoreClient::from_provider_metadata(metadata.clone(), ClientId::new("test".into()), None);
+    let auth = Arc::new(Auth {
+        signing: Mutex::new(SigningKeys {
+            metadata,
+            client: client.clone(),
+            last_attempt: Instant::now(),
+        }),
+        client,
+        http: openidconnect::reqwest::Client::new(),
+        db: Database::from_pool(pool.clone()),
+        origin: "https://app.example".into(),
+        secure: true,
+        client_id: "test".into(),
+        issuer: "https://issuer.example".into(),
+    });
+    let user = auth
+        .db
+        .ensure_user("https://issuer.example", "extension-user")
+        .await
+        .unwrap();
+    let token = "e".repeat(43);
+    sqlx::query("INSERT INTO sessions (token_hash,user_id,csrf_token,expires_at) VALUES ($1,$2,'csrf',clock_timestamp()+interval '1 hour')")
+        .bind(hash(&token)).bind(user).execute(&pool).await.unwrap();
+    // Strip the cookie AFTER protect: any handler lookup would now return 401.
+    let app = router(auth.clone())
+        .merge(crate::planner_api::router(auth.clone()))
+        .layer(middleware::from_fn(
+            |mut request: Request, next: Next| async move {
+                request.headers_mut().remove(header::COOKIE);
+                next.run(request).await
+            },
+        ))
+        .layer(middleware::from_fn_with_state(auth, protect));
+    for (method, path, body, status) in [
+        (
+            "PUT",
+            "/api/planner",
+            r#"{"expected_revision":0,"document":{"version":1,"pools":[],"events":[],"next_id":1}}"#,
+            StatusCode::OK,
+        ),
+        ("POST", "/auth/logout-all", "", StatusCode::SEE_OTHER),
+    ] {
+        let request = Request::builder()
+            .method(method)
+            .uri(path)
+            .header(header::COOKIE, format!("__Host-hima-session={token}"))
+            .header(header::ORIGIN, "https://app.example")
+            .header("x-csrf-token", "csrf")
+            .header(header::CONTENT_TYPE, "application/json")
+            .body(Body::from(body))
+            .unwrap();
+        assert_eq!(app.clone().oneshot(request).await.unwrap().status(), status);
+    }
+    assert_eq!(
+        sqlx::query_scalar::<_, i64>("SELECT count(*) FROM sessions WHERE user_id=$1")
+            .bind(user)
+            .fetch_one(&pool)
+            .await
+            .unwrap(),
+        0
+    );
+}
+
 mod key_tests {
     use super::*;
     use axum::routing::get;

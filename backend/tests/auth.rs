@@ -46,6 +46,132 @@ async fn planner_http_contract(app: &Router, pool: &PgPool) {
             .bind(hex::encode(Sha256::digest(token.as_bytes()))).bind(user).execute(pool).await.unwrap();
     }
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    // Polling and parallel tabs must not produce even a no-op row update.
+    let cookie = format!("__Host-hima-session={}", tokens[0]);
+    sqlx::query(
+        "UPDATE sessions SET last_seen_at=clock_timestamp()-interval '4 minutes' WHERE user_id=$1",
+    )
+    .bind(users[0])
+    .execute(pool)
+    .await
+    .unwrap();
+    let row_version =
+        sqlx::query_scalar::<_, String>("SELECT xmin::text FROM sessions WHERE user_id=$1")
+            .bind(users[0])
+            .fetch_one(pool)
+            .await
+            .unwrap();
+    for path in ["/api/me", "/api/planner", "/api/me"] {
+        assert_eq!(
+            request(app, "GET", path, &cookie, &[]).await.status(),
+            StatusCode::OK
+        );
+    }
+    assert_eq!(
+        sqlx::query_scalar::<_, String>("SELECT xmin::text FROM sessions WHERE user_id=$1")
+            .bind(users[0])
+            .fetch_one(pool)
+            .await
+            .unwrap(),
+        row_version
+    );
+
+    // Count physical updates to prove simultaneous stale requests touch once.
+    sqlx::raw_sql(
+        "CREATE TABLE session_touch_audit (user_id bigint);
+        CREATE FUNCTION audit_session_touch() RETURNS trigger LANGUAGE plpgsql AS $$
+        BEGIN INSERT INTO session_touch_audit VALUES (NEW.user_id); RETURN NEW; END $$;
+        CREATE TRIGGER audit_session_touch AFTER UPDATE ON sessions
+        FOR EACH ROW EXECUTE FUNCTION audit_session_touch();",
+    )
+    .execute(pool)
+    .await
+    .unwrap();
+    sqlx::query(
+        "UPDATE sessions SET last_seen_at=clock_timestamp()-interval '6 minutes' WHERE user_id=$1",
+    )
+    .bind(users[0])
+    .execute(pool)
+    .await
+    .unwrap();
+    sqlx::query("TRUNCATE session_touch_audit")
+        .execute(pool)
+        .await
+        .unwrap();
+    let mut requests = tokio::task::JoinSet::new();
+    for _ in 0..12 {
+        let app = app.clone();
+        let cookie = cookie.clone();
+        requests.spawn(async move { request(&app, "GET", "/api/me", &cookie, &[]).await.status() });
+    }
+    while let Some(result) = requests.join_next().await {
+        assert_eq!(result.unwrap(), StatusCode::OK);
+    }
+    assert_eq!(
+        sqlx::query_scalar::<_, i64>("SELECT count(*) FROM session_touch_audit WHERE user_id=$1")
+            .bind(users[0])
+            .fetch_one(pool)
+            .await
+            .unwrap(),
+        1
+    );
+    sqlx::raw_sql("DROP TRIGGER audit_session_touch ON sessions; DROP FUNCTION audit_session_touch(); DROP TABLE session_touch_audit;")
+        .execute(pool).await.unwrap();
+
+    // An expiry changed while the touch waits on a row lock must be rechecked.
+    sqlx::query(
+        "UPDATE sessions SET last_seen_at=clock_timestamp()-interval '6 minutes' WHERE user_id=$1",
+    )
+    .bind(users[1])
+    .execute(pool)
+    .await
+    .unwrap();
+    let mut tx = pool.begin().await.unwrap();
+    sqlx::query("UPDATE sessions SET last_seen_at=clock_timestamp()-interval '6 minutes', expires_at=clock_timestamp()-interval '1 second' WHERE user_id=$1")
+        .bind(users[1]).execute(&mut *tx).await.unwrap();
+    let waiting = tokio::spawn({
+        let app = app.clone();
+        let cookie = format!("__Host-hima-session={}", tokens[1]);
+        async move { request(&app, "GET", "/api/me", &cookie, &[]).await.status() }
+    });
+    tokio::time::timeout(std::time::Duration::from_secs(5), async {
+        loop {
+            let blocked: bool = sqlx::query_scalar("SELECT EXISTS (SELECT 1 FROM pg_stat_activity WHERE datname=current_database() AND wait_event_type='Lock' AND query LIKE 'UPDATE sessions SET last_seen_at =%')")
+                .fetch_one(pool).await.unwrap();
+            if blocked { break; }
+            tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+        }
+    }).await.expect("session touch must wait on the locked row");
+    tx.commit().await.unwrap();
+    assert_eq!(waiting.await.unwrap(), StatusCode::UNAUTHORIZED);
+    let expired_version =
+        sqlx::query_scalar::<_, String>("SELECT xmin::text FROM sessions WHERE user_id=$1")
+            .bind(users[1])
+            .fetch_one(pool)
+            .await
+            .unwrap();
+    assert_eq!(
+        request(
+            app,
+            "GET",
+            "/api/me",
+            &format!("__Host-hima-session={}", tokens[1]),
+            &[]
+        )
+        .await
+        .status(),
+        StatusCode::UNAUTHORIZED
+    );
+    assert_eq!(
+        sqlx::query_scalar::<_, String>("SELECT xmin::text FROM sessions WHERE user_id=$1")
+            .bind(users[1])
+            .fetch_one(pool)
+            .await
+            .unwrap(),
+        expired_version
+    );
+    sqlx::query("UPDATE sessions SET expires_at=clock_timestamp()+interval '1 hour', last_seen_at=clock_timestamp() WHERE user_id=$1")
+        .bind(users[1]).execute(pool).await.unwrap();
     // Check-and-touch renews activity, never the absolute cap.
     sqlx::query(
         "UPDATE sessions SET last_seen_at=clock_timestamp()-interval '23 hours' WHERE user_id=$1",

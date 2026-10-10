@@ -1,10 +1,10 @@
 use crate::{
-    auth::Auth,
+    auth::{Auth, Session},
     db::{SaveError, StoredPlanner},
     error::ApiError,
 };
 use axum::{
-    Json, Router,
+    Extension, Json, Router,
     extract::{State, rejection::JsonRejection},
     http::{HeaderMap, StatusCode},
     routing::get,
@@ -58,10 +58,9 @@ async fn load(
 
 async fn save(
     State(auth): State<Arc<Auth>>,
-    headers: HeaderMap,
+    Extension(session): Extension<Session>,
     body: Result<Json<SaveRequest>, JsonRejection>,
 ) -> Result<Json<PlannerResponse>, ApiError> {
-    let session = auth.session(&headers).await?;
     let Json(body) = body.map_err(|e| {
         ApiError::new(
             e.status(),

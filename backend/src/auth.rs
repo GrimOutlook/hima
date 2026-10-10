@@ -1,7 +1,7 @@
 //! Backend-only OIDC credentials and persistent, opaque browser sessions.
 use crate::{db::Database, error::ApiError};
 use axum::{
-    Json, Router,
+    Extension, Json, Router,
     extract::{Query, Request, State, rejection::QueryRejection},
     http::{HeaderMap, StatusCode, header},
     middleware::Next,
@@ -47,6 +47,7 @@ const KEY_REFRESH_MIN_INTERVAL: Duration = Duration::from_secs(60);
 const LOGIN_LIFETIME: u64 = 10 * 60;
 const SESSION_LIFETIME: u64 = 7 * 24 * 60 * 60;
 const SESSION_IDLE_LIFETIME: u64 = 24 * 60 * 60;
+const SESSION_TOUCH_INTERVAL: u64 = 5 * 60;
 
 #[derive(Clone, Copy)]
 enum CookieKind {
@@ -272,20 +273,45 @@ impl Auth {
         let token = self
             .read_cookie(headers, CookieKind::Session)
             .ok_or_else(unauthorized)?;
-        // Check and touch atomically: expired sessions cannot be revived by activity.
-        // Updating activity never extends the absolute expiration set at login.
-        sqlx::query_as::<_, Session>(
+        let token_hash = hash(token);
+        if let Some(session) = self.recent_session(&token_hash).await? {
+            return Ok(session);
+        }
+        // PostgreSQL rechecks these predicates after waiting for a concurrent
+        // updater. Never revive expired sessions or rewrite a concurrent touch.
+        let touched = sqlx::query_as::<_, Session>(
             "UPDATE sessions SET last_seen_at = clock_timestamp()
              WHERE token_hash = $1 AND expires_at > clock_timestamp()
              AND last_seen_at > clock_timestamp() - $2 * interval '1 second'
+             AND last_seen_at < clock_timestamp() - $3 * interval '1 second'
              RETURNING user_id, csrf_token",
         )
-        .bind(hash(token))
+        .bind(&token_hash)
         .bind(SESSION_IDLE_LIFETIME as f64)
+        .bind(SESSION_TOUCH_INTERVAL as f64)
         .fetch_optional(&self.db.pool)
         .await
-        .auth_unavailable()?
-        .ok_or_else(unauthorized)
+        .auth_unavailable()?;
+        if let Some(session) = touched {
+            return Ok(session);
+        }
+        // A competing request may have refreshed activity after our first read.
+        self.recent_session(&token_hash)
+            .await?
+            .ok_or_else(unauthorized)
+    }
+
+    async fn recent_session(&self, token_hash: &str) -> Result<Option<Session>, ApiError> {
+        sqlx::query_as::<_, Session>(
+            "SELECT user_id, csrf_token FROM sessions
+             WHERE token_hash = $1 AND expires_at > clock_timestamp()
+             AND last_seen_at >= clock_timestamp() - $2 * interval '1 second'",
+        )
+        .bind(token_hash)
+        .bind(SESSION_TOUCH_INTERVAL as f64)
+        .fetch_optional(&self.db.pool)
+        .await
+        .auth_unavailable()
     }
 }
 
@@ -310,7 +336,7 @@ fn read_cookie<'a>(headers: &'a HeaderMap, cookie_name: &str) -> Option<&'a str>
     found.filter(|v| v.len() >= 32 && v.len() <= 128)
 }
 
-#[derive(sqlx::FromRow, Serialize)]
+#[derive(Clone, sqlx::FromRow, Serialize)]
 pub(crate) struct Session {
     pub(crate) user_id: i64,
     csrf_token: String,
@@ -527,9 +553,8 @@ async fn logout(State(auth): State<Arc<Auth>>, headers: HeaderMap) -> Result<Res
 
 async fn logout_all(
     State(auth): State<Arc<Auth>>,
-    headers: HeaderMap,
+    Extension(session): Extension<Session>,
 ) -> Result<Response, ApiError> {
-    let session = auth.session(&headers).await?;
     sqlx::query("DELETE FROM sessions WHERE user_id=$1")
         .bind(session.user_id)
         .execute(&auth.db.pool)
@@ -541,7 +566,7 @@ async fn logout_all(
 /// Applied to every unsafe API request, including subsequently added planner routes.
 pub(crate) async fn protect(
     State(auth): State<Arc<Auth>>,
-    request: Request,
+    mut request: Request,
     next: Next,
 ) -> Result<Response, ApiError> {
     if request.method().is_safe()
@@ -563,6 +588,7 @@ pub(crate) async fn protect(
     if origin != auth.origin || !bool::from(csrf.as_bytes().ct_eq(session.csrf_token.as_bytes())) {
         return Err(forbidden());
     }
+    request.extensions_mut().insert(session);
     Ok(next.run(request).await)
 }
 
