@@ -135,12 +135,13 @@ function Planner({ planner }: { planner: ReturnType<typeof useStoredPlanner> }) 
   const [balanceDate, setBalanceDate] = useState(todayDate);
   const [eventSelection, setEventSelection] = useState<{ id: number; request: number; zoom: boolean; wide: boolean } | null>(null);
   const [highlightedEventId, setHighlightedEventId] = useState<number | null>(null);
-  const selectedEvent = store.events.find((event) => event.id === highlightedEventId);
+  const eventsById = useMemo(() => new Map(store.events.map((event) => [event.id, event])), [store.events]);
+  const selectedEvent = eventsById.get(highlightedEventId ?? -1);
   const visiblePools = selectedEvent
     ? store.pools.filter((pool) => selectedEvent.days.some((day) => day.allocations
       .some((allocation) => allocation.pool_id === pool.id && allocation.hours > 0)))
     : store.pools;
-  const zoomEvent = store.events.find((event) => event.id === eventSelection?.id);
+  const zoomEvent = eventsById.get(eventSelection?.id ?? -1);
   const [selectedUsesPoolId, setSelectedUsesPoolId] = useState<number | null>(null);
   const [modal, setModal] = useState<ModalState | null>(null);
   const settingsButtonRef = useRef<HTMLButtonElement>(null);
@@ -554,7 +555,7 @@ function Planner({ planner }: { planner: ReturnType<typeof useStoredPlanner> }) 
                     <EventRow
                       key={event.id}
                       event={event}
-                      fullEvent={store.events.find((candidate) => candidate.id === event.id) ?? event}
+                      fullEvent={eventsById.get(event.id) ?? event}
                       pools={store.pools}
                       balanceDate={balanceDate}
                       selected={selectedEvent?.id === event.id}
