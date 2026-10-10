@@ -156,7 +156,12 @@ It never caches API/auth responses. Callback query strings are excluded from
 access logs and routine error logs; apply the same policy to any upstream CDN,
 load balancer, or tracing system. Do not enable request/header/body debug logging.
 API/auth 4xx/5xx must pass through, not become the SPA's `index.html`. Static
-responses use revalidation so a deployment does not leave a cached old index.
+HTML and SPA routes use `Cache-Control: no-cache` so a deployment does not leave
+a cached old index. Vite's content-hashed files under `/assets/` use
+`public, max-age=31536000, immutable`; missing assets return 404 instead of SPA
+HTML and do not receive that cache policy. The unhashed `/assets/favicon.svg`
+is an exact-match exception using `no-cache`. Keep future unhashed files outside
+`/assets/` or add an explicit revalidation exception for them.
 
 The file's `map` and `limit_req_zone` directives belong directly in the **http
 context**, outside either `server` block. Two 10 MiB shared-memory zones track
@@ -186,6 +191,8 @@ python3 deploy/test_rate_limits.py
 It exercises the shipped configuration over HTTPS, verifies rejected requests
 never reach a counting upstream, and checks separate route/client budgets,
 spoofed forwarding headers, static serving, security headers and budget recovery.
+It also checks immutable JS/CSS/font caching (including 304 responses), HTML and
+favicon revalidation, and missing-asset 404s without long-lived caching.
 
 The HTTPS server permits only TLS 1.2 and 1.3. All HTTPS responses, including
 errors, send `Strict-Transport-Security: max-age=63072000; includeSubDomains`,
