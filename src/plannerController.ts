@@ -13,6 +13,7 @@ export type PlannerSnapshot = {
   generation: number;
   recoveries: { userId: number; document: PlannerDocument }[];
   migration?: LocalMigration | null;
+  migratedLocal?: LocalMigration | null;
   resolving?: boolean;
   latest?: { document: PlannerDocument; revision: number } | null;
 };
@@ -86,8 +87,10 @@ export class PlannerController {
           }
           const document = loaded.document ?? { ...emptyStore(), settings: { ...defaultSettings } };
           validateDocument(document);
+          const migration = await this.local?.read(session.user_id) ?? null;
+          if (!this.current(loadEpoch)) return;
           this.saved = document;
-          this.publish({ phase: "ready", session, document, revision: loaded.revision, error: null, migration: this.local?.read(session.user_id) ?? null, latest: null, resolving: false });
+          this.publish({ phase: "ready", session, document, revision: loaded.revision, error: null, migration, migratedLocal: null, latest: null, resolving: false });
         } catch (error) { if (this.current(loadEpoch)) this.loadError(error); }
       } catch (error) { if (this.current(epoch)) this.loadError(error); }
     };
@@ -164,7 +167,7 @@ export class PlannerController {
       if (result.revision !== this.state.revision + 1 || canonical(result.document) !== canonical(migration.document)) throw new Error("Migration was not confirmed by the server.");
       this.local?.confirm(session.user_id, migration.fingerprint);
       this.saved = migration.document;
-      this.publish({ document: migration.document, revision: result.revision, migration: null, saveStatus: "saved", generation: this.state.generation + 1 });
+      this.publish({ document: migration.document, revision: result.revision, migration: null, migratedLocal: migration, saveStatus: "saved", generation: this.state.generation + 1 });
     } catch (error) {
       if (this.current(epoch)) {
         this.publish({ error: message(error) });
@@ -183,6 +186,13 @@ export class PlannerController {
         if (error instanceof PersistenceError && (error.status === 401 || error.status === 403)) void this.refresh();
       }
     } finally { if (this.current(epoch)) this.publish({ resolving: false }); }
+  };
+  finishLocalMigration = (remove: boolean, generation = this.state.generation) => {
+    if (!this.active || this.state.phase !== "ready" || !this.state.migratedLocal || generation !== this.state.generation) return;
+    try {
+      if (remove) this.local?.remove?.(this.state.migratedLocal.raw);
+      this.publish({ migratedLocal: null, error: null });
+    } catch (error) { this.publish({ error: message(error) }); }
   };
   fetchLatest = async (generation = this.state.generation) => {
     const session = this.state.session;
