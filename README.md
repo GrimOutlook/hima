@@ -410,8 +410,16 @@ top-level GET redirect (`response_mode=query`), so Lax permits the login cookie.
 Sessions have 256-bit opaque random tokens; PostgreSQL stores only their SHA-256
 hashes, user IDs, CSRF tokens, expiration, and last-seen timestamps. Sessions survive backend restarts and
 expire after **24 hours without authenticated requests** or **seven days after login**,
-whichever comes first. Each successful session check atomically updates last-seen
-without sliding the seven-day cap; visible-page session polling counts as activity.
+whichever comes first. Session checks read without writing while last-seen is at
+most five minutes old. Older activity is touched with an atomic expiry-and-age
+check, without sliding the seven-day cap; concurrent tabs share one touch.
+Visible-page polling counts as activity, with up to five minutes of idle-window
+granularity. Expired sessions cannot be revived by a touch, including one waiting
+on a concurrent database update. Unsafe-request middleware passes its validated
+session through request extensions to planner-save and logout-all handlers, so
+each request authenticates once. The PostgreSQL integration tests verify unchanged
+row versions during polling, concurrent touch coalescing, expiry under row-lock
+contention, and handler reuse after the cookie is removed downstream of middleware.
 Existing sessions begin their idle window when the activity migration runs.
 Login rotates and revokes
 the session previously presented by that browser. Other devices retain their own
