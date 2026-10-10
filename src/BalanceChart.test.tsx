@@ -3,10 +3,14 @@ import { act } from "react";
 import { createRoot } from "react-dom/client";
 import { expect, it, vi } from "vitest";
 import { BalanceChart } from "./BalanceChart";
+import { IgnoreWeekendsContext } from "./settings";
+import type { BalancePoint, Pool } from "./model";
+
+const chartRender = vi.hoisted(() => vi.fn());
 
 vi.mock("recharts", async (importOriginal) => ({
   ...await importOriginal<typeof import("recharts")>(),
-  ResponsiveContainer: () => null,
+  ResponsiveContainer: (props: { children: { props: unknown } }) => { chartRender(props.children.props); return null; },
 }));
 
 it("restores the configured timeline and selects today with the visible reset button", async () => {
@@ -29,6 +33,43 @@ it("restores the configured timeline and selects today with the visible reset bu
     expect(onToday).toHaveBeenCalledOnce();
     expect(ytd.getAttribute("aria-pressed")).toBe("true");
     expect(container.querySelector(".history-range")?.textContent).toContain("Jan 01, 2026 – Oct 09, 2026");
+  } finally {
+    await act(async () => root.unmount());
+    vi.unstubAllGlobals();
+  }
+});
+
+it("reuses chart data on selection and parent renders and handles 3660 days across 50 pools", async () => {
+  vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
+  chartRender.mockClear();
+  const root = createRoot(document.createElement("div"));
+  const historyDates = Array.from({ length: 3660 }, (_, index) => new Date(Date.UTC(2021, 0, index + 1)).toISOString().slice(0, 10));
+  const pools: Pool[] = Array.from({ length: 50 }, (_, id) => ({ id, name: `Pool ${id}`, additions: [], recurring: [], caps: [] }));
+  const poolHistories: Record<number, BalancePoint[]> = Object.fromEntries(pools.map((pool) => [pool.id,
+    historyDates.map((date, index) => ({ date, balance: index - pool.id, projected: date > "2026-10-09" })),
+  ]));
+  const props = { defaultTimeline: "all time" as const, historyDates, pools, poolHistories,
+    today: "2026-10-09", selectedDate: "2026-10-09", onToday: vi.fn(), onDateChange: vi.fn(), onPoolVisibilityChange: vi.fn() };
+  try {
+    await act(async () => root.render(<BalanceChart {...props} />));
+    const first = chartRender.mock.lastCall![0];
+    const calls = chartRender.mock.calls.length;
+    await act(async () => root.render(<BalanceChart {...props} />));
+    expect(chartRender).toHaveBeenCalledTimes(calls);
+    await act(async () => root.render(<BalanceChart {...props} selectedDate="2026-10-12" />));
+    expect(chartRender.mock.lastCall![0].data).toBe(first.data);
+    const yAxis = first.children.find((child: { type?: { displayName?: string } }) => child?.type?.displayName === "YAxis");
+    expect(yAxis.props.domain[0]).toBeLessThan(-49);
+    expect(yAxis.props.domain[1]).toBeGreaterThan(3659);
+    const brush = first.children.find((child: { type?: { displayName?: string } }) => child?.type?.displayName === "Brush");
+    await act(async () => brush.props.onChange({ startIndex: 100, endIndex: 200 }));
+    expect(chartRender.mock.lastCall![0].data).toBe(first.data);
+    await act(async () => root.render(<IgnoreWeekendsContext.Provider value={true}><BalanceChart {...props} /></IgnoreWeekendsContext.Provider>));
+    const filtered = chartRender.mock.lastCall![0].data;
+    const monday = filtered.find((point: BalancePoint) => point.date === "2026-10-12");
+    const index = historyDates.indexOf("2026-10-12");
+    expect(monday.pool_49_projected).toBe(index - 49);
+    expect(monday.balance).toBe(50 * index - 1225);
   } finally {
     await act(async () => root.unmount());
     vi.unstubAllGlobals();
