@@ -490,6 +490,21 @@ Production cookies are `__Host-hima-session` and `__Host-hima-login`, with Secur
 HttpOnly, SameSite=Lax, Path=/, and no Domain attribute. The callback must use a
 top-level GET redirect (`response_mode=query`), so Lax permits the login cookie.
 
+Login admission is capped at 1,000 live transactions per database, shared across
+backend processes by a transaction-scoped PostgreSQL advisory lock. Saturated
+`GET /auth/login` requests return HTTP 503 (`auth_unavailable`) without a redirect,
+cookie, or insert. Expired transactions do not count toward the cap; callback
+consumption immediately frees capacity. Login requests never run cleanup deletes.
+A background worker cleans expired login transactions and expired/idle sessions
+at startup and every 60 seconds, including when no login requests arrive. Failures
+are logged and retried on the next interval; dropping the authentication service
+aborts its worker. Expiry checks remain enforced on reads/callbacks independently
+of cleanup. Keep the nginx rate limits: the cap bounds live storage, not request
+traffic. Ignored library PostgreSQL tests cover concurrent admission across
+independent pools, saturation/expiry, cleanup retry and worker shutdown:
+`cargo test --locked --manifest-path backend/Cargo.toml --lib -- --ignored`
+(requires the disposable `DATABASE_URL` described above).
+
 Sessions have 256-bit opaque random tokens; PostgreSQL stores only their SHA-256
 hashes, user IDs, CSRF tokens, expiration, and last-seen timestamps. Sessions survive backend restarts and
 expire after **24 hours without authenticated requests** or **seven days after login**,
