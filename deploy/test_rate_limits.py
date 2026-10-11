@@ -144,9 +144,8 @@ with tempfile.TemporaryDirectory(prefix="hima-rate-limits-") as directory:
         finally:
             connection.close()
         for version in (ssl.TLSVersion.TLSv1_2, ssl.TLSVersion.TLSv1_3):
-            rejection_context = ssl.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
+            rejection_context = ssl.create_default_context(cafile=str(cert))
             rejection_context.check_hostname = False
-            rejection_context.verify_mode = ssl.CERT_NONE
             rejection_context.minimum_version = rejection_context.maximum_version = version
             for name in ("unknown.example", None):
                 with socket.create_connection(("127.0.0.1", port), timeout=5) as raw:
