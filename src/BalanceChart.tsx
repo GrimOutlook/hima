@@ -29,6 +29,7 @@ interface BalanceChartProps {
   pools: Pool[];
   onPoolVisibilityChange: (poolId: number, visible: boolean) => void;
   poolHistories: Record<number, BalancePoint[]>;
+  events?: LeaveEvent[];
   selectedEvent?: LeaveEvent;
   zoomEvent?: LeaveEvent;
   eventSelectionRequest?: number;
@@ -198,6 +199,7 @@ export const BalanceChart = memo(function BalanceChart({
   pools,
   onPoolVisibilityChange,
   poolHistories,
+  events,
   selectedEvent,
   zoomEvent,
   eventSelectionRequest,
@@ -206,6 +208,7 @@ export const BalanceChart = memo(function BalanceChart({
 }: BalanceChartProps) {
   const ignoreWeekends = useContext(IgnoreWeekendsContext);
   const [combinedTotals, setCombinedTotals] = useState(false);
+  const [highlightAllEvents, setHighlightAllEvents] = useState(false);
   const [timelineMenuOpen, setTimelineMenuOpen] = useState(false);
   const [poolMenuOpen, setPoolMenuOpen] = useState(false);
   const eventPoolIds = useMemo(() => selectedEvent
@@ -277,6 +280,9 @@ export const BalanceChart = memo(function BalanceChart({
     updateSelectedPreset(null);
   }, [selectedDate, selectedIndex, lastIndex, brushRange.startIndex, brushRange.endIndex, setBrushRange, updateSelectedPreset]);
   const eventIndices = useMemo(() => eventHistoryIndices(dateIndices, selectedEvent), [dateIndices, selectedEvent]);
+  const allEventIndices = useMemo(() => highlightAllEvents
+    ? [...new Set(events?.flatMap((event) => eventHistoryIndices(dateIndices, event)) ?? [])]
+    : [], [dateIndices, events, highlightAllEvents]);
   const highlightedStart = eventIndices[0];
   const highlightedEnd = eventIndices.at(-1);
   useEffect(() => {
@@ -467,6 +473,11 @@ export const BalanceChart = memo(function BalanceChart({
         onToday();
         applyPreset(defaultTimeline);
       }}>Reset timeline</button>
+      <label className="history-combined-toggle">
+        <input type="checkbox" checked={highlightAllEvents}
+          onChange={(event) => setHighlightAllEvents(event.target.checked)} />
+        Highlight all events
+      </label>
       </div>
       <div className="balance-chart-wrap">
         <div
@@ -498,6 +509,10 @@ export const BalanceChart = memo(function BalanceChart({
                   ifOverflow="hidden"
                 />
               )}
+              {allEventIndices.filter((index) => index >= visibleStart && index <= visibleEnd).map((index) => (
+                <ReferenceArea key={`all-event-day-${index}`} x1={index - 0.5} x2={index + 0.5}
+                  fill="#ffffff" fillOpacity={0.3} strokeOpacity={0} ifOverflow="hidden" />
+              ))}
               {eventIndices.map((index) => (
                 <ReferenceArea key={`event-day-${index}`} x1={index - 0.5} x2={index + 0.5}
                   fill="#facc15" fillOpacity={0.3} strokeOpacity={0} ifOverflow="hidden" />
