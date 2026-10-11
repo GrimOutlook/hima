@@ -89,6 +89,9 @@
 
             buildPhase = ''
               runHook preBuild
+              # pnpmConfigHook installs with --ignore-scripts. Apply the same
+              # checked-in allowBuilds policy as local and CI installs.
+              pnpm rebuild
               pnpm run build
               runHook postBuild
             '';

@@ -177,6 +177,14 @@ With Nix flakes enabled, run `nix build .#frontend` (or `nix build`) to build th
 
 Run `nix develop` for the Node.js, pnpm, and Rust development shell, or `nix run` to start the development server after installing dependencies with `pnpm install --frozen-lockfile`.
 
+Keep `pnpm-workspace.yaml` committed alongside the lockfile: its `allowBuilds`
+policy permits only esbuild dependency lifecycle scripts. The pinned pnpm
+12.10.1 supports this setting (introduced in 10.26.0). Local and CI frozen
+installs read this root file; the Nix source includes it too. Nix's pnpm hook
+first installs offline with scripts disabled, then `pnpm rebuild` applies the
+same allow-list before building. Review any new build-script approval as a
+dependency security change; do not bypass the policy with blanket approvals.
+
 When updating `pnpm-lock.yaml`, also update the `pnpmDeps` hash in `flake.nix`: temporarily set it to `pkgs.lib.fakeHash`, run `nix build`, then replace it with the actual hash printed in the hash-mismatch error. New files must be tracked by Git to be included in a local Git-based flake build.
 
 Tests use Node for pure model, settings, and store mutation checks. Component and hook test files opt into jsdom with `@vitest-environment jsdom`. Regression coverage includes fractional-hour balances, shared per-pool history dates, independent graph visibility and total exclusion, modal validation and focus, and calendar selection and keyboard navigation. Run a focused suite with, for example, `pnpm test src/App.test.tsx src/CalendarPicker.test.tsx`.
