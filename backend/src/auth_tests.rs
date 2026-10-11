@@ -1,5 +1,276 @@
 use super::*;
 
+fn login_test_auth(pool: sqlx::PgPool) -> Arc<Auth> {
+    let metadata: CoreProviderMetadata = serde_json::from_value(serde_json::json!({
+        "issuer":"https://issuer.example", "authorization_endpoint":"https://issuer.example/auth",
+        "token_endpoint":"https://issuer.example/token", "jwks_uri":"https://issuer.example/keys",
+        "response_types_supported":["code"], "subject_types_supported":["public"],
+        "id_token_signing_alg_values_supported":["RS256"]
+    }))
+    .unwrap();
+    let client =
+        CoreClient::from_provider_metadata(metadata.clone(), ClientId::new("test".into()), None);
+    Arc::new(Auth {
+        signing: Mutex::new(SigningKeys {
+            metadata,
+            client: client.clone(),
+            last_attempt: Instant::now(),
+        }),
+        client,
+        http: openidconnect::reqwest::Client::new(),
+        db: Database::from_pool(pool),
+        origin: "https://app.example".into(),
+        secure: true,
+        client_id: "test".into(),
+        issuer: "https://issuer.example".into(),
+        cleanup_task: None,
+    })
+}
+
+async fn seed_logins(pool: &sqlx::PgPool, count: i64) {
+    sqlx::query(
+        "INSERT INTO login_transactions (state_hash,browser_hash,nonce,verifier,expires_at)
+        SELECT 'seed-' || n, 'browser', 'nonce', 'verifier', clock_timestamp()+interval '10 minutes'
+        FROM generate_series(1,$1) n",
+    )
+    .bind(count)
+    .execute(pool)
+    .await
+    .unwrap();
+}
+
+async fn login_request(auth: Arc<Auth>) -> Response {
+    use tower::ServiceExt;
+    router(auth)
+        .oneshot(
+            Request::builder()
+                .uri("/auth/login")
+                .body(axum::body::Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap()
+}
+
+#[sqlx::test(migrations = "./migrations")]
+#[ignore = "requires DATABASE_URL with PostgreSQL CREATEDB privileges"]
+async fn login_capacity_is_atomic_across_independent_instances(pool: sqlx::PgPool) {
+    seed_logins(&pool, LOGIN_CAPACITY - 2).await;
+    // Independent Auth instances and pools model separate backend processes.
+    let second_pool = sqlx::postgres::PgPoolOptions::new()
+        .max_connections(8)
+        .connect_with(pool.connect_options().as_ref().clone())
+        .await
+        .unwrap();
+    let a = login_test_auth(pool.clone());
+    let b = login_test_auth(second_pool.clone());
+    let responses = futures_util::future::join_all(
+        (0..32).map(|i| login_request(if i % 2 == 0 { a.clone() } else { b.clone() })),
+    )
+    .await;
+    assert_eq!(
+        responses
+            .iter()
+            .filter(|r| r.status() == StatusCode::SEE_OTHER)
+            .count(),
+        2
+    );
+    for response in responses {
+        if response.status() != StatusCode::SEE_OTHER {
+            assert_eq!(response.status(), StatusCode::SERVICE_UNAVAILABLE);
+            assert!(!response.headers().contains_key(header::SET_COOKIE));
+            assert!(!response.headers().contains_key(header::LOCATION));
+        }
+    }
+    assert_eq!(
+        sqlx::query_scalar::<_, i64>("SELECT count(*) FROM login_transactions")
+            .fetch_one(&pool)
+            .await
+            .unwrap(),
+        LOGIN_CAPACITY
+    );
+    // Consuming a transaction releases capacity; no process-local counter drifts.
+    sqlx::query("DELETE FROM login_transactions WHERE state_hash='seed-1'")
+        .execute(&pool)
+        .await
+        .unwrap();
+    assert_eq!(login_request(b).await.status(), StatusCode::SEE_OTHER);
+    second_pool.close().await;
+}
+
+#[sqlx::test(migrations = "./migrations")]
+#[ignore = "requires DATABASE_URL with PostgreSQL CREATEDB privileges"]
+async fn login_ignores_expired_rows_without_request_cleanup(pool: sqlx::PgPool) {
+    seed_logins(&pool, LOGIN_CAPACITY).await;
+    sqlx::query("UPDATE login_transactions SET expires_at=clock_timestamp()-interval '1 second'")
+        .execute(&pool)
+        .await
+        .unwrap();
+    let auth = login_test_auth(pool.clone());
+    let user = auth
+        .db
+        .ensure_user("https://issuer.example", "expired")
+        .await
+        .unwrap();
+    sqlx::query(
+        "INSERT INTO sessions(token_hash,user_id,csrf_token,expires_at)
+        VALUES ('expired',$1,'csrf',clock_timestamp()-interval '1 second')",
+    )
+    .bind(user)
+    .execute(&pool)
+    .await
+    .unwrap();
+    assert_eq!(login_request(auth).await.status(), StatusCode::SEE_OTHER);
+    assert_eq!(
+        sqlx::query_scalar::<_, i64>("SELECT count(*) FROM login_transactions")
+            .fetch_one(&pool)
+            .await
+            .unwrap(),
+        LOGIN_CAPACITY + 1
+    );
+    assert_eq!(
+        sqlx::query_scalar::<_, i64>("SELECT count(*) FROM sessions")
+            .fetch_one(&pool)
+            .await
+            .unwrap(),
+        1
+    );
+}
+
+#[sqlx::test(migrations = "./migrations")]
+#[ignore = "requires DATABASE_URL with PostgreSQL CREATEDB privileges"]
+async fn cancelled_login_does_not_leak_admission_lock_or_capacity(pool: sqlx::PgPool) {
+    let auth = login_test_auth(pool.clone());
+    let mut blocker = pool.begin().await.unwrap();
+    sqlx::query("SELECT pg_advisory_xact_lock($1)")
+        .bind(LOGIN_ADMISSION_LOCK)
+        .execute(&mut *blocker)
+        .await
+        .unwrap();
+    let request = tokio::spawn(login_request(auth.clone()));
+    tokio::time::timeout(Duration::from_secs(5), async {
+        loop {
+            let waiting: bool = sqlx::query_scalar(
+                "SELECT EXISTS(SELECT 1 FROM pg_locks WHERE locktype='advisory'
+                 AND database=(SELECT oid FROM pg_database WHERE datname=current_database())
+                 AND NOT granted)",
+            )
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+            if waiting {
+                break;
+            }
+            tokio::time::sleep(Duration::from_millis(10)).await;
+        }
+    })
+    .await
+    .unwrap();
+    request.abort();
+    assert!(request.await.unwrap_err().is_cancelled());
+    blocker.rollback().await.unwrap();
+    assert_eq!(
+        sqlx::query_scalar::<_, i64>("SELECT count(*) FROM login_transactions")
+            .fetch_one(&pool)
+            .await
+            .unwrap(),
+        0
+    );
+    assert_eq!(
+        tokio::time::timeout(Duration::from_secs(5), login_request(auth))
+            .await
+            .unwrap()
+            .status(),
+        StatusCode::SEE_OTHER
+    );
+}
+
+#[sqlx::test(migrations = "./migrations")]
+#[ignore = "requires DATABASE_URL with PostgreSQL CREATEDB privileges"]
+async fn cleanup_runs_without_requests_retries_and_stops_with_auth(pool: sqlx::PgPool) {
+    let mut auth = login_test_auth(pool.clone());
+    let user = auth
+        .db
+        .ensure_user("https://issuer.example", "cleanup")
+        .await
+        .unwrap();
+    sqlx::query(
+        "INSERT INTO sessions(token_hash,user_id,csrf_token,expires_at,last_seen_at)
+        VALUES ('expired',$1,'csrf',clock_timestamp()-interval '1 second',clock_timestamp()),
+        ('idle',$1,'csrf',clock_timestamp()+interval '1 day',clock_timestamp()-interval '2 days'),
+        ('live',$1,'csrf',clock_timestamp()+interval '1 day',clock_timestamp())",
+    )
+    .bind(user)
+    .execute(&pool)
+    .await
+    .unwrap();
+    seed_logins(&pool, 1).await;
+    // Force initial cleanup failure, then verify the same worker recovers.
+    sqlx::query("ALTER TABLE login_transactions RENAME TO hidden_logins")
+        .execute(&pool)
+        .await
+        .unwrap();
+    let task = spawn_cleanup(pool.clone(), Duration::from_millis(20));
+    let abort = task.abort_handle();
+    Arc::get_mut(&mut auth).unwrap().cleanup_task = Some(task);
+    tokio::time::sleep(Duration::from_millis(80)).await;
+    assert!(!abort.is_finished());
+    sqlx::query("ALTER TABLE hidden_logins RENAME TO login_transactions")
+        .execute(&pool)
+        .await
+        .unwrap();
+    for _ in 0..2 {
+        sqlx::query(
+            "UPDATE login_transactions SET expires_at=clock_timestamp()-interval '1 second'",
+        )
+        .execute(&pool)
+        .await
+        .unwrap();
+        tokio::time::timeout(Duration::from_secs(5), async {
+            loop {
+                let count: i64 = sqlx::query_scalar("SELECT count(*) FROM login_transactions")
+                    .fetch_one(&pool)
+                    .await
+                    .unwrap();
+                if count == 0 {
+                    break;
+                }
+                tokio::time::sleep(Duration::from_millis(10)).await;
+            }
+        })
+        .await
+        .unwrap();
+        seed_logins(&pool, 1).await;
+    }
+    assert_eq!(
+        sqlx::query_scalar::<_, String>("SELECT token_hash FROM sessions")
+            .fetch_one(&pool)
+            .await
+            .unwrap(),
+        "live"
+    );
+    drop(auth);
+    tokio::time::timeout(Duration::from_secs(5), async {
+        while !abort.is_finished() {
+            tokio::task::yield_now().await;
+        }
+    })
+    .await
+    .unwrap();
+    sqlx::query("UPDATE login_transactions SET expires_at=clock_timestamp()-interval '1 second'")
+        .execute(&pool)
+        .await
+        .unwrap();
+    tokio::time::sleep(Duration::from_millis(80)).await;
+    assert_eq!(
+        sqlx::query_scalar::<_, i64>("SELECT count(*) FROM login_transactions")
+            .fetch_one(&pool)
+            .await
+            .unwrap(),
+        1
+    );
+}
+
 #[sqlx::test(migrations = "./migrations")]
 #[ignore = "requires DATABASE_URL with PostgreSQL CREATEDB privileges"]
 async fn unsafe_handlers_reuse_the_middleware_session(pool: sqlx::PgPool) {
@@ -17,6 +288,7 @@ async fn unsafe_handlers_reuse_the_middleware_session(pool: sqlx::PgPool) {
     let client =
         CoreClient::from_provider_metadata(metadata.clone(), ClientId::new("test".into()), None);
     let auth = Arc::new(Auth {
+        cleanup_task: None,
         signing: Mutex::new(SigningKeys {
             metadata,
             client: client.clone(),

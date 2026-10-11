@@ -40,7 +40,12 @@ pub struct Auth {
     secure: bool,
     client_id: String,
     issuer: String,
+    cleanup_task: Option<tokio::task::JoinHandle<()>>,
 }
+// Shared across backend processes using the same database.
+const LOGIN_CAPACITY: i64 = 1000;
+const LOGIN_ADMISSION_LOCK: i64 = 0x48494d415f4c4f47;
+const CLEANUP_INTERVAL: Duration = Duration::from_secs(60);
 const KEY_REFRESH_INTERVAL: Duration = Duration::from_secs(3600);
 const KEY_REFRESH_MIN_INTERVAL: Duration = Duration::from_secs(60);
 // Seconds are shared by cookie Max-Age and bound PostgreSQL expiration intervals.
@@ -48,6 +53,41 @@ const LOGIN_LIFETIME: u64 = 10 * 60;
 const SESSION_LIFETIME: u64 = 7 * 24 * 60 * 60;
 const SESSION_IDLE_LIFETIME: u64 = 24 * 60 * 60;
 const SESSION_TOUCH_INTERVAL: u64 = 5 * 60;
+
+impl Drop for Auth {
+    fn drop(&mut self) {
+        if let Some(task) = &self.cleanup_task {
+            task.abort();
+        }
+    }
+}
+
+async fn cleanup_expired(pool: &sqlx::PgPool) -> Result<(), sqlx::Error> {
+    sqlx::query("DELETE FROM login_transactions WHERE expires_at <= clock_timestamp()")
+        .execute(pool)
+        .await?;
+    sqlx::query(
+        "DELETE FROM sessions WHERE expires_at <= clock_timestamp()
+         OR last_seen_at <= clock_timestamp() - $1 * interval '1 second'",
+    )
+    .bind(SESSION_IDLE_LIFETIME as f64)
+    .execute(pool)
+    .await?;
+    Ok(())
+}
+
+fn spawn_cleanup(pool: sqlx::PgPool, period: Duration) -> tokio::task::JoinHandle<()> {
+    tokio::spawn(async move {
+        let mut interval = tokio::time::interval(period);
+        interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
+        loop {
+            interval.tick().await; // Also clean up immediately after startup.
+            if cleanup_expired(&pool).await.is_err() {
+                tracing::warn!("Authentication cleanup failed; retrying on the next interval");
+            }
+        }
+    })
+}
 
 #[derive(Clone, Copy)]
 enum CookieKind {
@@ -228,6 +268,7 @@ impl Auth {
                 .map_err(|_| "invalid callback URL")?,
         );
         let auth = Arc::new(Self {
+            cleanup_task: Some(spawn_cleanup(db.pool.clone(), CLEANUP_INTERVAL)),
             signing: Mutex::new(SigningKeys {
                 metadata: signing_metadata,
                 client: client.clone(),
@@ -387,19 +428,28 @@ async fn login(State(auth): State<Arc<Auth>>) -> Result<Response, ApiError> {
         .set_pkce_challenge(challenge)
         .url();
     let browser = random();
-    // Bound retention even when callbacks never arrive. No provider tokens are stored.
-    sqlx::query("DELETE FROM login_transactions WHERE expires_at <= clock_timestamp()")
-        .execute(&auth.db.pool)
+    let mut tx = auth.db.pool.begin().await.auth_unavailable()?;
+    // A fresh statement snapshot AFTER the lock sees prior admissions, including
+    // those from other backend processes. A single count/insert CTE would not.
+    sqlx::query("SET TRANSACTION ISOLATION LEVEL READ COMMITTED")
+        .execute(&mut *tx)
         .await
         .auth_unavailable()?;
-    sqlx::query(
-        "DELETE FROM sessions WHERE expires_at <= clock_timestamp()
-         OR last_seen_at <= clock_timestamp() - $1 * interval '1 second'",
+    sqlx::query("SELECT pg_advisory_xact_lock($1)")
+        .bind(LOGIN_ADMISSION_LOCK)
+        .execute(&mut *tx)
+        .await
+        .auth_unavailable()?;
+    let live: i64 = sqlx::query_scalar(
+        "SELECT count(*) FROM login_transactions WHERE expires_at > clock_timestamp()",
     )
-    .bind(SESSION_IDLE_LIFETIME as f64)
-    .execute(&auth.db.pool)
+    .fetch_one(&mut *tx)
     .await
     .auth_unavailable()?;
+    if live >= LOGIN_CAPACITY {
+        tx.rollback().await.auth_unavailable()?;
+        return Err(ApiError::auth_unavailable());
+    }
     sqlx::query(
         "INSERT INTO login_transactions (state_hash, browser_hash, nonce, verifier, expires_at)
          VALUES ($1, $2, $3, $4, clock_timestamp() + $5 * interval '1 second')",
@@ -409,9 +459,10 @@ async fn login(State(auth): State<Arc<Auth>>) -> Result<Response, ApiError> {
     .bind(nonce.secret())
     .bind(verifier.secret())
     .bind(LOGIN_LIFETIME as f64)
-    .execute(&auth.db.pool)
+    .execute(&mut *tx)
     .await
     .auth_unavailable()?;
+    tx.commit().await.auth_unavailable()?;
     Ok(response(
         &auth,
         url.as_str(),
