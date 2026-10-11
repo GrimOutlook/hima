@@ -32,6 +32,7 @@ const fonts = files.filter((file) => /\.woff2?$/.test(file));
 assert.equal(fonts.length, 14, "No unused weights or subsets should ship");
 const bytes = Buffer.byteLength(css);
 const gzipBytes = gzipSync(css).length;
-assert.ok(bytes < 40_000, `Stylesheet exceeds 40 KB budget: ${bytes}`);
-assert.ok(gzipBytes < 10_000, `Gzipped stylesheet exceeds 10 KB budget: ${gzipBytes}`);
+// Allow the six appearance palettes and shared themed component styles.
+assert.ok(bytes < 45_000, `Stylesheet exceeds 45 KB budget: ${bytes}`);
+assert.ok(gzipBytes < 11_000, `Gzipped stylesheet exceeds 11 KB budget: ${gzipBytes}`);
 console.log(`Font assets verified: ${faces.length} faces, ${fonts.length} files; CSS ${bytes} bytes, gzip ${gzipBytes} bytes`);
