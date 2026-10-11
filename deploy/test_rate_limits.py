@@ -53,7 +53,7 @@ with tempfile.TemporaryDirectory(prefix="hima-rate-limits-") as directory:
     cert, key = tmp / "cert.pem", tmp / "key.pem"
     subprocess.run([
         "openssl", "req", "-x509", "-newkey", "rsa:2048", "-nodes", "-days", "1",
-        "-subj", "/CN=127.0.0.1", "-addext", "subjectAltName=IP:127.0.0.1",
+        "-subj", "/CN=localhost", "-addext", "subjectAltName=DNS:localhost",
         "-keyout", str(key), "-out", str(cert),
     ], check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     upstream = ThreadingHTTPServer(("127.0.0.1", 0), Upstream)
@@ -63,8 +63,12 @@ with tempfile.TemporaryDirectory(prefix="hima-rate-limits-") as directory:
         listener.bind(("127.0.0.1", 0))
         redirect.bind(("127.0.0.1", 0))
         port = listener.getsockname()[1]
+        http_port = redirect.getsockname()[1]
         config = (root / "deploy/nginx.conf").read_text()
         for old, new in [
+            ("listen 80 default_server;", f"listen 127.0.0.1:{http_port} default_server;"),
+            ("listen 443 ssl default_server;", f"listen 127.0.0.1:{port} ssl default_server;"),
+            ("server_name hima.example;", "server_name localhost;"),
             ("listen 80;", f"listen 127.0.0.1:{redirect.getsockname()[1]};"),
             ("listen 443 ssl;", f"listen 127.0.0.1:{port} ssl;"),
             ("/etc/letsencrypt/live/hima.example/fullchain.pem", str(cert)),
@@ -87,13 +91,15 @@ with tempfile.TemporaryDirectory(prefix="hima-rate-limits-") as directory:
 
     def request(path, client="127.0.0.1", forwarded="203.0.113.1", headers=None, metadata=False):
         connection = http.client.HTTPSConnection(
-            "127.0.0.1", port, context=context, timeout=5,
+            "localhost", port, context=context, timeout=5,
             source_address=(client, 0),
         )
         try:
             connection.request("GET", path, headers={"X-Forwarded-For": forwarded, **(headers or {})})
             response = connection.getresponse()
             body = response.read()
+            assert response.getheader("Server") == "nginx"
+            assert b"nginx/" not in body
             assert response.getheader("X-Content-Type-Options") == "nosniff"
             assert response.getheader("Strict-Transport-Security")
             assert response.getheader("Content-Security-Policy")
@@ -115,11 +121,61 @@ with tempfile.TemporaryDirectory(prefix="hima-rate-limits-") as directory:
         else:
             raise RuntimeError("nginx did not become ready")
 
+        before = count
+        for host in ("unknown.example", "127.0.0.1"):
+            connection = http.client.HTTPConnection("127.0.0.1", http_port, timeout=5)
+            try:
+                connection.request("GET", "/api/me", headers={"Host": host})
+                try:
+                    connection.getresponse()
+                except http.client.RemoteDisconnected:
+                    pass
+                else:
+                    raise AssertionError(f"Unknown HTTP host {host} was accepted")
+            finally:
+                connection.close()
+        connection = http.client.HTTPConnection("127.0.0.1", http_port, timeout=5)
+        try:
+            connection.request("GET", "/planner?check=1", headers={"Host": "localhost"})
+            response = connection.getresponse()
+            assert response.status == 308
+            assert response.getheader("Location") == "https://hima.example/planner?check=1"
+            assert response.getheader("Server") == "nginx"
+        finally:
+            connection.close()
+        for version in (ssl.TLSVersion.TLSv1_2, ssl.TLSVersion.TLSv1_3):
+            rejection_context = ssl.create_default_context(cafile=str(cert))
+            rejection_context.check_hostname = False
+            rejection_context.minimum_version = ssl.TLSVersion.TLSv1_2
+            if version == ssl.TLSVersion.TLSv1_3:
+                rejection_context.minimum_version = ssl.TLSVersion.TLSv1_3
+            rejection_context.maximum_version = version
+            for name in ("unknown.example", None):
+                with socket.create_connection(("127.0.0.1", port), timeout=5) as raw:
+                    try:
+                        with rejection_context.wrap_socket(raw, server_hostname=name):
+                            raise AssertionError(f"TLS {version.name} accepted SNI {name}")
+                    except ssl.SSLError as error:
+                        assert "UNRECOGNIZED_NAME" in str(error), error
+        # Valid SNI cannot bypass HTTP Host routing to the rejecting default.
+        connection = http.client.HTTPSConnection("localhost", port, context=context, timeout=5)
+        try:
+            connection.request("GET", "/api/me", headers={"Host": "unknown.example"})
+            try:
+                connection.getresponse()
+            except http.client.RemoteDisconnected:
+                pass
+            else:
+                raise AssertionError("Unknown HTTPS Host was accepted")
+        finally:
+            connection.close()
+        assert count == before, "Unknown hosts reached upstream"
+
         # Verify real HTTP/2 requests, not just a configured directive.
         version = subprocess.check_output([
             "curl", "--silent", "--show-error", "--fail", "--http2",
             "--cacert", str(cert), "--output", "/dev/null", "--write-out", "%{http_version}",
-            f"https://127.0.0.1:{port}/",
+            "--resolve", f"localhost:{port}:127.0.0.1", f"https://localhost:{port}/",
         ], text=True)
         assert version == "2", version
         for name, original in compressed_assets.items():
@@ -200,7 +256,7 @@ with tempfile.TemporaryDirectory(prefix="hima-rate-limits-") as directory:
         assert request("/auth/login")[0] == 200, "Auth budget did not recover"
         assert request("/api/me", client="127.0.0.3")[0] == 200
         assert (tmp / "api-error.log").read_text() == ""
-        print("HTTP/2, gzip negotiation, CSRF compression exclusion, HTTPS asset caching, rate limits, independent budgets, recovery and headers passed")
+        print("Host rejection, TLS handshake rejection, hidden nginx version, HTTP/2, gzip negotiation, CSRF compression exclusion, HTTPS asset caching, rate limits, independent budgets, recovery and headers passed")
     finally:
         proxy.terminate()
         proxy.wait(timeout=10)

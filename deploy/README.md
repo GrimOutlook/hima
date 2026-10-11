@@ -153,6 +153,23 @@ sudo nginx -t
 sudo systemctl reload nginx
 ```
 
+`server_tokens off` hides the nginx version in response headers and generated
+error pages; the `Server: nginx` product name remains. The explicit default
+servers on ports 80 and 443 close requests for unknown HTTP `Host` values with
+nginx's internal **444** (no HTTP response is sent). The HTTPS default additionally
+uses `ssl_reject_handshake on`: unknown or absent TLS SNI fails the handshake
+before a certificate or application response is served. Clients must send the
+configured domain as SNI; direct-IP HTTPS probes will fail. Valid SNI with an
+unknown HTTP Host is also rejected. The named HTTP server still redirects to the
+canonical HTTPS domain, preserving the path and query.
+
+Remove or reconcile any distribution-provided default servers before installing
+this recipe: each listening address/port can have only one `default_server`.
+If adding IPv6 listeners, add matching defaults on `[::]:80` and `[::]:443` as
+well as listeners in the named servers. Certificate renewal using HTTP-01 must
+serve its challenge under the configured domain; the rejecting default does not
+serve challenges for other domains.
+
 The proxy routes both bare `/api` and `/auth` and their children to Rust without
 path rewriting; it preserves queries, Cookie, Set-Cookie, Origin and CSRF headers.
 It never caches API/auth responses. Callback query strings are excluded from
@@ -229,6 +246,9 @@ never reach a counting upstream, and checks separate route/client budgets,
 spoofed forwarding headers, static serving, security headers and budget recovery.
 It also checks immutable JS/CSS/font caching (including 304 responses), HTML and
 favicon revalidation, and missing-asset 404s without long-lived caching.
+Host-hardening checks cover known-host redirects, unknown HTTP/HTTPS hosts,
+unknown and missing SNI on TLS 1.2/1.3, no rejected traffic reaching the upstream,
+and version-free nginx headers/error pages.
 
 The HTTPS server permits only TLS 1.2 and 1.3. All HTTPS responses, including
 errors, send `Strict-Transport-Security: max-age=63072000; includeSubDomains`,
