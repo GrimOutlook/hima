@@ -195,6 +195,14 @@ fn forbidden() -> ApiError {
 fn hash(value: &str) -> String {
     hex::encode(Sha256::digest(value.as_bytes()))
 }
+// Hash the raw high-entropy cookie, never its database lookup hash. The distinct
+// domain keeps a database leak from yielding a usable CSRF token.
+fn session_csrf(token: &str) -> String {
+    let mut digest = Sha256::new();
+    digest.update(b"hima:session-csrf:v1\0");
+    digest.update(token.as_bytes());
+    hex::encode(digest.finalize())
+}
 fn random() -> String {
     CsrfToken::new_random_len(32).secret().clone()
 }
@@ -315,7 +323,7 @@ impl Auth {
             .read_cookie(headers, CookieKind::Session)
             .ok_or_else(unauthorized)?;
         let token_hash = hash(token);
-        if let Some(session) = self.recent_session(&token_hash).await? {
+        if let Some(session) = self.recent_session(token).await? {
             return Ok(session);
         }
         // PostgreSQL rechecks these predicates after waiting for a concurrent
@@ -325,7 +333,7 @@ impl Auth {
              WHERE token_hash = $1 AND expires_at > clock_timestamp()
              AND last_seen_at > clock_timestamp() - $2 * interval '1 second'
              AND last_seen_at < clock_timestamp() - $3 * interval '1 second'
-             RETURNING user_id, csrf_token",
+             RETURNING user_id",
         )
         .bind(&token_hash)
         .bind(SESSION_IDLE_LIFETIME as f64)
@@ -333,26 +341,29 @@ impl Auth {
         .fetch_optional(&self.db.pool)
         .await
         .auth_unavailable()?;
-        if let Some(session) = touched {
+        if let Some(mut session) = touched {
+            session.csrf_token = session_csrf(token);
             return Ok(session);
         }
         // A competing request may have refreshed activity after our first read.
-        self.recent_session(&token_hash)
-            .await?
-            .ok_or_else(unauthorized)
+        self.recent_session(token).await?.ok_or_else(unauthorized)
     }
 
-    async fn recent_session(&self, token_hash: &str) -> Result<Option<Session>, ApiError> {
-        sqlx::query_as::<_, Session>(
-            "SELECT user_id, csrf_token FROM sessions
+    async fn recent_session(&self, token: &str) -> Result<Option<Session>, ApiError> {
+        let session = sqlx::query_as::<_, Session>(
+            "SELECT user_id FROM sessions
              WHERE token_hash = $1 AND expires_at > clock_timestamp()
              AND last_seen_at >= clock_timestamp() - $2 * interval '1 second'",
         )
-        .bind(token_hash)
+        .bind(hash(token))
         .bind(SESSION_TOUCH_INTERVAL as f64)
         .fetch_optional(&self.db.pool)
         .await
-        .auth_unavailable()
+        .auth_unavailable()?;
+        Ok(session.map(|mut session| {
+            session.csrf_token = session_csrf(token);
+            session
+        }))
     }
 }
 
@@ -380,6 +391,7 @@ fn read_cookie<'a>(headers: &'a HeaderMap, cookie_name: &str) -> Option<&'a str>
 #[derive(Clone, sqlx::FromRow, Serialize)]
 pub(crate) struct Session {
     pub(crate) user_id: i64,
+    #[sqlx(default)]
     csrf_token: String,
 }
 #[derive(Deserialize)]
@@ -568,12 +580,11 @@ async fn callback(
             .auth_unavailable()?;
     }
     sqlx::query(
-        "INSERT INTO sessions (token_hash, user_id, csrf_token, expires_at)
-         VALUES ($1, $2, $3, clock_timestamp() + $4 * interval '1 second')",
+        "INSERT INTO sessions (token_hash, user_id, expires_at)
+         VALUES ($1, $2, clock_timestamp() + $3 * interval '1 second')",
     )
     .bind(hash(&session))
     .bind(user)
-    .bind(random())
     .bind(SESSION_LIFETIME as f64)
     .execute(&mut *tx)
     .await

@@ -99,7 +99,11 @@ async fn upgrade_preserves_planners_and_rejects_changed_migrations(pool: PgPool)
             .fetch_all(&pool)
             .await
             .unwrap();
-    assert_eq!(versions, vec![202610090001, 202610090002, 202610090003]);
+    assert_eq!(
+        versions,
+        vec![202610090001, 202610090002, 202610090003, 202610090004]
+    );
+    assert!(!sqlx::query_scalar::<_, bool>("SELECT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='sessions' AND column_name='csrf_token')").fetch_one(&pool).await.unwrap());
 
     // A release must fail closed if an applied migration has been rewritten.
     sqlx::query(
