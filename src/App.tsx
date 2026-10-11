@@ -438,6 +438,7 @@ function Planner({ planner }: { planner: ReturnType<typeof useStoredPlanner> }) 
           pools={store.pools}
           onPoolVisibilityChange={changePoolVisibility}
           poolHistories={poolHistories}
+          events={store.events}
           selectedEvent={selectedEvent}
           zoomEvent={zoomEvent}
           eventSelectionRequest={eventSelection?.request}
