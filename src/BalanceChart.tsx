@@ -44,8 +44,8 @@ interface ChartPoint extends BalancePoint {
 const CHART_HEIGHT = 340;
 const PLOT_LEFT = 68;
 const PLOT_RIGHT = 18;
-const ACTUAL_COLOR = "#4b7955";
-const PROJECTED_COLOR = "#bd856a";
+const ACTUAL_COLOR = "var(--chart-actual)";
+const PROJECTED_COLOR = "var(--chart-projected)";
 
 const TIMELINE_TOOLTIPS: Record<TimelinePreset, string> = {
   "all time": "Show the entire available timeline",
@@ -451,12 +451,12 @@ export function BalanceChart({
               }}
               aria-label={`Daily ${selectedPool?.name ?? (combinedTotals ? "combined pools" : "selected pools")} balance history and forecast through next year`}
             >
-              <CartesianGrid stroke="#eeefe9" vertical={false} />
+              <CartesianGrid stroke="var(--line)" vertical={false} />
               {visibleEndDate > today && (
                 <ReferenceArea
                   x1={Math.max(visibleStart, todayIndex)}
                   x2={visibleEnd}
-                  fill="#969d95"
+                  fill="var(--muted)"
                   fillOpacity={0.16}
                   strokeOpacity={0}
                   ifOverflow="hidden"
@@ -548,7 +548,7 @@ export function BalanceChart({
                 height={42}
                 travellerWidth={10}
                 stroke="#a6afa5"
-                fill="#f6f7f3"
+                fill="var(--soft)"
                 tickFormatter={(value) => monthYearLabel(history[Math.round(Number(value))]?.date)}
               >
                 <AreaChart margin={{ top: 2, right: 2, bottom: 2, left: 2 }}>
