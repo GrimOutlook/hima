@@ -506,7 +506,17 @@ independent pools, saturation/expiry, cleanup retry and worker shutdown:
 (requires the disposable `DATABASE_URL` described above).
 
 Sessions have 256-bit opaque random tokens; PostgreSQL stores only their SHA-256
-hashes, user IDs, CSRF tokens, expiration, and last-seen timestamps. Sessions survive backend restarts and
+hashes, user IDs, expiration, and last-seen timestamps. CSRF tokens are computed as
+hex-encoded SHA-256 of `hima:session-csrf:v1\0` followed by the **raw session cookie**,
+never its stored hash. The distinct domain means a read-only database leak cannot
+produce a CSRF token or usable session cookie. `/api/me` and planner loads return
+the derived token; verification remains constant-time and requires the exact Origin.
+The additive migration drops the old plaintext CSRF column without revoking sessions
+or changing their expiration/activity. Stop old API instances before migrating and
+start the matching new release (old binaries require the removed column). Open tabs
+with a cached old CSRF token must reload/recheck their session before their next write.
+Old backups/WAL may retain the removed values: dropping a column is not secure erasure.
+Sessions survive backend restarts and
 expire after **24 hours without authenticated requests** or **seven days after login**,
 whichever comes first. Session checks read without writing while last-seen is at
 most five minutes old. Older activity is touched with an atomic expiry-and-age
@@ -521,9 +531,20 @@ contention, and handler reuse after the cookie is removed downstream of middlewa
 Existing sessions begin their idle window when the activity migration runs.
 Login rotates and revokes
 the session previously presented by that browser. Other devices retain their own
-sessions. Expired rows are pruned when a login starts; expiration is checked on every
-access independently of cleanup. Login transactions store PKCE verifiers and nonces
-only on the server. Provider access/ID tokens are verified in memory and discarded;
+sessions. Expired rows are pruned at startup and every 60 seconds; expiration is
+checked on every access independently of cleanup. Login transactions intentionally
+store recoverable PKCE verifiers and nonces in plaintext on the server for a maximum
+**10-minute acceptance window**. This accepts the bounded database-leak exposure
+instead of introducing an external encryption key, rotation and recovery dependency.
+A read-only leak exposes in-flight verifiers/nonces, weakening PKCE if an attacker
+also obtains an authorization code; these values alone do not authenticate a callback,
+which still requires the random state and browser cookie (only their hashes are stored).
+Callbacks atomically consume the transaction before exchanging the code, preventing
+replay across instances. Cleanup failures can retain expired plaintext rows longer;
+expiry still rejects them, and backups/replicas/SQL logs can retain historical values.
+Protect those stores and avoid logging bound SQL parameters. Deployments requiring
+confidentiality even for in-flight verifiers need a separately managed encryption key.
+Provider access/ID tokens are verified in memory and discarded;
 no provider token or client secret is returned to the browser or saved in localStorage.
 
 The controlled-provider integration test uses real RSA-signed tokens, checks the

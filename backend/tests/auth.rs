@@ -42,9 +42,24 @@ async fn planner_http_contract(app: &Router, pool: &PgPool) {
             .await
             .unwrap();
         users.push(user);
-        sqlx::query("INSERT INTO sessions (token_hash,user_id,csrf_token,expires_at) VALUES ($1,$2,'planner-csrf',clock_timestamp() + interval '1 hour')")
+        sqlx::query("INSERT INTO sessions (token_hash,user_id,expires_at) VALUES ($1,$2,clock_timestamp() + interval '1 hour')")
             .bind(hex::encode(Sha256::digest(token.as_bytes()))).bind(user).execute(pool).await.unwrap();
     }
+    let mut csrf_tokens = Vec::new();
+    for token in &tokens {
+        let me = request(
+            app,
+            "GET",
+            "/api/me",
+            &format!("__Host-hima-session={token}"),
+            &[],
+        )
+        .await;
+        let me: Value =
+            serde_json::from_slice(&me.into_body().collect().await.unwrap().to_bytes()).unwrap();
+        csrf_tokens.push(me["csrf_token"].as_str().unwrap().to_owned());
+    }
+    let csrf = csrf_tokens[0].as_str();
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
     // Polling and parallel tabs must not produce even a no-op row update.
     let cookie = format!("__Host-hima-session={}", tokens[0]);
@@ -229,7 +244,7 @@ async fn planner_http_contract(app: &Router, pool: &PgPool) {
             &format!("__Host-hima-session={}", tokens[2]),
             &[
                 ("origin", "https://app.example"),
-                ("x-csrf-token", "planner-csrf")
+                ("x-csrf-token", csrf_tokens[2].as_str())
             ]
         )
         .await
@@ -238,7 +253,7 @@ async fn planner_http_contract(app: &Router, pool: &PgPool) {
     );
     // Two devices for one account; revocation must leave another account intact.
     let extra_token = "d".repeat(43);
-    sqlx::query("INSERT INTO sessions (token_hash,user_id,csrf_token,expires_at) VALUES ($1,$2,'planner-csrf',clock_timestamp()+interval '1 hour')").bind(hex::encode(Sha256::digest(extra_token.as_bytes()))).bind(users[2]).execute(pool).await.unwrap();
+    sqlx::query("INSERT INTO sessions (token_hash,user_id,expires_at) VALUES ($1,$2,clock_timestamp()+interval '1 hour')").bind(hex::encode(Sha256::digest(extra_token.as_bytes()))).bind(users[2]).execute(pool).await.unwrap();
     sqlx::query("UPDATE sessions SET last_seen_at=clock_timestamp() WHERE user_id=$1")
         .bind(users[2])
         .execute(pool)
@@ -255,7 +270,7 @@ async fn planner_http_contract(app: &Router, pool: &PgPool) {
         vec![],
         vec![
             ("origin", "https://evil.example"),
-            ("x-csrf-token", "planner-csrf"),
+            ("x-csrf-token", csrf_tokens[2].as_str()),
         ],
         vec![("origin", "https://app.example"), ("x-csrf-token", "bad")],
     ] {
@@ -273,7 +288,7 @@ async fn planner_http_contract(app: &Router, pool: &PgPool) {
         &device,
         &[
             ("origin", "https://app.example"),
-            ("x-csrf-token", "planner-csrf"),
+            ("x-csrf-token", csrf_tokens[2].as_str()),
         ],
     )
     .await;
@@ -329,15 +344,9 @@ async fn planner_http_contract(app: &Router, pool: &PgPool) {
         json!({"expected_revision":revision,"document":document}).to_string()
     };
     for method in ["GET", "PUT"] {
-        let r = send(
-            method,
-            "",
-            body(0, &doc),
-            "https://app.example",
-            "planner-csrf",
-        )
-        .await
-        .unwrap();
+        let r = send(method, "", body(0, &doc), "https://app.example", csrf)
+            .await
+            .unwrap();
         assert_eq!(r.status().as_u16(), 401);
         assert_eq!(r.headers()["cache-control"], "no-store");
     }
@@ -347,14 +356,14 @@ async fn planner_http_contract(app: &Router, pool: &PgPool) {
     assert_eq!(empty.status().as_u16(), 200);
     assert_eq!(
         serde_json::from_str::<Value>(&empty.text().await.unwrap()).unwrap(),
-        json!({"document":null,"revision":0,"updated_at":null,"session":{"user_id":users[0],"csrf_token":"planner-csrf"}})
+        json!({"document":null,"revision":0,"updated_at":null,"session":{"user_id":users[0],"csrf_token":csrf}})
     );
     let missing = send(
         "PUT",
         &tokens[0],
         body(1, &doc),
         "https://app.example",
-        "planner-csrf",
+        csrf,
     )
     .await
     .unwrap();
@@ -368,14 +377,14 @@ async fn planner_http_contract(app: &Router, pool: &PgPool) {
                 &tokens[0],
                 body(revision, &a_doc),
                 "https://app.example",
-                "planner-csrf"
+                csrf
             ),
             send(
                 "PUT",
                 &tokens[0],
                 body(revision, &b_doc),
                 "https://app.example",
-                "planner-csrf"
+                csrf
             )
         );
         let a = a.unwrap();
@@ -404,7 +413,7 @@ async fn planner_http_contract(app: &Router, pool: &PgPool) {
         &tokens[0],
         json!({"expected_revision":2,"document":doc,"echo_document":true}).to_string(),
         "https://app.example",
-        "planner-csrf",
+        csrf,
     )
     .await
     .unwrap();
@@ -425,7 +434,7 @@ async fn planner_http_contract(app: &Router, pool: &PgPool) {
             .put(&url)
             .header("cookie", format!("__Host-hima-session={}", tokens[0]))
             .header("origin", "https://app.example")
-            .header("x-csrf-token", "planner-csrf")
+            .header("x-csrf-token", csrf)
             .header("content-type", content_type)
             .body(raw)
             .send()
@@ -444,7 +453,7 @@ async fn planner_http_contract(app: &Router, pool: &PgPool) {
         .unwrap();
     assert_eq!(loaded.status().as_u16(), 200);
     let mut expected = serde_json::to_value(&before).unwrap();
-    expected["session"] = json!({"user_id":users[0],"csrf_token":"planner-csrf"});
+    expected["session"] = json!({"user_id":users[0],"csrf_token":csrf});
     assert_eq!(
         serde_json::from_str::<Value>(&loaded.text().await.unwrap()).unwrap(),
         expected
@@ -476,23 +485,17 @@ async fn planner_http_contract(app: &Router, pool: &PgPool) {
         ),
         ("{".into(), 400),
     ] {
-        let r = send(
-            "PUT",
-            &tokens[0],
-            raw,
-            "https://app.example",
-            "planner-csrf",
-        )
-        .await
-        .unwrap();
+        let r = send("PUT", &tokens[0], raw, "https://app.example", csrf)
+            .await
+            .unwrap();
         assert_eq!(r.status().as_u16(), status);
         let error: Value = serde_json::from_str(&r.text().await.unwrap()).unwrap();
         assert!(error["error"]["code"].is_string());
         assert_eq!(db.load(users[0]).await.unwrap().unwrap(), before);
     }
     for (origin, csrf) in [
-        ("", "planner-csrf"),
-        ("https://evil.example", "planner-csrf"),
+        ("", csrf),
+        ("https://evil.example", csrf),
         ("https://app.example", ""),
         ("https://app.example", "wrong"),
     ] {
@@ -512,7 +515,7 @@ async fn planner_http_contract(app: &Router, pool: &PgPool) {
             &tokens[1],
             body(2, &doc),
             "https://app.example",
-            "planner-csrf"
+            csrf_tokens[1].as_str()
         )
         .await
         .unwrap()
@@ -527,7 +530,7 @@ async fn planner_http_contract(app: &Router, pool: &PgPool) {
             &tokens[1],
             body(0, &doc),
             "https://app.example",
-            "planner-csrf"
+            csrf_tokens[1].as_str()
         )
         .await
         .unwrap()
@@ -556,7 +559,7 @@ async fn planner_http_contract(app: &Router, pool: &PgPool) {
                 &tokens[2],
                 body(0, &doc),
                 "https://app.example",
-                "planner-csrf"
+                csrf_tokens[2].as_str()
             )
             .await
             .unwrap()
@@ -1154,6 +1157,30 @@ async fn oidc_and_persistent_browser_sessions(pool: PgPool) {
     assert!(!String::from_utf8_lossy(&bytes).contains("provider-access-token"));
     let csrf = me["csrf_token"].as_str().unwrap();
     assert_eq!(me, before_restart);
+    // A read-only database dump has neither raw session nor usable CSRF token.
+    let raw_session = session.split_once('=').unwrap().1;
+    let stored_hash: String =
+        sqlx::query_scalar("SELECT token_hash FROM sessions WHERE user_id=$1")
+            .bind(me["user_id"].as_i64().unwrap())
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+    assert_ne!(stored_hash, raw_session);
+    assert_ne!(stored_hash, csrf);
+    for leaked in [stored_hash.as_str(), raw_session] {
+        assert_eq!(
+            request(
+                &restored,
+                "POST",
+                "/auth/logout",
+                &session,
+                &[("origin", "https://app.example"), ("x-csrf-token", leaked)]
+            )
+            .await
+            .status(),
+            StatusCode::FORBIDDEN
+        );
+    }
     let planner = request(&restored, "GET", "/api/planner", &session, &[]).await;
     assert_eq!(planner.status(), StatusCode::OK);
     let planner: Value =
@@ -1220,6 +1247,18 @@ async fn oidc_and_persistent_browser_sessions(pool: PgPool) {
         serde_json::from_slice(&response.into_body().collect().await.unwrap().to_bytes()).unwrap();
     assert_eq!(me["user_id"], rotated_me["user_id"]);
     assert_ne!(me["csrf_token"], rotated_me["csrf_token"]);
+    assert_eq!(
+        request(
+            &restored,
+            "POST",
+            "/auth/logout",
+            &rotated,
+            &[("origin", "https://app.example"), ("x-csrf-token", csrf)]
+        )
+        .await
+        .status(),
+        StatusCode::FORBIDDEN
+    );
     let response = request(&restored, "GET", "/api/planner", &rotated, &[]).await;
     let rotated_planner: Value =
         serde_json::from_slice(&response.into_body().collect().await.unwrap().to_bytes()).unwrap();

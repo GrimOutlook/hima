@@ -1,5 +1,120 @@
 use super::*;
 
+#[sqlx::test(migrations = false)]
+#[ignore = "requires DATABASE_URL with PostgreSQL CREATEDB privileges"]
+async fn csrf_upgrade_preserves_sessions_but_rejects_legacy_and_cross_session_tokens(
+    pool: sqlx::PgPool,
+) {
+    use http_body_util::BodyExt;
+    use tower::ServiceExt;
+    sqlx::migrate::Migrator::with_migrations(crate::db::MIGRATOR.iter().take(3).cloned().collect())
+        .run(&pool)
+        .await
+        .unwrap();
+    let auth = login_test_auth(pool.clone());
+    let user = auth
+        .db
+        .ensure_user("https://issuer.example", "upgrade")
+        .await
+        .unwrap();
+    let tokens = ["a".repeat(43), "b".repeat(43)];
+    for token in &tokens {
+        sqlx::query("INSERT INTO sessions(token_hash,user_id,csrf_token,expires_at) VALUES($1,$2,'legacy-csrf',clock_timestamp()+interval '1 hour')")
+            .bind(hash(token)).bind(user).execute(&pool).await.unwrap();
+    }
+    let before: Vec<(
+        String,
+        chrono::DateTime<chrono::Utc>,
+        chrono::DateTime<chrono::Utc>,
+    )> = sqlx::query_as(
+        "SELECT token_hash,expires_at,last_seen_at FROM sessions ORDER BY token_hash",
+    )
+    .fetch_all(&pool)
+    .await
+    .unwrap();
+    auth.db.migrate().await.unwrap();
+    auth.db.migrate().await.unwrap();
+    let after: Vec<(
+        String,
+        chrono::DateTime<chrono::Utc>,
+        chrono::DateTime<chrono::Utc>,
+    )> = sqlx::query_as(
+        "SELECT token_hash,expires_at,last_seen_at FROM sessions ORDER BY token_hash",
+    )
+    .fetch_all(&pool)
+    .await
+    .unwrap();
+    assert_eq!(before, after);
+    assert!(!sqlx::query_scalar::<_, bool>("SELECT EXISTS(SELECT 1 FROM information_schema.columns WHERE table_name='sessions' AND column_name='csrf_token')").fetch_one(&pool).await.unwrap());
+    let app = router(auth.clone()).layer(axum::middleware::from_fn_with_state(auth, protect));
+    let cookie = format!("__Host-hima-session={}", tokens[0]);
+    let me = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .uri("/api/me")
+                .header(header::COOKIE, &cookie)
+                .body(axum::body::Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(me.status(), StatusCode::OK);
+    let me: serde_json::Value =
+        serde_json::from_slice(&me.into_body().collect().await.unwrap().to_bytes()).unwrap();
+    let csrf = me["csrf_token"].as_str().unwrap();
+    assert_eq!(csrf, session_csrf(&tokens[0]));
+    for invalid_csrf in [
+        "legacy-csrf".to_owned(),
+        hash(&tokens[0]),
+        session_csrf(&hash(&tokens[0])),
+        tokens[0].clone(),
+        session_csrf(&tokens[1]),
+    ] {
+        let response = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/auth/logout")
+                    .header(header::COOKIE, &cookie)
+                    .header(header::ORIGIN, "https://app.example")
+                    .header("x-csrf-token", invalid_csrf)
+                    .body(axum::body::Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::FORBIDDEN);
+    }
+    // The touch path must return the same derived token as a fresh read.
+    sqlx::query("UPDATE sessions SET last_seen_at=clock_timestamp()-interval '6 minutes'")
+        .execute(&pool)
+        .await
+        .unwrap();
+    let response = app
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/auth/logout")
+                .header(header::COOKIE, &cookie)
+                .header(header::ORIGIN, "https://app.example")
+                .header("x-csrf-token", csrf)
+                .body(axum::body::Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::SEE_OTHER);
+    assert_eq!(
+        sqlx::query_scalar::<_, i64>("SELECT count(*) FROM sessions")
+            .fetch_one(&pool)
+            .await
+            .unwrap(),
+        1
+    );
+}
+
 fn login_test_auth(pool: sqlx::PgPool) -> Arc<Auth> {
     let metadata: CoreProviderMetadata = serde_json::from_value(serde_json::json!({
         "issuer":"https://issuer.example", "authorization_endpoint":"https://issuer.example/auth",
@@ -113,8 +228,8 @@ async fn login_ignores_expired_rows_without_request_cleanup(pool: sqlx::PgPool) 
         .await
         .unwrap();
     sqlx::query(
-        "INSERT INTO sessions(token_hash,user_id,csrf_token,expires_at)
-        VALUES ('expired',$1,'csrf',clock_timestamp()-interval '1 second')",
+        "INSERT INTO sessions(token_hash,user_id,expires_at)
+        VALUES ('expired',$1,clock_timestamp()-interval '1 second')",
     )
     .bind(user)
     .execute(&pool)
@@ -195,10 +310,10 @@ async fn cleanup_runs_without_requests_retries_and_stops_with_auth(pool: sqlx::P
         .await
         .unwrap();
     sqlx::query(
-        "INSERT INTO sessions(token_hash,user_id,csrf_token,expires_at,last_seen_at)
-        VALUES ('expired',$1,'csrf',clock_timestamp()-interval '1 second',clock_timestamp()),
-        ('idle',$1,'csrf',clock_timestamp()+interval '1 day',clock_timestamp()-interval '2 days'),
-        ('live',$1,'csrf',clock_timestamp()+interval '1 day',clock_timestamp())",
+        "INSERT INTO sessions(token_hash,user_id,expires_at,last_seen_at)
+        VALUES ('expired',$1,clock_timestamp()-interval '1 second',clock_timestamp()),
+        ('idle',$1,clock_timestamp()+interval '1 day',clock_timestamp()-interval '2 days'),
+        ('live',$1,clock_timestamp()+interval '1 day',clock_timestamp())",
     )
     .bind(user)
     .execute(&pool)
@@ -308,7 +423,7 @@ async fn unsafe_handlers_reuse_the_middleware_session(pool: sqlx::PgPool) {
         .await
         .unwrap();
     let token = "e".repeat(43);
-    sqlx::query("INSERT INTO sessions (token_hash,user_id,csrf_token,expires_at) VALUES ($1,$2,'csrf',clock_timestamp()+interval '1 hour')")
+    sqlx::query("INSERT INTO sessions (token_hash,user_id,expires_at) VALUES ($1,$2,clock_timestamp()+interval '1 hour')")
         .bind(hash(&token)).bind(user).execute(&pool).await.unwrap();
     // Strip the cookie AFTER protect: any handler lookup would now return 401.
     let app = router(auth.clone())
@@ -334,7 +449,7 @@ async fn unsafe_handlers_reuse_the_middleware_session(pool: sqlx::PgPool) {
             .uri(path)
             .header(header::COOKIE, format!("__Host-hima-session={token}"))
             .header(header::ORIGIN, "https://app.example")
-            .header("x-csrf-token", "csrf")
+            .header("x-csrf-token", session_csrf(&token))
             .header(header::CONTENT_TYPE, "application/json")
             .body(Body::from(body))
             .unwrap();
