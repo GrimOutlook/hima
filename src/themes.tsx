@@ -48,8 +48,8 @@ export function ThemeControls() {
     <button className="button button-outline mode-toggle" type="button" aria-label="Dark mode" aria-pressed={appearance.mode === "dark"}
       title={`Switch to ${appearance.mode === "light" ? "dark" : "light"} mode`}
       onClick={() => updateAppearance({ ...appearance, mode: appearance.mode === "light" ? "dark" : "light" })}>
-      <span aria-hidden="true">{appearance.mode === "light" ? "☾" : "☀"}</span>
-      <span>{appearance.mode === "light" ? "Dark" : "Light"}</span>
+      <span aria-hidden="true">{appearance.mode === "dark" ? "☾" : "☀"}</span>
+      <span>{appearance.mode === "dark" ? "Dark" : "Light"}</span>
     </button>
   </div>;
 }

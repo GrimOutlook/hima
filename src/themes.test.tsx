@@ -27,11 +27,13 @@ it("remembers independent theme selections across mode switches and remounts", a
     await toggle();
     expect(document.documentElement.dataset.theme).toBe("coast");
     expect(container.querySelector("button")!.getAttribute("aria-pressed")).toBe("false");
+    expect(container.querySelector("button")!.textContent).toBe("☀Light");
     await act(async () => root.render(null));
     await act(async () => root.render(<ThemeControls />));
     await toggle();
     expect(document.documentElement.dataset.mode).toBe("dark");
     expect(document.documentElement.dataset.theme).toBe("plum");
+    expect(container.querySelector("button")!.textContent).toBe("☾Dark");
     expect(JSON.parse(localStorage.getItem("hima-appearance")!)).toEqual({ mode: "dark", light: "coast", dark: "plum" });
   } finally {
     await act(async () => root.unmount());
