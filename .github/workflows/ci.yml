@@ -188,6 +188,8 @@ jobs:
         uses: cachix/install-nix-action@13d8dd58da0234aa297dedd986986ccb8e7f3e24 # v31
       - name: Test production nginx rate limits
         run: nix shell --inputs-from . nixpkgs#nginx nixpkgs#curl --command python3 deploy/test_rate_limits.py
+      - name: Verify systemd units and sandbox assessments
+        run: python3 deploy/test_systemd.py
   packages:
     name: Nix frontend and backend release packages
     runs-on: ubuntu-latest
