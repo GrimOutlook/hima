@@ -1,9 +1,36 @@
 import { expect, it } from "vitest";
 import { validateDocument } from "./plannerPersistence";
+import { parseStoreJson, parseHours } from "./model";
+import { parseBackupJson } from "./backup";
+import { defaultSettings } from "./settings";
 
 const document = () => ({ version: 1, next_id: 100_000,
   pools: [{ id: 1, name: "Leave", additions: [{ id: 2, amount: 1, date: "2026-01-01" }], recurring: [{ id: 3, amount: 1, cadence: "Weekly", start_date: "2026-01-01" }], caps: [{ id: 4, max_balance: 1, start_date: "2026-01-01" }] }],
   events: [{ id: 5, name: "Trip", days: [{ date: "2026-01-01", allocations: [{ pool_id: 1, hours: 1 }] }] }],
+});
+
+it("keeps cent precision strict for edits and remote data while repairing legacy imports", () => {
+  for (const amount of [0.1 + 0.2, 1.23, 1.234, Infinity, NaN, Number.MAX_VALUE]) {
+    const v = document();
+    v.pools[0]!.additions[0]!.amount = amount;
+    if (amount === 0.1 + 0.2 || amount === 1.23) {
+      expect(parseHours(String(amount))).toBeCloseTo(amount);
+      expect(() => validateDocument(v)).not.toThrow();
+    } else {
+      expect(parseHours(String(amount))).toBeNull();
+      expect(() => validateDocument(v)).toThrow();
+    }
+  }
+  const v = document();
+  v.pools[0]!.additions[0]!.amount = 1.234;
+  expect(parseStoreJson(JSON.stringify(v)).pools[0]!.additions[0]!.amount).toBe(1.23);
+});
+
+it("retains strict remote settings keys while backups strip unknown settings", () => {
+  const v = { ...document(), settings: { ...defaultSettings, futureOption: true } };
+  expect(() => validateDocument(v)).toThrow();
+  expect(parseBackupJson(JSON.stringify(v)).settings).toEqual(defaultSettings);
+  expect(v.settings.futureOption).toBe(true);
 });
 
 it("enforces name limits in UTF-16 code units and all hour limits", () => {

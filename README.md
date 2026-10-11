@@ -18,9 +18,47 @@ Use JSON export/import to move data between this site and a self-hosted instance
 their different origins prevent automatic migration. Concurrent edits in another
 tab or window use the revision-conflict recovery controls.
 
+**Shared-origin storage limitation:** `localStorage` is scoped to the origin
+(scheme, hostname, and port), not the URL path. The `/hima/` path does not
+isolate this planner from other GitHub Pages sites at
+`https://grimoutlook.github.io/<other-repo>/`. JavaScript running on any of
+those sites in the same browser profile can read, modify, or delete your
+planner data and settings. Storing data locally does not make it private
+from other sites on this shared origin; avoid storing sensitive information
+in the hosted Pages version. For origin isolation, host the browser-only
+build on a dedicated origin, such as its own domain or subdomain, and use
+JSON export/import to transfer your existing data.
+
 Run `pnpm run dev:local` and visit `http://127.0.0.1:5173/hima/` for browser-only
 development. Run `pnpm run build:pages` to build `dist/` with the `/hima/` base
 path. Default `dev` and `build` commands use the self-hosted account variant.
+
+**Pages security limitations:** The production Pages build injects a
+`Content-Security-Policy` meta tag at the start of `<head>`, before scripts,
+stylesheets and preloads. It mirrors the self-hosted nginx policy's
+`default-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; base-uri 'none'; form-action 'self'`.
+Scripts, fonts and connections therefore default to same-origin sources;
+inline scripts and external resources are blocked, while inline styles and
+data-URL images remain allowed. This policy does not isolate same-origin
+Pages sites or their storage.
+
+GitHub Pages cannot configure custom response headers. Meta CSP cannot enforce
+`frame-ancestors`, so this build has no clickjacking protection and can be
+embedded in another site's frame. HSTS and `X-Content-Type-Options: nosniff`
+also cannot be supplied by meta tags; any platform-provided headers are outside
+this build's control. Self-hosting with [nginx](deploy/nginx.conf) supplies
+these response headers, including `frame-ancestors 'none'`.
+The meta policy is build-only; development keeps Vite's HMR working.
+
+Verify emitted HTML with `pnpm run build` followed by
+`node scripts/verify-csp.mjs production`, then `pnpm run build:pages` followed
+by `node scripts/verify-csp.mjs pages`. The checks enforce policy parity with
+nginx, exactly one Pages policy, ordering before active content, and no inline
+scripts. CI runs these checks for both variants and the deployment artifact.
+For a browser check, serve the Pages output with
+`pnpm exec vite preview --mode pages` and visit `/hima/`; verify that the
+planner, chart and fonts load and the browser blocks inline scripts and
+cross-origin connections under CSP.
 
 CI checks both builds and deploys Pages after checks pass on pushes to `main`.
 Before the first deployment, the repository owner must enable Pages:
@@ -31,7 +69,7 @@ gh api -X POST repos/GrimOutlook/hima/pages -f build_type=workflow
 
 ## Run locally
 
-Install Node.js 22.13+ and pnpm 12.10.1 (the version declared in `package.json`), then install the dependencies and start the development server. This project uses pnpm; `pnpm-lock.yaml` is the dependency lockfile to keep committed when updating dependencies. The Nix development shell includes both Node.js and pnpm.
+Install Node.js 22.22.2+ (22.x), 24.15.0+ (24.x), or 26+, and pnpm 12.10.1 (the version declared in `package.json`), then install the dependencies and start the development server. These Node ranges match jsdom 30's requirements. This project uses pnpm; `pnpm-lock.yaml` is the dependency lockfile to keep committed when updating dependencies. The Nix development shell includes both Node.js and pnpm.
 
 TypeScript stays on the latest 6.0 release because `typescript-eslint` does not yet support TypeScript 7.
 
@@ -50,7 +88,67 @@ pnpm run build
 
 The generated site is written to `dist/`. Run `pnpm run preview` to serve the production build locally.
 
+### Self-hosted fonts
+
+`src/main.tsx` imports only the Latin, normal-style font faces used by the UI.
+The weight audit of `assets/main.css` and `src/` found DM Sans 400 (body and
+chart ticks), 500 (units and calendar navigation), 600 (controls and labels),
+and 700 (emphasis); Manrope uses 600 (breakdown values), 700 (headings and
+balances), and 800 (branding). Manrope 400/500 are unused. Both families retain
+`font-display: swap` and local WOFF2/WOFF assets. Characters outside the Latin
+font files use the existing sans-serif fallback; planner text remains Unicode.
+
+On the issue #198 baseline, the production stylesheet was 74,426 bytes
+(27,619 bytes with Node's default gzip) with 38 font faces. The Latin-only
+imports reduce this to seven font faces and 37,733 bytes (8,574 gzipped):
+49% smaller uncompressed and 69% smaller gzipped. The Pages build is 37,803
+bytes (8,580 gzipped) because of its `/hima/` asset prefix. Verify both variants with
+`pnpm run build` and `pnpm run build:pages`, then run
+`node scripts/verify-font-assets.mjs` after each build to check the emitted
+families/weights, local font files, face count and stylesheet size budget.
+
 ## Architecture and production hosting
+
+Planner persistence adapters validate incoming documents on load and outgoing
+documents once at save time. The controller keeps invalid drafts exportable and
+reports a failed save rather than validating each edit again. Ordinary saves
+acknowledge only revision/timestamp metadata and never replace newer edits.
+Local-data migration explicitly requests a stored-document echo and confirms only
+after the expected next revision and canonical JSON content match; failed,
+conflicting, or stale-account responses leave the local copy unconfirmed.
+See [the HTTP/document contract](backend/DOCUMENT.md) for `echo_document` details.
+
+The balance chart uses a dynamic import started when the app module loads, so
+its download overlaps session and planner requests. React Suspense consumes that
+same promise when the planner is ready. Vite splits the chart automatically;
+do not force recharts into a manual chunk that pulls React into the chart's
+static dependency graph. The built entry and HTML must not statically import
+or modulepreload the chart chunk (the app intentionally starts its download).
+Verify the actual production chunk graph with `pnpm exec vite build --manifest`
+and `node scripts/verify-chart-chunks.mjs`; repeat with
+`pnpm exec vite build --mode pages --manifest` for the Pages variant.
+
+The memoized balance chart consumes pool histories aligned with `historyDates`.
+Exact date lookups reuse date-index maps; sparse/weekday range boundaries use
+binary search. Selection and brush updates reuse prepared series data, and the
+visible Y-axis bounds use a loop rather than spreading every pool value into a
+function call. `src/BalanceChart.test.tsx` covers a 3660-day, 50-pool view,
+weekday index alignment and unchanged-parent/selection data reuse.
+
+The frontend ledger indexes validated event days by pool once per events-array
+revision. Each pool's immutable inputs and that events array key a weak cache of
+sorted actions and running snapshots through the supported maximum date (2200).
+Charts, totals and pool cards use binary-search queries against those snapshots;
+card starting balances are recorded during the same replay, including caps,
+holiday expiration and resets. Model callers must replace changed pools/events
+immutably rather than mutate cached inputs. Old planners are garbage-collectable.
+The ledger tests check invalidation and assert that repeated queries do not
+rescan event days or expand recurrence.
+The first query pays the full expansion cost; subsequent date changes reuse it.
+Run `pnpm exec vitest run src/ledger-performance.test.ts --silent=false --reporter=verbose`
+for informational cold-build and warm totals/card/history timings on synthetic
+4/8/20-pool planners. Timing values are machine-dependent; regression assertions
+use work counts and balance correctness rather than fragile wall-clock limits.
 
 React serves the planner UI from static `dist/` assets. Relative `/api` and `/auth`
 requests go to the Rust Axum service under the same HTTPS origin. PostgreSQL 17
@@ -78,6 +176,14 @@ normal revision-conflict protection.
 With Nix flakes enabled, run `nix build .#frontend` (or `nix build`) to build the production site using the pinned Node.js and pnpm dependencies. The static site is available in `result/dist/`, ready to serve with a static web server. `nix build .#backend --out-link result-backend` builds release executables `result-backend/bin/hima-api` and `result-backend/bin/migrate`, including embedded migrations. Package outputs support `x86_64-linux` and `aarch64-linux`.
 
 Run `nix develop` for the Node.js, pnpm, and Rust development shell, or `nix run` to start the development server after installing dependencies with `pnpm install --frozen-lockfile`.
+
+Keep `pnpm-workspace.yaml` committed alongside the lockfile: its `allowBuilds`
+policy permits only esbuild dependency lifecycle scripts. The pinned pnpm
+12.10.1 supports this setting (introduced in 10.26.0). Local and CI frozen
+installs read this root file; the Nix source includes it too. Nix's pnpm hook
+first installs offline with scripts disabled, then `pnpm rebuild` applies the
+same allow-list before building. Review any new build-script approval as a
+dependency security change; do not bypass the policy with blanket approvals.
 
 When updating `pnpm-lock.yaml`, also update the `pnpmDeps` hash in `flake.nix`: temporarily set it to `pkgs.lib.fakeHash`, run `nix build`, then replace it with the actual hash printed in the hash-mismatch error. New files must be tracked by Git to be included in a local Git-based flake build.
 
@@ -197,7 +303,7 @@ through Vite with a controlled signing provider and an isolated SQLx database.
 
 ### Backend service details
 
-The independent Axum/Tokio service lives in `backend/`. Install stable Rust (edition 2024 support required), or enter `nix develop`, then run in a second terminal alongside `pnpm run dev`:
+The independent Axum/Tokio service lives in `backend/`. Install stable Rust 1.94+ (SQLx 0.9's minimum), or enter `nix develop`, then run in a second terminal alongside `pnpm run dev`:
 
 ```sh
 cargo run --locked --manifest-path backend/Cargo.toml
@@ -233,6 +339,23 @@ cargo build --manifest-path backend/Cargo.toml --locked
 ```
 
 Commit `backend/Cargo.lock` when changing Rust dependencies. CI runs these checks alongside the frontend checks.
+
+Dependabot security updates are enabled in the repository settings; verify with
+`gh api repos/GrimOutlook/hima/automated-security-fixes` (`enabled: true`,
+`paused: false`). Weekly version updates group frontend and Actions minor/patch
+changes. Cargo groups patches only, because a 0.x minor release can break APIs.
+Major updates remain individually reviewable, and security updates remain
+independent of the version-update groups. Refresh the `fetchPnpmDeps` hash in
+`flake.nix` whenever the frontend lockfile changes, and require every CI job
+before merging an upgrade.
+
+The SQLx 0.9 upgrade retains bound request values; its `AssertSqlSafe` uses are
+limited to audited constant column projections and the test's validated role
+identifier. Upgrade tests use the public `Migrator::with_migrations` constructor
+and still verify persisted data and rejection of changed migration checksums.
+Production hashing uses sha2 0.11. The OIDC test provider uses RSA's re-exported
+SHA-256 and OS RNG to match RSA 0.9's digest/rand-core traits, eliminating the
+redundant direct `rand` dependency; SQLx uses rand 0.10 transitively.
 
 ### PostgreSQL storage
 
@@ -270,6 +393,11 @@ the planner-only schema, rejected migration checksum changes, constraints,
 per-user isolation, atomic revisions, invalid-write preservation, and reconnect persistence.
 
 ### Persistence regression coverage
+
+The frontend and offline Rust suites consume the same named valid/invalid JSON
+documents in [`fixtures/document-validation`](fixtures/document-validation/README.md).
+Add shared cases there when changing strict document validation to keep both
+implementations aligned.
 
 The required CI jobs run frontend lint/typecheck/tests/build, Rust
 format/Clippy/offline tests/release builds, PostgreSQL integration tests, both
@@ -370,17 +498,61 @@ Production cookies are `__Host-hima-session` and `__Host-hima-login`, with Secur
 HttpOnly, SameSite=Lax, Path=/, and no Domain attribute. The callback must use a
 top-level GET redirect (`response_mode=query`), so Lax permits the login cookie.
 
+Login admission is capped at 1,000 live transactions per database, shared across
+backend processes by a transaction-scoped PostgreSQL advisory lock. Saturated
+`GET /auth/login` requests return HTTP 503 (`auth_unavailable`) without a redirect,
+cookie, or insert. Expired transactions do not count toward the cap; callback
+consumption immediately frees capacity. Login requests never run cleanup deletes.
+A background worker cleans expired login transactions and expired/idle sessions
+at startup and every 60 seconds, including when no login requests arrive. Failures
+are logged and retried on the next interval; dropping the authentication service
+aborts its worker. Expiry checks remain enforced on reads/callbacks independently
+of cleanup. Keep the nginx rate limits: the cap bounds live storage, not request
+traffic. Ignored library PostgreSQL tests cover concurrent admission across
+independent pools, saturation/expiry, cleanup retry and worker shutdown:
+`cargo test --locked --manifest-path backend/Cargo.toml --lib -- --ignored`
+(requires the disposable `DATABASE_URL` described above).
+
 Sessions have 256-bit opaque random tokens; PostgreSQL stores only their SHA-256
-hashes, user IDs, CSRF tokens, expiration, and last-seen timestamps. Sessions survive backend restarts and
+hashes, user IDs, expiration, and last-seen timestamps. CSRF tokens are computed as
+hex-encoded SHA-256 of `hima:session-csrf:v1\0` followed by the **raw session cookie**,
+never its stored hash. The distinct domain means a read-only database leak cannot
+produce a CSRF token or usable session cookie. `/api/me` and planner loads return
+the derived token; verification remains constant-time and requires the exact Origin.
+The additive migration drops the old plaintext CSRF column without revoking sessions
+or changing their expiration/activity. Stop old API instances before migrating and
+start the matching new release (old binaries require the removed column). Open tabs
+with a cached old CSRF token must reload/recheck their session before their next write.
+Old backups/WAL may retain the removed values: dropping a column is not secure erasure.
+Sessions survive backend restarts and
 expire after **24 hours without authenticated requests** or **seven days after login**,
-whichever comes first. Each successful session check atomically updates last-seen
-without sliding the seven-day cap; visible-page session polling counts as activity.
+whichever comes first. Session checks read without writing while last-seen is at
+most five minutes old. Older activity is touched with an atomic expiry-and-age
+check, without sliding the seven-day cap; concurrent tabs share one touch.
+Visible-page polling counts as activity, with up to five minutes of idle-window
+granularity. Expired sessions cannot be revived by a touch, including one waiting
+on a concurrent database update. Unsafe-request middleware passes its validated
+session through request extensions to planner-save and logout-all handlers, so
+each request authenticates once. The PostgreSQL integration tests verify unchanged
+row versions during polling, concurrent touch coalescing, expiry under row-lock
+contention, and handler reuse after the cookie is removed downstream of middleware.
 Existing sessions begin their idle window when the activity migration runs.
 Login rotates and revokes
 the session previously presented by that browser. Other devices retain their own
-sessions. Expired rows are pruned when a login starts; expiration is checked on every
-access independently of cleanup. Login transactions store PKCE verifiers and nonces
-only on the server. Provider access/ID tokens are verified in memory and discarded;
+sessions. Expired rows are pruned at startup and every 60 seconds; expiration is
+checked on every access independently of cleanup. Login transactions intentionally
+store recoverable PKCE verifiers and nonces in plaintext on the server for a maximum
+**10-minute acceptance window**. This accepts the bounded database-leak exposure
+instead of introducing an external encryption key, rotation and recovery dependency.
+A read-only leak exposes in-flight verifiers/nonces, weakening PKCE if an attacker
+also obtains an authorization code; these values alone do not authenticate a callback,
+which still requires the random state and browser cookie (only their hashes are stored).
+Callbacks atomically consume the transaction before exchanging the code, preventing
+replay across instances. Cleanup failures can retain expired plaintext rows longer;
+expiry still rejects them, and backups/replicas/SQL logs can retain historical values.
+Protect those stores and avoid logging bound SQL parameters. Deployments requiring
+confidentiality even for in-flight verifiers need a separately managed encryption key.
+Provider access/ID tokens are verified in memory and discarded;
 no provider token or client secret is returned to the browser or saved in localStorage.
 
 The controlled-provider integration test uses real RSA-signed tokens, checks the
@@ -395,6 +567,32 @@ Both database integration suites run in CI against PostgreSQL 17. The auth suite
 also exercises the planner over actual TCP HTTP, including concurrent first saves
 and updates, cross-user isolation, invalid-write preservation, session expiry,
 and CSRF enforcement.
+
+## Chart history caching
+
+Chart date selection includes hidden pools directly, without cloning the document.
+Each planner retains chart series by pool ID and the immutable additions, recurring
+rules, caps and event-array identities. Pool names, colours, visibility, ordering
+and settings do not invalidate balance histories. Ledger edits refresh the affected
+series; event edits, a changed shared date range or a new current date refresh all
+series. Removed pools are evicted, and imported documents with new ledger arrays
+are recalculated. Reducer updates must preserve untouched ledger-array identities
+and replace arrays when their contents change.
+
+## Planned leave list performance
+
+The planned leave list indexes full events once per immutable `store.events` array.
+Each mounted row memoizes full/filtered hours, pool shares, date labels and balance
+status; event and pool replacements invalidate the relevant values, while selection,
+zoom and unrelated planner renders reuse them. Balance-date changes update status
+without repeating hours, shares or date sorting. Keep event/pool updates immutable.
+
+Virtualization is deferred for the current personal leave-planner scope. At 1,000
+events the issue's measured derivation cost was under 5 ms and DOM rendering was
+the larger cost; this change does not claim to solve that scale's DOM cost. A future
+large-planner feature should measure realistic row counts and add windowing together
+with indexed chart-to-row scrolling and keyboard/focus preservation: the current
+chart navigation queries mounted event rows and all row controls are accessible.
 
 ## License
 

@@ -1,9 +1,22 @@
 // @vitest-environment jsdom
 import { beforeEach, expect, it } from "vitest";
 import { browserLocalSource } from "./localMigration";
+import { exportRawBrowserData } from "./localPersistence";
 import { emptyStore, STORAGE_KEY } from "./model";
 
 beforeEach(() => localStorage.clear());
+it.each([
+  { store: "broken JSON", settings: "{}", raw: '{\n  "hima.store.v1": "broken JSON",\n  "hima.settings.v1": "{}"\n}' },
+  { store: null, settings: '{"ignoreWeekends":true}', raw: '{\n  "hima.store.v1": null,\n  "hima.settings.v1": "{\\"ignoreWeekends\\":true}"\n}' },
+])("preserves the raw export format and legacy acknowledgement for %j", async ({ store, settings, raw }) => {
+  if (store !== null) localStorage.setItem(STORAGE_KEY, store);
+  localStorage.setItem("hima.settings.v1", settings);
+  expect(exportRawBrowserData()).toBe(raw);
+  expect((await browserLocalSource.read(1))?.raw).toBe(raw);
+  localStorage.setItem("hima.migration.v1.1", raw);
+  expect(await browserLocalSource.read(1)).toBeNull();
+});
+
 it("migrates unversioned legacy data and separate settings without touching originals", async () => {
   const store = JSON.stringify({ pools: [], events: [], next_id: 1 });
   localStorage.setItem(STORAGE_KEY, store);

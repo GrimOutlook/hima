@@ -16,6 +16,14 @@ RestartSec=5
 TimeoutStopSec=30
 NoNewPrivileges=true
 PrivateTmp=true
+PrivateUsers=true
+ProtectProc=invisible
+ProcSubset=pid
+ProtectKernelLogs=true
+ProtectClock=true
+ProtectHostname=true
+RestrictRealtime=true
+# OIDC endpoints and DNS require site-specific IP allowlists; see deploy/README.md.
 ProtectSystem=strict
 ProtectHome=true
 CapabilityBoundingSet=

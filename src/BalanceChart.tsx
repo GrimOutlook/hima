@@ -1,4 +1,4 @@
-import { Fragment, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
+import { Fragment, memo, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { IgnoreWeekendsContext, isWeekend, TIMELINE_PRESETS, type TimelinePreset } from "./settings";
 import {
   Area,
@@ -15,9 +15,9 @@ import {
   YAxis,
   type TooltipContentProps,
 } from "recharts";
-import { addMonths, formatHours, formatSignedHours, prettyDate, type BalancePoint, type LeaveEvent, type Pool } from "./model";
+import { addMonths, formatHours, formatSignedHours, monthYearLabel, prettyDate, type BalancePoint, type LeaveEvent, type Pool } from "./model";
 import { poolColor } from "./poolColors";
-import { chartRangeDates, chartRangeIndices, type ChartIndexRange } from "./chartRange";
+import { chartRangeDates, chartRangeIndices, dateBoundary, type ChartIndexRange } from "./chartRange";
 
 interface BalanceChartProps {
   defaultTimeline: TimelinePreset;
@@ -46,6 +46,48 @@ const PLOT_LEFT = 68;
 const PLOT_RIGHT = 18;
 const ACTUAL_COLOR = "var(--chart-actual)";
 const PROJECTED_COLOR = "var(--chart-projected)";
+const GUIDE_COLOR = "#a6afa5";
+const AXIS_TICK_STYLE = { fill: "var(--muted)", fontSize: 12, fontFamily: "DM Sans, sans-serif" };
+const CHART_MARGIN = { top: 38, right: PLOT_RIGHT, bottom: 0, left: 0 };
+const BRUSH_MARGIN = { top: 2, right: 2, bottom: 2, left: 2 };
+const TOOLTIP_CURSOR = { stroke: GUIDE_COLOR, strokeDasharray: "3 4" };
+const SELECTED_LABEL = { value: "Selected date", position: "insideBottom" as const, fill: "var(--text-warm)", fontSize: 12, className: "chart-selected-date-label" };
+const TODAY_LABEL = { value: "Today", position: "insideTop" as const, fill: "var(--muted)", fontSize: 12, className: "chart-today-label" };
+const TODAY_SELECTED_LABEL = { ...TODAY_LABEL, value: "Today · selected date" };
+const formatYAxisTick = (value: number) => `${formatHours(value)} h`;
+const renderBalanceTooltip = (props: TooltipContentProps) => <BalanceTooltip {...props} />;
+
+const PRESET_GROUPS = ["General", "Past", "Future"] as const;
+const PRESET_DETAILS: Record<TimelinePreset, { group: typeof PRESET_GROUPS[number]; months?: number }> = {
+  "all time": { group: "General" },
+  "±6 month": { group: "General" },
+  "YTD": { group: "Past" },
+  "6 month": { group: "Past", months: -6 },
+  "3 month": { group: "Past", months: -3 },
+  "1 year": { group: "Past", months: -12 },
+  "5 year": { group: "Past", months: -60 },
+  "Previous Year": { group: "Past" },
+  "YFD": { group: "Future" },
+  "future 6 month": { group: "Future", months: 6 },
+  "future 3 month": { group: "Future", months: 3 },
+  "future 1 year": { group: "Future", months: 12 },
+  "future 5 year": { group: "Future", months: 60 },
+  "Next Year": { group: "Future" },
+};
+const TIMELINE_GROUPS = PRESET_GROUPS.map((label) => ({
+  label, presets: TIMELINE_PRESETS.filter((preset) => PRESET_DETAILS[preset].group === label),
+}));
+
+function indexOnOrAfter(history: BalancePoint[], date: string, fallback: number): number {
+  const index = dateBoundary(history, date);
+  return index === history.length ? fallback : index;
+}
+
+function eventHistoryIndices(dateIndices: Map<string, number>, event: LeaveEvent | undefined): number[] {
+  return [...new Set(event?.days.map((day) =>
+    dateIndices.get(day.date) ?? -1) ?? [])]
+    .filter((index) => index >= 0).sort((a, b) => a - b);
+}
 
 const TIMELINE_TOOLTIPS: Record<TimelinePreset, string> = {
   "all time": "Show the entire available timeline",
@@ -75,34 +117,27 @@ function timelineRange(
   if (preset === "±6 month") {
     const startDate = addMonths(today, -6);
     const endDate = addMonths(today, 6);
-    const startIndex = history.findIndex((point) => point.date >= startDate);
-    const endIndex = history.findIndex((point) => point.date >= endDate);
-    return { startIndex: startIndex < 0 ? 0 : startIndex, endIndex: endIndex < 0 ? lastIndex : endIndex };
+    return { startIndex: indexOnOrAfter(history, startDate, 0), endIndex: indexOnOrAfter(history, endDate, lastIndex) };
   }
   if (preset === "YFD") {
     const endDate = `${today.slice(0, 4)}-12-31`;
-    const endIndex = history.findIndex((point) => point.date >= endDate);
-    return { startIndex: todayIndex, endIndex: endIndex < 0 ? lastIndex : endIndex };
+    return { startIndex: todayIndex, endIndex: indexOnOrAfter(history, endDate, lastIndex) };
   }
   if (preset === "Next Year" || preset === "Previous Year") {
     const year = Number(today.slice(0, 4)) + (preset === "Next Year" ? 1 : -1);
-    const startIndex = history.findIndex((point) => point.date >= `${year}-01-01`);
-    const endIndex = history.findIndex((point) => point.date >= `${year}-12-31`);
-    return { startIndex: startIndex < 0 ? lastIndex : startIndex, endIndex: endIndex < 0 ? lastIndex : endIndex };
+    return { startIndex: indexOnOrAfter(history, `${year}-01-01`, lastIndex), endIndex: indexOnOrAfter(history, `${year}-12-31`, lastIndex) };
   }
   if (preset.startsWith("future ")) {
-    const months = preset === "future 6 month" ? 6 : preset === "future 3 month" ? 3 : preset === "future 5 year" ? 60 : 12;
+    const months = PRESET_DETAILS[preset].months!;
     const endDate = addMonths(today, months);
-    const endIndex = history.findIndex((point) => point.date >= endDate);
-    return { startIndex: todayIndex, endIndex: endIndex < 0 ? lastIndex : endIndex };
+    return { startIndex: todayIndex, endIndex: indexOnOrAfter(history, endDate, lastIndex) };
   }
 
   const startDate = preset === "YTD"
     ? `${today.slice(0, 4)}-01-01`
-    : addMonths(today, preset === "6 month" ? -6 : preset === "3 month" ? -3 : preset === "5 year" ? -60 : -12);
-  const startIndex = history.findIndex((point) => point.date >= startDate);
+    : addMonths(today, PRESET_DETAILS[preset].months!);
   return {
-    startIndex: startIndex < 0 ? 0 : startIndex,
+    startIndex: indexOnOrAfter(history, startDate, 0),
     endIndex: todayIndex,
   };
 }
@@ -131,17 +166,29 @@ function BalanceTooltip({
   );
 }
 
-function monthYearLabel(value: string | undefined): string {
-  if (!value) return "";
-  const date = new Date(`${value}T00:00:00Z`);
-  return new Intl.DateTimeFormat("en-US", {
-    month: "short",
-    year: "numeric",
-    timeZone: "UTC",
-  }).format(date);
+function ChartDropdown({ className, label, open, onClose, children }: {
+  className: string;
+  label: string;
+  open: boolean;
+  onClose: () => void;
+  children: ReactNode;
+}) {
+  return (
+    // Escape from any child control closes this group.
+    // eslint-disable-next-line jsx-a11y/no-noninteractive-element-interactions
+    <div className={`${className}${open ? " is-open" : ""}`} role="group" aria-label={label}
+      onBlur={(event) => {
+        if (!event.currentTarget.contains(event.relatedTarget)) onClose();
+      }}
+      onKeyDown={(event) => {
+        if (event.key === "Escape") onClose();
+      }}>
+      {children}
+    </div>
+  );
 }
 
-export function BalanceChart({
+export const BalanceChart = memo(function BalanceChart({
   defaultTimeline,
   historyDates,
   today,
@@ -173,25 +220,24 @@ export function BalanceChart({
   const series = useMemo(() => combinedTotals && selectedPools.length > 0
     ? [{ key: "combined", name: "Combined Totals", color: ACTUAL_COLOR }]
     : selectedPools.map((pool) => ({
-      key: `pool_${pool.id}`, name: pool.name,
+      key: `pool_${pool.id}`, poolId: pool.id, name: pool.name,
       color: poolColor(pool.id, pool.color),
     })), [combinedTotals, selectedPools]);
   const fullHistory = useMemo(() => {
-    const balances = new Map<string, number>();
-    for (const pool of selectedPools) {
-      for (const point of poolHistories[pool.id] ?? []) {
-        balances.set(point.date, (balances.get(point.date) ?? 0) + point.balance);
-      }
-    }
-    return historyDates.map((date) => ({ date, projected: date > today, balance: balances.get(date) ?? 0 }));
+    return historyDates.map((date, index) => {
+      let balance = 0;
+      for (const pool of selectedPools) balance += poolHistories[pool.id]?.[index]?.balance ?? 0;
+      return { date, projected: date > today, balance };
+    });
   }, [historyDates, today, poolHistories, selectedPools]);
   const history = useMemo(() => ignoreWeekends
     ? fullHistory.filter((point) => !isWeekend(point.date))
     : fullHistory, [fullHistory, ignoreWeekends]);
-  const nextTodayIndex = history.findIndex((point) => point.date >= today);
-  const todayIndex = nextTodayIndex < 0 ? Math.max(0, history.length - 1) : nextTodayIndex;
+  const todayIndex = indexOnOrAfter(history, today, Math.max(0, history.length - 1));
+  const dateIndices = useMemo(() => new Map(history.map((point, index) => [point.date, index])), [history]);
+  const fullDateIndices = useMemo(() => new Map(historyDates.map((date, index) => [date, index])), [historyDates]);
   const todayIsVisible = history[todayIndex]?.date === today;
-  const selectedIndex = history.findIndex((point) => point.date === selectedDate);
+  const selectedIndex = dateIndices.get(selectedDate) ?? -1;
   const lastIndex = Math.max(0, history.length - 1);
   const [selectedPreset, setSelectedPreset] = useState<TimelinePreset | null>(defaultTimeline);
   const [brushDates, setBrushDates] = useState(() =>
@@ -203,13 +249,21 @@ export function BalanceChart({
       typeof range === "function" ? range(chartRangeIndices(history, current)) : range));
   }, [history]);
   const selectedPresetRef = useRef<TimelinePreset | null>(defaultTimeline);
+  const updateSelectedPreset = useCallback((preset: TimelinePreset | null) => {
+    selectedPresetRef.current = preset;
+    setSelectedPreset(preset);
+  }, []);
+  const applyPreset = useCallback((preset: TimelinePreset) => {
+    updateSelectedPreset(preset);
+    setBrushRange(timelineRange(preset, history, today, todayIndex, lastIndex));
+  }, [history, today, todayIndex, lastIndex, setBrushRange, updateSelectedPreset]);
   const previousSelectedDate = useRef(selectedDate);
   useEffect(() => {
     const activePreset = selectedPresetRef.current;
     if (activePreset) {
-      setBrushRange(timelineRange(activePreset, history, today, todayIndex, lastIndex));
+      applyPreset(activePreset);
     }
-  }, [history, today, todayIndex, lastIndex, setBrushRange]);
+  }, [applyPreset]);
   useEffect(() => {
     if (previousSelectedDate.current === selectedDate) return;
     previousSelectedDate.current = selectedDate;
@@ -220,11 +274,9 @@ export function BalanceChart({
     const rangeSize = brushRange.endIndex - brushRange.startIndex;
     const startIndex = Math.max(0, Math.min(selectedIndex - Math.floor(rangeSize / 2), lastIndex - rangeSize));
     setBrushRange({ startIndex, endIndex: Math.min(lastIndex, startIndex + rangeSize) });
-    selectedPresetRef.current = null;
-    setSelectedPreset(null);
-  }, [selectedDate, selectedIndex, lastIndex, brushRange.startIndex, brushRange.endIndex, setBrushRange]);
-  const eventIndices = [...new Set(selectedEvent?.days.map((day) =>
-    history.findIndex((point) => point.date === day.date)) ?? [])].filter((index) => index >= 0).sort((a, b) => a - b);
+    updateSelectedPreset(null);
+  }, [selectedDate, selectedIndex, lastIndex, brushRange.startIndex, brushRange.endIndex, setBrushRange, updateSelectedPreset]);
+  const eventIndices = useMemo(() => eventHistoryIndices(dateIndices, selectedEvent), [dateIndices, selectedEvent]);
   const highlightedStart = eventIndices[0];
   const highlightedEnd = eventIndices.at(-1);
   useEffect(() => {
@@ -237,11 +289,9 @@ export function BalanceChart({
       const startIndex = Math.max(0, Math.min(bufferedStart, Math.max(current.startIndex, bufferedEnd - size), lastIndex - size));
       return { startIndex, endIndex: Math.min(lastIndex, startIndex + size) };
     });
-    selectedPresetRef.current = null;
-    setSelectedPreset(null);
-  }, [selectedEvent?.id, highlightedStart, highlightedEnd, lastIndex, brushRange.startIndex, brushRange.endIndex, setBrushRange]);
-  const zoomIndices = (zoomEvent?.days.map((day) =>
-    history.findIndex((point) => point.date === day.date)) ?? []).filter((index) => index >= 0).sort((a, b) => a - b);
+    updateSelectedPreset(null);
+  }, [selectedEvent?.id, highlightedStart, highlightedEnd, lastIndex, brushRange.startIndex, brushRange.endIndex, setBrushRange, updateSelectedPreset]);
+  const zoomIndices = useMemo(() => eventHistoryIndices(dateIndices, zoomEvent), [dateIndices, zoomEvent]);
   const eventStart = zoomIndices[0];
   const eventEnd = zoomIndices.at(-1);
   useEffect(() => {
@@ -250,8 +300,7 @@ export function BalanceChart({
     const bufferedEnd = Math.min(lastIndex, eventEnd + 7);
     if (zoomToSelectedEvent) {
       setBrushRange({ startIndex: bufferedStart, endIndex: bufferedEnd });
-      selectedPresetRef.current = null;
-      setSelectedPreset(null);
+      updateSelectedPreset(null);
       return;
     }
     if (widenSelectedEvent) {
@@ -260,47 +309,52 @@ export function BalanceChart({
       if (!startPoint || !endPoint) return;
       const startDate = addMonths(startPoint.date, -6);
       const endDate = addMonths(endPoint.date, 6);
-      const startIndex = history.findIndex((point) => point.date >= startDate);
-      const endIndex = history.findIndex((point) => point.date >= endDate);
-      setBrushRange({ startIndex: Math.max(0, startIndex), endIndex: endIndex < 0 ? lastIndex : endIndex });
-      selectedPresetRef.current = null;
-      setSelectedPreset(null);
+      setBrushRange({ startIndex: indexOnOrAfter(history, startDate, 0), endIndex: indexOnOrAfter(history, endDate, lastIndex) });
+      updateSelectedPreset(null);
       return;
     }
-  }, [eventSelectionRequest, eventStart, eventEnd, lastIndex, zoomToSelectedEvent, widenSelectedEvent, history, setBrushRange]);
+  }, [eventSelectionRequest, eventStart, eventEnd, lastIndex, zoomToSelectedEvent, widenSelectedEvent, history, setBrushRange, updateSelectedPreset]);
   const chartData = useMemo<ChartPoint[]>(
     () => {
-      const balances = Object.fromEntries(selectedPools.map((pool) => [pool.id,
-        new Map((poolHistories[pool.id] ?? []).map((point) => [point.date, point.balance])),
-      ]));
-      return history.map((point, index) => ({
-      ...point,
-      index,
-      ...Object.fromEntries(series.flatMap((item) => {
-        const pool = selectedPools.find((pool) => item.key === `pool_${pool.id}`);
-        const balance = pool ? balances[pool.id]?.get(point.date) ?? 0 : point.balance;
-        return [[`${item.key}_actual`, point.projected ? null : balance],
-          [`${item.key}_projected`, point.projected || index === todayIndex || (!todayIsVisible && index === todayIndex - 1) ? balance : null]];
-      })),
-    }));
+      return history.map((point, index) => {
+        const showProjection = point.projected || index === todayIndex || (!todayIsVisible && index === todayIndex - 1);
+        const result: ChartPoint = { ...point, index };
+        const sourceIndex = fullDateIndices.get(point.date)!;
+        for (const item of series) {
+          const balance = "poolId" in item ? poolHistories[item.poolId]?.[sourceIndex]?.balance ?? 0 : point.balance;
+          result[`${item.key}_actual`] = point.projected ? null : balance;
+          result[`${item.key}_projected`] = showProjection ? balance : null;
+        }
+        return result;
+      });
     },
-    [history, todayIndex, todayIsVisible, poolHistories, selectedPools, series],
+    [history, todayIndex, todayIsVisible, poolHistories, fullDateIndices, series],
   );
-  const todayPoint = fullHistory.find((point) => point.date === today);
+  const todayPoint = fullHistory[fullDateIndices.get(today) ?? -1];
   const currentBalance = todayPoint?.balance ?? 0;
-  const projectionBalance = fullHistory.find((point) => point.date === addMonths(today, 12))?.balance ?? 0;
+  const projectionBalance = fullHistory[fullDateIndices.get(addMonths(today, 12)) ?? -1]?.balance ?? 0;
   const yearAgoDate = addMonths(today, -12);
-  const yearAgoBalance = fullHistory.find((point) => point.date === yearAgoDate)?.balance ?? currentBalance;
+  const yearAgoBalance = fullHistory[fullDateIndices.get(yearAgoDate) ?? -1]?.balance ?? currentBalance;
   const change = currentBalance - yearAgoBalance;
   const visibleStart = Math.max(0, Math.min(brushRange.startIndex, lastIndex));
   const visibleEnd = Math.max(visibleStart, Math.min(brushRange.endIndex, lastIndex));
   const visibleStartDate = history[visibleStart]?.date ?? today;
   const visibleEndDate = history[visibleEnd]?.date ?? today;
-  const values = chartData.slice(visibleStart, visibleEnd + 1).flatMap((point) =>
-    series.flatMap((item) => [point[`${item.key}_actual`], point[`${item.key}_projected`]])
-      .filter((value): value is number => typeof value === "number"));
-  const minBalance = values.length ? Math.min(...values) : 0;
-  const maxBalance = values.length ? Math.max(...values) : 0;
+  const [minBalance, maxBalance] = useMemo(() => {
+    let min = Infinity;
+    let max = -Infinity;
+    for (let index = visibleStart; index <= visibleEnd; index++) {
+      const point = chartData[index];
+      if (!point) continue;
+      for (const item of series) {
+        for (const suffix of ["actual", "projected"]) {
+          const value = point[`${item.key}_${suffix}`];
+          if (typeof value === "number") { min = Math.min(min, value); max = Math.max(max, value); }
+        }
+      }
+    }
+    return min === Infinity ? [0, 0] : [min, max];
+  }, [chartData, series, visibleStart, visibleEnd]);
   const spread = maxBalance - minBalance;
   const padding = spread < 0.01 ? 1 : spread * 0.12;
   const domain: [number, number] = [minBalance - padding, maxBalance + padding];
@@ -313,6 +367,14 @@ export function BalanceChart({
     ...(selectedIndex >= visibleStart && selectedIndex <= visibleEnd ? [selectedIndex] : []),
     visibleEnd,
   ])];
+  const formatXAxisTick = useCallback((value: number) => todayIsVisible && value === todayIndex
+    ? "Today" : monthYearLabel(history[Math.round(value)]?.date), [history, todayIndex, todayIsVisible]);
+  const formatBrushTick = useCallback((value: string | number) =>
+    monthYearLabel(history[Math.round(Number(value))]?.date), [history]);
+  const changeBrush = useCallback(({ startIndex, endIndex }: ChartIndexRange) => {
+    setBrushRange({ startIndex, endIndex });
+    updateSelectedPreset(null);
+  }, [setBrushRange, updateSelectedPreset]);
 
   return (
     <section className="history-panel">
@@ -331,16 +393,8 @@ export function BalanceChart({
           {pools.length > 0 && (
             <div className="history-pool-filter">
               <span>Show</span>
-              {/* Escape from any child control closes this group. */}
-              {/* eslint-disable-next-line jsx-a11y/no-noninteractive-element-interactions */}
-              <div className={`history-pool-dropdown${poolMenuOpen ? " is-open" : ""}`}
-                role="group" aria-label="Graph pool selection"
-                onBlur={(event) => {
-                  if (!event.currentTarget.contains(event.relatedTarget)) setPoolMenuOpen(false);
-                }}
-                onKeyDown={(event) => {
-                  if (event.key === "Escape") setPoolMenuOpen(false);
-                }}>
+              <ChartDropdown className="history-pool-dropdown" label="Graph pool selection"
+                open={poolMenuOpen} onClose={() => setPoolMenuOpen(false)}>
                 <button className="history-timeline-preset history-timeline-trigger" type="button"
                   aria-label="Select pools shown in graph" aria-expanded={poolMenuOpen}
                   onClick={() => setPoolMenuOpen((open) => !open)}>
@@ -357,7 +411,7 @@ export function BalanceChart({
                     </label>
                   ))}
                 </div>
-              </div>
+              </ChartDropdown>
               <span>in graph</span>
               <label className="history-combined-toggle">
                 <input type="checkbox" checked={combinedTotals} onChange={(event) => setCombinedTotals(event.target.checked)} />
@@ -381,26 +435,14 @@ export function BalanceChart({
       </div>
       {selectedPools.length === 0 && <p className="history-pool-visibility">Select a pool to show its balance in the graph.</p>}
       <div className="history-timeline-actions">
-      {/* Escape from any child control closes this group. */}
-      {/* eslint-disable-next-line jsx-a11y/no-noninteractive-element-interactions */}
-      <div className={`history-timeline-dropdown${timelineMenuOpen ? " is-open" : ""}`}
-        role="group" aria-label="Graph timeline selection"
-        onBlur={(event) => {
-          if (!event.currentTarget.contains(event.relatedTarget)) setTimelineMenuOpen(false);
-        }}
-        onKeyDown={(event) => {
-          if (event.key === "Escape") setTimelineMenuOpen(false);
-        }}>
+      <ChartDropdown className="history-timeline-dropdown" label="Graph timeline selection"
+        open={timelineMenuOpen} onClose={() => setTimelineMenuOpen(false)}>
         <button className="history-timeline-preset history-timeline-trigger" type="button"
           aria-expanded={timelineMenuOpen} onClick={() => setTimelineMenuOpen((open) => !open)}>
           Timeline <span aria-hidden="true">▾</span>
         </button>
         <div className="history-timeline-controls" role="group" aria-label="Graph timeline presets">
-        {([
-          { label: "General", presets: TIMELINE_PRESETS.slice(0, 2) },
-          { label: "Past", presets: TIMELINE_PRESETS.slice(2, 8) },
-          { label: "Future", presets: TIMELINE_PRESETS.slice(8) },
-        ]).map(({ label, presets }) => (
+        {TIMELINE_GROUPS.map(({ label, presets }) => (
           <div className="history-timeline-group" role="group" aria-label={label} key={label}>
             <span className="history-timeline-heading">{label}</span>
             <div className="history-timeline-buttons">
@@ -411,11 +453,7 @@ export function BalanceChart({
                   type="button"
                   title={TIMELINE_TOOLTIPS[preset]}
                   aria-pressed={selectedPreset === preset}
-                  onClick={() => {
-                    selectedPresetRef.current = preset;
-                    setSelectedPreset(preset);
-                    setBrushRange(timelineRange(preset, history, today, todayIndex, lastIndex));
-                  }}
+                  onClick={() => applyPreset(preset)}
                 >
                   {preset === "all time" ? "All" : preset.replace(/^future /, "")}
                 </button>
@@ -424,12 +462,10 @@ export function BalanceChart({
           </div>
         ))}
         </div>
-      </div>
+      </ChartDropdown>
       <button className="text-button" type="button" onClick={() => {
         onToday();
-        selectedPresetRef.current = defaultTimeline;
-        setSelectedPreset(defaultTimeline);
-        setBrushRange(timelineRange(defaultTimeline, history, today, todayIndex, lastIndex));
+        applyPreset(defaultTimeline);
       }}>Reset timeline</button>
       </div>
       <div className="balance-chart-wrap">
@@ -442,7 +478,7 @@ export function BalanceChart({
             <LineChart
               className="balance-chart-inner"
               data={chartData}
-              margin={{ top: 38, right: PLOT_RIGHT, bottom: 0, left: 0 }}
+              margin={CHART_MARGIN}
               accessibilityLayer
               onClick={({ activeLabel, isTooltipActive }) => {
                 if (!isTooltipActive || activeLabel === undefined) return;
@@ -471,52 +507,38 @@ export function BalanceChart({
                 type="number"
                 domain={[visibleStart, visibleEnd]}
                 ticks={xTicks}
-                tickFormatter={(value: number) => todayIsVisible && value === todayIndex
-                  ? "Today"
-                  : monthYearLabel(history[Math.round(value)]?.date)}
+                tickFormatter={formatXAxisTick}
                 axisLine={false}
                 tickLine={false}
                 tickMargin={9}
                 height={30}
-                tick={{ fill: "var(--muted)", fontSize: 12, fontFamily: "DM Sans, sans-serif" }}
+                tick={AXIS_TICK_STYLE}
                 allowDataOverflow
               />
               <YAxis
                 type="number"
                 domain={domain}
                 ticks={yTicks}
-                tickFormatter={(value: number) => `${formatHours(value)} h`}
+                tickFormatter={formatYAxisTick}
                 axisLine={false}
                 tickLine={false}
                 tickMargin={8}
                 width={PLOT_LEFT}
-                tick={{ fill: "var(--muted)", fontSize: 12, fontFamily: "DM Sans, sans-serif" }}
+                tick={AXIS_TICK_STYLE}
                 allowDecimals
               />
               {todayIsVisible && <ReferenceLine
                 x={todayIndex}
-                stroke="#a6afa5"
+                stroke={GUIDE_COLOR}
                 strokeDasharray="3 4"
-                label={{
-                  value: selectedIndex === todayIndex ? "Today · selected date" : "Today",
-                  position: "insideTop",
-                  fill: "var(--muted)",
-                  fontSize: 12,
-                  className: "chart-today-label",
-                }}
+                label={selectedIndex === todayIndex ? TODAY_SELECTED_LABEL : TODAY_LABEL}
               />}
               {selectedIndex >= 0 && (!todayIsVisible || selectedIndex !== todayIndex) && (
                 <ReferenceLine
                   x={selectedIndex}
                   stroke={PROJECTED_COLOR}
                   strokeDasharray="5 4"
-                  label={{
-                    value: "Selected date",
-                    position: "insideBottom",
-                    fill: "var(--text-warm)",
-                    fontSize: 12,
-                    className: "chart-selected-date-label",
-                  }}
+                  label={SELECTED_LABEL}
                 />
               )}
               {domain[0] <= 0 && domain[1] >= 0 && (
@@ -531,27 +553,23 @@ export function BalanceChart({
                 </Fragment>
               ))}
               <Tooltip
-                content={(props) => <BalanceTooltip {...props} />}
-                cursor={{ stroke: "#a6afa5", strokeDasharray: "3 4" }}
+                content={renderBalanceTooltip}
+                cursor={TOOLTIP_CURSOR}
                 isAnimationActive={false}
               />
               <Brush
                 dataKey="index"
                 startIndex={brushRange.startIndex}
                 endIndex={brushRange.endIndex}
-                onChange={({ startIndex, endIndex }) => {
-                  setBrushRange({ startIndex, endIndex });
-                  selectedPresetRef.current = null;
-                  setSelectedPreset(null);
-                }}
+                onChange={changeBrush}
                 ariaLabel="Select a date range to zoom; drag the selected range to pan"
                 height={42}
                 travellerWidth={10}
-                stroke="#a6afa5"
+                stroke={GUIDE_COLOR}
                 fill="var(--soft)"
-                tickFormatter={(value) => monthYearLabel(history[Math.round(Number(value))]?.date)}
+                tickFormatter={formatBrushTick}
               >
-                <AreaChart margin={{ top: 2, right: 2, bottom: 2, left: 2 }}>
+                <AreaChart margin={BRUSH_MARGIN}>
                   <Area
                     dataKey="balance"
                     type="monotoneX"
@@ -581,4 +599,4 @@ export function BalanceChart({
       </div>
     </section>
   );
-}
+});

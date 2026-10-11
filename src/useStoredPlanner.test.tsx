@@ -4,7 +4,8 @@ import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { useStoredPlanner } from "./useStoredPlanner";
 import { plannerApi } from "./plannerApi";
-import { defaultSettings, PersistenceError } from "./plannerPersistence";
+import { PersistenceError } from "./plannerPersistence";
+import { defaultSettings } from "./settings";
 import { emptyStore } from "./model";
 import App from "./App";
 

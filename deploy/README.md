@@ -27,7 +27,8 @@ use `nix copy --to ssh://HOST .#frontend .#backend` when building elsewhere, and
 create GC-rooted output links on the host. Copying only the executable is not
 sufficient for a Nix package's runtime libraries.
 
-Without Nix, install Node 22.13+, pnpm 12.10.1, and stable Rust with edition 2024
+Without Nix, install Node 22.22.2+ (22.x), 24.15.0+ (24.x), or 26+, pnpm 12.10.1,
+and stable Rust 1.94+ with edition 2024
 support, pkg-config and OpenSSL development headers. Record their exact versions
 in your release record; Nix pins the toolchain as well as the dependencies.
 
@@ -110,6 +111,80 @@ DDL credentials out of the API environment and away from its Unix user.
 The [README configuration tables](../README.md#oidc-login-and-browser-sessions)
 cover every OIDC variable; `HIMA_BIND_ADDR` and `RUST_LOG` are optional.
 
+## Service sandbox and networking
+
+Both units hide other users' processes (`ProtectProc=invisible`) and remove
+non-process `/proc` entries (`ProcSubset=pid`), isolate user IDs
+(`PrivateUsers=true`), protect kernel logs, the clock and hostname, and prohibit
+realtime scheduling. Ordinary clock reads, Tokio worker threads, TCP/Unix sockets,
+PostgreSQL password authentication and OIDC HTTPS requests still work. Processes
+with the same service UID are not hidden: keep each dedicated account exclusive
+to its service. `RestrictNamespaces=true` restricts the executed program, not
+systemd's setup of these namespaces.
+
+Use systemd 247+ and a kernel supporting user namespaces and procfs
+`hidepid=invisible`/`subset=pid` (Linux 5.8+). Distribution/container policy may
+disable namespace creation; test on the actual deployment host. User isolation
+maps root and the configured service UID/GID, not arbitrary supplementary groups.
+Release binaries, libraries, CA certificates and parent directories must be
+readable/traversable by that identity (including Nix closures). systemd reads
+root-only environment files before dropping privileges. TCP SCRAM authentication
+is unaffected; if switching to PostgreSQL Unix-socket peer authentication, verify
+the server sees the intended host UID. No private network namespace is used:
+nginx must reach the API on host loopback and the API/migrator must reach PostgreSQL.
+
+The generic units intentionally leave IP traffic unrestricted. The API contacts
+the configured OIDC discovery, token and JWKS endpoints, including hourly and
+unknown-key refreshes; these can use different hosts, rotating/CDN IPv4/IPv6
+addresses and DNS resolvers. The migrator can use the documented remote database.
+`RestrictAddressFamilies` limits socket families, **not destinations**; binding the
+API/PostgreSQL to loopback limits inbound exposure, not outbound access.
+
+For the recipe's local database, restrict the migrator with a host drop-in
+`/etc/systemd/system/hima-migrate.service.d/network.conf`:
+
+```ini
+[Service]
+IPAddressDeny=any
+IPAddressAllow=localhost
+```
+
+Use a numeric loopback database address so this policy needs no external DNS.
+For the API, install the same policy in
+`/etc/systemd/system/hima-api.service.d/network.conf` **only after** adding
+`IPAddressAllow=` entries for every provider endpoint's actual address/CIDR and
+any non-loopback DNS resolver (and remote database, if used). These directives
+accept numeric addresses/prefixes, not hostnames, and filter both incoming and
+outgoing IPv4/IPv6 traffic; `localhost` covers 127.0.0.0/8 and ::1. Unix sockets
+are unaffected. With a local provider and database, loopback alone is sufficient.
+Maintain allowlists across provider/DNS address changes; a single issuer IP is
+not necessarily enough. Broad shared-CDN ranges weaken destination isolation.
+Where stable narrow ranges cannot be maintained, retain the documented open
+policy or enforce destination-aware egress at the host/network boundary.
+
+IP filtering requires working cgroup BPF support; systemd can warn and continue
+without enforcement on unsupported hosts. After installing units/drop-ins:
+
+```sh
+sudo systemd-analyze verify /etc/systemd/system/hima-api.service /etc/systemd/system/hima-migrate.service
+sudo systemctl daemon-reload
+sudo systemd-analyze security hima-api.service hima-migrate.service
+sudo systemctl start hima-migrate && sudo systemctl restart hima-api
+sudo journalctl -u hima-api -u hima-migrate -b
+```
+
+Check for namespace/BPF setup warnings, successful migrations, real-provider
+login/token exchange, planner save/restart and signing-key refresh. On a staging
+host, also probe an allowed destination and a denied destination from a transient
+unit with the same IP policy; a security score alone does not prove enforcement.
+For source-only inspection, run `systemd-analyze security --offline=yes
+deploy/hima-api.service deploy/hima-migrate.service`; `verify` requires the
+configured executables to exist (use the installed release on the host).
+`python3 deploy/test_systemd.py` verifies both unmodified units in a temporary
+root with executable/target stubs and checks systemd's assessment of the sandbox
+directives; CI runs this check. It does not execute the application or substitute
+for the host's namespace, network-enforcement and authenticated acceptance checks.
+
 ## Install and start
 
 Create `/opt/hima/releases/RELEASE` and use the following layout (replace RELEASE
@@ -143,12 +218,31 @@ if appropriate. Missing secrets or invalid configuration will appear in the
 journal and must be fixed before restarting.
 
 Install [`nginx.conf`](nginx.conf) inside nginx's `http` configuration context;
-replace domain and certificate paths. Check and reload:
+replace domain and certificate paths. Use nginx **1.25.1 or newer**, built with
+`--with-http_v2_module` (check `nginx -V`); the TLS server uses `http2 on`.
+Check and reload:
 
 ```sh
 sudo nginx -t
 sudo systemctl reload nginx
 ```
+
+`server_tokens off` hides the nginx version in response headers and generated
+error pages; the `Server: nginx` product name remains. The explicit default
+servers on ports 80 and 443 close requests for unknown HTTP `Host` values with
+nginx's internal **444** (no HTTP response is sent). The HTTPS default additionally
+uses `ssl_reject_handshake on`: unknown or absent TLS SNI fails the handshake
+before a certificate or application response is served. Clients must send the
+configured domain as SNI; direct-IP HTTPS probes will fail. Valid SNI with an
+unknown HTTP Host is also rejected. The named HTTP server still redirects to the
+canonical HTTPS domain, preserving the path and query.
+
+Remove or reconcile any distribution-provided default servers before installing
+this recipe: each listening address/port can have only one `default_server`.
+If adding IPv6 listeners, add matching defaults on `[::]:80` and `[::]:443` as
+well as listeners in the named servers. Certificate renewal using HTTP-01 must
+serve its challenge under the configured domain; the rejecting default does not
+serve challenges for other domains.
 
 The proxy routes both bare `/api` and `/auth` and their children to Rust without
 path rewriting; it preserves queries, Cookie, Set-Cookie, Origin and CSRF headers.
@@ -162,6 +256,36 @@ a cached old index. Vite's content-hashed files under `/assets/` use
 HTML and do not receive that cache policy. The unhashed `/assets/favicon.svg`
 is an exact-match exception using `no-cache`. Keep future unhashed files outside
 `/assets/` or add an explicit revalidation exception for them.
+
+### Compression and HTTP/2
+
+TLS clients negotiate HTTP/2 through ALPN; HTTP/1.1 remains available. Gzip
+compresses HTML, JavaScript, CSS, JSON and SVG responses when clients accept it,
+using level 5 and a 1 KiB minimum for responses with a known length. Already
+compressed images/fonts are not selected. `gzip_vary on` adds
+`Vary: Accept-Encoding` so caches distinguish representations; `gzip_proxied any`
+also permits compression for API requests arriving through a proxy with `Via`.
+This compresses response bodies, not planner upload requests or their size limit.
+
+`/api/me` and `/api/planner` (including query strings) explicitly disable gzip because their JSON
+contains the session CSRF token. TLS compression of a secret-bearing response
+can expose it through BREACH-style length attacks. nginx strips `Accept-Encoding`
+on all API/auth upstream requests, ensuring the upstream cannot independently
+compress this exception. The nested location inherits the existing proxy headers,
+rate limits, cache/log policy and security headers. Planner loads include the
+session identity for startup verification; future endpoints carrying secrets
+need the same review and exclusion.
+
+Precompressed hashed assets were considered and are deferred: runtime gzip works
+with both current native and Nix release artifacts without adding `.gz` build
+outputs or requiring the optional `gzip_static` module. Brotli likewise requires
+an additional module and build/deployment coordination. Neither is enabled by this
+recipe; if adopted later, generate sidecars only for hashed assets, verify content
+negotiation and preserve both session-bearing endpoint exceptions and existing cache policy.
+
+The database-independent regression test below also checks gzip negotiation and
+round-trip bodies for JS/CSS/SVG and planner JSON, identity responses, the CSRF
+exception with queries, upstream encoding suppression, and HTTP/2 ALPN.
 
 The file's `map` and `limit_req_zone` directives belong directly in the **http
 context**, outside either `server` block. Two 10 MiB shared-memory zones track
@@ -181,11 +305,14 @@ explicitly trusted proxy addresses before using this recipe; otherwise all users
 behind that proxy share a budget. Keep the Rust port private so requests cannot
 bypass nginx's limits.
 
-Run the database-independent rate-limit regression test with nginx, openssl and
+Run the database-independent rate-limit/compression regression test with nginx
+1.25.1+, HTTP/2-capable curl, openssl and
 Python 3 on PATH:
 
 ```sh
 python3 deploy/test_rate_limits.py
+# Or use the lockfile-pinned nginx and curl, as CI does:
+nix shell --inputs-from . nixpkgs#nginx nixpkgs#curl --command python3 deploy/test_rate_limits.py
 ```
 
 It exercises the shipped configuration over HTTPS, verifies rejected requests
@@ -193,6 +320,9 @@ never reach a counting upstream, and checks separate route/client budgets,
 spoofed forwarding headers, static serving, security headers and budget recovery.
 It also checks immutable JS/CSS/font caching (including 304 responses), HTML and
 favicon revalidation, and missing-asset 404s without long-lived caching.
+Host-hardening checks cover known-host redirects, unknown HTTP/HTTPS hosts,
+unknown and missing SNI on TLS 1.2/1.3, no rejected traffic reaching the upstream,
+and version-free nginx headers/error pages.
 
 The HTTPS server permits only TLS 1.2 and 1.3. All HTTPS responses, including
 errors, send `Strict-Transport-Security: max-age=63072000; includeSubDomains`,

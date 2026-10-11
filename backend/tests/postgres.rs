@@ -20,7 +20,12 @@ async fn runtime_role_can_write_but_cannot_change_schema(pool: PgPool) {
         format!("GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public TO {role}"),
         format!("SET LOCAL ROLE {role}"),
     ] {
-        sqlx::query(&statement).execute(&mut *tx).await.unwrap();
+        // The role identifier above is restricted to ASCII letters/digits/_;
+        // every other part of these administrative statements is a literal.
+        sqlx::query(sqlx::AssertSqlSafe(statement))
+            .execute(&mut *tx)
+            .await
+            .unwrap();
     }
     sqlx::query(
         "INSERT INTO users (oidc_issuer, oidc_subject) VALUES ('least-privilege', 'runtime')",
@@ -69,23 +74,19 @@ async fn runtime_role_can_write_but_cannot_change_schema(pool: PgPool) {
 async fn upgrade_preserves_planners_and_rejects_changed_migrations(pool: PgPool) {
     // Start with the deployed planner-only schema, rather than testing only a
     // fresh installation of the latest schema.
-    let initial = sqlx::migrate::Migrator {
-        migrations: std::borrow::Cow::Borrowed(&hima_api::db::MIGRATOR.migrations[..1]),
-        ignore_missing: false,
-        locking: true,
-        no_tx: false,
-    };
+    let initial = sqlx::migrate::Migrator::with_migrations(
+        hima_api::db::MIGRATOR.iter().take(1).cloned().collect(),
+    );
     initial.run(&pool).await.unwrap();
     let db = Database::from_pool(pool.clone());
     let user = db.ensure_user("https://upgrade", "existing").await.unwrap();
     let document = json!({"version":1,"pools":[],"events":[],"next_id":9});
     let before = db.save(user, &document, 0).await.unwrap();
-    let auth_schema = sqlx::migrate::Migrator {
-        migrations: std::borrow::Cow::Borrowed(&hima_api::db::MIGRATOR.migrations[..2]),
-        ignore_missing: false,
-        locking: true,
-        no_tx: false,
-    };
+    assert!(before.document.is_none());
+    let before = db.load(user).await.unwrap().unwrap();
+    let auth_schema = sqlx::migrate::Migrator::with_migrations(
+        hima_api::db::MIGRATOR.iter().take(2).cloned().collect(),
+    );
     auth_schema.run(&pool).await.unwrap();
     sqlx::query("INSERT INTO sessions (token_hash,user_id,csrf_token,expires_at) VALUES ('upgrade-session',$1,'csrf',clock_timestamp() + interval '1 hour')")
         .bind(user).execute(&pool).await.unwrap();
@@ -98,7 +99,11 @@ async fn upgrade_preserves_planners_and_rejects_changed_migrations(pool: PgPool)
             .fetch_all(&pool)
             .await
             .unwrap();
-    assert_eq!(versions, vec![202610090001, 202610090002, 202610090003]);
+    assert_eq!(
+        versions,
+        vec![202610090001, 202610090002, 202610090003, 202610090004]
+    );
+    assert!(!sqlx::query_scalar::<_, bool>("SELECT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='sessions' AND column_name='csrf_token')").fetch_one(&pool).await.unwrap());
 
     // A release must fail closed if an applied migration has been rewritten.
     sqlx::query(
@@ -147,6 +152,8 @@ async fn persistence_validation_and_constraints(pool: PgPool) {
     ));
     let first = db.save(user, &v, 0).await.unwrap();
     assert_eq!(first.revision, 1);
+    assert!(first.document.is_none());
+    let first = db.load(user).await.unwrap().unwrap();
     for bad in [
         json!({"version":2,"pools":[],"events":[],"next_id":1}),
         json!({"version":1,"pools":[],"events":[{"id":1,"name":"Bad","days":[{"date":"2026-01-01","allocations":[{"pool_id":42,"hours":1}]}]}],"next_id":2}),

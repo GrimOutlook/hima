@@ -84,11 +84,14 @@
               inherit (finalAttrs) pname version src;
               pnpm = pkgs.pnpm_12;
               fetcherVersion = 4;
-              hash = "sha256-E+BMGjZ/fnPxu8HzZKwUCbDfhPxgol11oneQGH5aJs0=";
+              hash = "sha256-XbJnCU3Z1+pGFMms9yDMKbmBj1Wh1xO4CAq/mY85WSE=";
             };
 
             buildPhase = ''
               runHook preBuild
+              # pnpmConfigHook installs with --ignore-scripts. Apply the same
+              # checked-in allowBuilds policy as local and CI installs.
+              pnpm rebuild
               pnpm run build
               runHook postBuild
             '';

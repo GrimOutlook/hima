@@ -22,7 +22,9 @@ jobs:
         working-directory: backend
     steps:
       - name: Check out repository
-        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
       - name: Set up Rust
         uses: dtolnay/rust-toolchain@686976e191b89faba57d3206551f0f330d8cb249 # stable
         with:
@@ -42,7 +44,9 @@ jobs:
         working-directory: backend
     steps:
       - name: Check out repository
-        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
       - name: Set up Rust
         uses: dtolnay/rust-toolchain@686976e191b89faba57d3206551f0f330d8cb249 # stable
       # This job builds every test target, so it saves the cache the other test jobs restore.
@@ -76,7 +80,9 @@ jobs:
         working-directory: backend
     steps:
       - name: Check out repository
-        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
       - name: Set up Rust
         uses: dtolnay/rust-toolchain@686976e191b89faba57d3206551f0f330d8cb249 # stable
       - name: Restore Cargo registry and build artifacts
@@ -97,7 +103,9 @@ jobs:
     env: *database-env
     steps:
       - name: Check out repository
-        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
       - name: Set up Rust
         uses: dtolnay/rust-toolchain@686976e191b89faba57d3206551f0f330d8cb249 # stable
       - name: Restore Cargo registry and build artifacts
@@ -107,11 +115,11 @@ jobs:
           shared-key: backend-test
           save-if: false
       - name: Set up pnpm
-        uses: pnpm/action-setup@9fd676a19091d4595eefd76e4bd31c97133911f1 # v4.2.0
+        uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
       - name: Set up Node.js
-        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
-          node-version: 22
+          node-version: '>=22.22.2 <23'
           cache: pnpm
       - name: Install frontend dependencies
         run: pnpm install --frozen-lockfile
@@ -141,7 +149,9 @@ jobs:
     env: *database-env
     steps:
       - name: Check out repository
-        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
       - name: Set up Rust
         uses: dtolnay/rust-toolchain@686976e191b89faba57d3206551f0f330d8cb249 # stable
       - name: Restore Cargo registry and build artifacts
@@ -151,46 +161,44 @@ jobs:
           shared-key: backend-test
           save-if: false
       - name: Set up pnpm
-        uses: pnpm/action-setup@9fd676a19091d4595eefd76e4bd31c97133911f1 # v4.2.0
+        uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
       - name: Set up Node.js
-        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
-          node-version: 22
+          node-version: '>=22.22.2 <23'
           cache: pnpm
       - name: Install frontend dependencies
         run: pnpm install --frozen-lockfile
-      - name: Install nginx if the runner image lacks it
-        run: |
-          if ! command -v nginx > /dev/null; then
-            sudo apt-get update
-            sudo apt-get install -y nginx
-          fi
+      - name: Install Nix for the pinned HTTP/2-capable nginx
+        uses: cachix/install-nix-action@13d8dd58da0234aa297dedd986986ccb8e7f3e24 # v31
       - name: Test production HTTPS reverse proxy and restart persistence
         run: |
           pnpm run build
-          python3 deploy/test_https_proxy.py
+          nix shell --inputs-from . nixpkgs#nginx --command python3 deploy/test_https_proxy.py
   rate-limits:
     name: Production nginx rate limits
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
       - name: Check out repository
-        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
-      - name: Install nginx if the runner image lacks it
-        run: |
-          if ! command -v nginx > /dev/null; then
-            sudo apt-get update
-            sudo apt-get install -y nginx
-          fi
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Install Nix for the pinned HTTP/2-capable nginx
+        uses: cachix/install-nix-action@13d8dd58da0234aa297dedd986986ccb8e7f3e24 # v31
       - name: Test production nginx rate limits
-        run: python3 deploy/test_rate_limits.py
+        run: nix shell --inputs-from . nixpkgs#nginx nixpkgs#curl --command python3 deploy/test_rate_limits.py
+      - name: Verify systemd units and sandbox assessments
+        run: python3 deploy/test_systemd.py
   packages:
     name: Nix frontend and backend release packages
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
-      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
-      - uses: cachix/install-nix-action@b85815f71a6de0ddee80b8a80a98d43f4bcc66c7 # v31
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: cachix/install-nix-action@13d8dd58da0234aa297dedd986986ccb8e7f3e24 # v31
       - name: Restore and save Nix store
         uses: nix-community/cache-nix-action@7df957e333c1e5da7721f60227dbba6d06080569 # v7
         with:
@@ -202,13 +210,15 @@ jobs:
     timeout-minutes: 10
     steps:
       - name: Check out repository
-        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
-      - name: Set up pnpm
-        uses: pnpm/action-setup@9fd676a19091d4595eefd76e4bd31c97133911f1 # v4.2.0
-      - name: Set up Node.js
-        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          node-version: 22
+          persist-credentials: false
+      - name: Set up pnpm
+        uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
+      - name: Set up Node.js
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: '>=22.22.2 <23'
           cache: pnpm
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
@@ -221,24 +231,39 @@ jobs:
       - name: Test
         run: pnpm test
       - name: Build
-        run: pnpm run build
+        run: pnpm run build --manifest
+      - name: Verify self-hosted CSP delivery
+        run: node scripts/verify-csp.mjs production
+      - name: Verify chart chunk isolation
+        run: node scripts/verify-chart-chunks.mjs
+      - name: Verify font assets and stylesheet size
+        run: node scripts/verify-font-assets.mjs
       - name: Build Pages variant
-        run: pnpm run build:pages
+        run: pnpm run build:pages --manifest
+      - name: Verify Pages CSP injection and ordering
+        run: node scripts/verify-csp.mjs pages
+      - name: Verify Pages chart chunk isolation
+        run: node scripts/verify-chart-chunks.mjs
+      - name: Verify Pages font assets and stylesheet size
+        run: node scripts/verify-font-assets.mjs
   pages-build:
     needs: [checks]
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
-      - uses: pnpm/action-setup@9fd676a19091d4595eefd76e4bd31c97133911f1 # v4.2.0
-      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          node-version: 22
+          persist-credentials: false
+      - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: '>=22.22.2 <23'
           cache: pnpm
       - run: pnpm install --frozen-lockfile
       - run: pnpm run build:pages
-      - uses: actions/configure-pages@983d7736d9b0ae728b81ab479565c72886d7745b # v5
-      - uses: actions/upload-pages-artifact@56afc609e74202658d3ffba0e8f6dda462b719fa # v3
+      - run: node scripts/verify-csp.mjs pages
+      - uses: actions/configure-pages@45bfe0192ca1faeb007ade9deae92b16b8254a0d # v6.0.0
+      - uses: actions/upload-pages-artifact@fc324d3547104276b827a68afc52ff2a11cc49c9 # v5.0.0
         with:
           path: dist
   pages-deploy:
@@ -254,7 +279,7 @@ jobs:
       group: pages
       cancel-in-progress: false
     steps:
-      - uses: actions/deploy-pages@d6db90164ac5ed86f2b6aed7e0febac5b3c0c03e # v4
+      - uses: actions/deploy-pages@368f82528645a54fb793d4d04e342629a3f51346 # v5.0.1
         id: deployment
   rust-audit:
     name: Audit Rust dependencies
@@ -262,7 +287,9 @@ jobs:
     timeout-minutes: 10
     steps:
       - name: Check out repository
-        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
       - name: Set up Rust
         uses: dtolnay/rust-toolchain@686976e191b89faba57d3206551f0f330d8cb249 # stable
       - name: Install cargo-audit

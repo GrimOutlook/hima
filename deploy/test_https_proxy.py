@@ -47,17 +47,20 @@ with tempfile.TemporaryDirectory(prefix="hima-https-") as directory:
     key = tmp / "key.pem"
     subprocess.run([
         "openssl", "req", "-x509", "-newkey", "rsa:2048", "-nodes", "-days", "1",
-        "-subj", "/CN=127.0.0.1", "-addext", "subjectAltName=IP:127.0.0.1",
+        "-subj", "/CN=localhost", "-addext", "subjectAltName=DNS:localhost",
         "-addext", "basicConstraints=critical,CA:FALSE",
         "-keyout", str(key), "-out", str(cert),
     ], check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     port = free_port()
+    http_port = free_port()
     config = (root / "deploy/nginx.conf").read_text()
-    config = config.replace("listen 80;", f"listen 127.0.0.1:{free_port()};")
+    config = config.replace("listen 80;", f"listen 127.0.0.1:{http_port};")
     config = config.replace("listen 443 ssl;", f"listen 127.0.0.1:{port} ssl;")
-    config = config.replace("hima.example", "127.0.0.1")
-    config = config.replace("/etc/letsencrypt/live/127.0.0.1/fullchain.pem", str(cert))
-    config = config.replace("/etc/letsencrypt/live/127.0.0.1/privkey.pem", str(key))
+    config = config.replace("listen 80 default_server;", f"listen 127.0.0.1:{http_port} default_server;")
+    config = config.replace("listen 443 ssl default_server;", f"listen 127.0.0.1:{port} ssl default_server;")
+    config = config.replace("hima.example", "localhost")
+    config = config.replace("/etc/letsencrypt/live/localhost/fullchain.pem", str(cert))
+    config = config.replace("/etc/letsencrypt/live/localhost/privkey.pem", str(key))
     config = config.replace("/opt/hima/current/frontend/dist", str(root / "dist"))
     config = config.replace("/var/log/nginx/hima-api-error.log", str(tmp / "api-error.log"))
     config_path = tmp / "nginx.conf"
@@ -71,7 +74,7 @@ with tempfile.TemporaryDirectory(prefix="hima-https-") as directory:
     subprocess.run([*args, "-t"], check=True)
     proxy = subprocess.Popen([*args, "-g", "daemon off;"])
     try:
-        origin = f"https://127.0.0.1:{port}"
+        origin = f"https://localhost:{port}"
         context = ssl.create_default_context(cafile=str(cert))
         for attempt in range(50):
             try:

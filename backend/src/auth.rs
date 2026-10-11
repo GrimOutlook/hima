@@ -1,7 +1,7 @@
 //! Backend-only OIDC credentials and persistent, opaque browser sessions.
 use crate::{db::Database, error::ApiError};
 use axum::{
-    Json, Router,
+    Extension, Json, Router,
     extract::{Query, Request, State, rejection::QueryRejection},
     http::{HeaderMap, StatusCode, header},
     middleware::Next,
@@ -40,9 +40,89 @@ pub struct Auth {
     secure: bool,
     client_id: String,
     issuer: String,
+    cleanup_task: Option<tokio::task::JoinHandle<()>>,
 }
+// Shared across backend processes using the same database.
+const LOGIN_CAPACITY: i64 = 1000;
+const LOGIN_ADMISSION_LOCK: i64 = 0x48494d415f4c4f47;
+const CLEANUP_INTERVAL: Duration = Duration::from_secs(60);
 const KEY_REFRESH_INTERVAL: Duration = Duration::from_secs(3600);
 const KEY_REFRESH_MIN_INTERVAL: Duration = Duration::from_secs(60);
+// Seconds are shared by cookie Max-Age and bound PostgreSQL expiration intervals.
+const LOGIN_LIFETIME: u64 = 10 * 60;
+const SESSION_LIFETIME: u64 = 7 * 24 * 60 * 60;
+const SESSION_IDLE_LIFETIME: u64 = 24 * 60 * 60;
+const SESSION_TOUCH_INTERVAL: u64 = 5 * 60;
+
+impl Drop for Auth {
+    fn drop(&mut self) {
+        if let Some(task) = &self.cleanup_task {
+            task.abort();
+        }
+    }
+}
+
+async fn cleanup_expired(pool: &sqlx::PgPool) -> Result<(), sqlx::Error> {
+    sqlx::query("DELETE FROM login_transactions WHERE expires_at <= clock_timestamp()")
+        .execute(pool)
+        .await?;
+    sqlx::query(
+        "DELETE FROM sessions WHERE expires_at <= clock_timestamp()
+         OR last_seen_at <= clock_timestamp() - $1 * interval '1 second'",
+    )
+    .bind(SESSION_IDLE_LIFETIME as f64)
+    .execute(pool)
+    .await?;
+    Ok(())
+}
+
+fn spawn_cleanup(pool: sqlx::PgPool, period: Duration) -> tokio::task::JoinHandle<()> {
+    tokio::spawn(async move {
+        let mut interval = tokio::time::interval(period);
+        interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
+        loop {
+            interval.tick().await; // Also clean up immediately after startup.
+            if cleanup_expired(&pool).await.is_err() {
+                tracing::warn!("Authentication cleanup failed; retrying on the next interval");
+            }
+        }
+    })
+}
+
+#[derive(Clone, Copy)]
+enum CookieKind {
+    Login,
+    Session,
+}
+
+trait AuthResult<T> {
+    fn auth_unavailable(self) -> Result<T, ApiError>;
+}
+
+impl<T, E> AuthResult<T> for Result<T, E> {
+    fn auth_unavailable(self) -> Result<T, ApiError> {
+        self.map_err(|_| ApiError::auth_unavailable())
+    }
+}
+
+fn verify_optional_hash<T: PartialEq, E>(
+    expected: Option<&T>,
+    actual: impl FnOnce() -> Result<T, E>,
+) -> Result<(), ApiError> {
+    if let Some(expected) = expected {
+        let actual = actual().map_err(|_| invalid())?;
+        if expected != &actual {
+            return Err(invalid());
+        }
+    }
+    Ok(())
+}
+
+fn delete_session(
+    token: &str,
+) -> sqlx::query::Query<'static, sqlx::Postgres, sqlx::postgres::PgArguments> {
+    sqlx::query("DELETE FROM sessions WHERE token_hash = $1").bind(hash(token))
+}
 
 struct SigningKeys {
     metadata: CoreProviderMetadata,
@@ -92,28 +172,21 @@ impl SigningKeys {
     }
 }
 fn invalid() -> ApiError {
-    ApiError::auth(
+    ApiError::new(
         StatusCode::BAD_REQUEST,
         "invalid_callback",
         "The login response is invalid or expired.",
     )
 }
-fn unavailable() -> ApiError {
-    ApiError::auth(
-        StatusCode::SERVICE_UNAVAILABLE,
-        "auth_unavailable",
-        "Authentication is temporarily unavailable.",
-    )
-}
 fn unauthorized() -> ApiError {
-    ApiError::auth(
+    ApiError::new(
         StatusCode::UNAUTHORIZED,
         "unauthenticated",
         "Sign in to access this endpoint.",
     )
 }
 fn forbidden() -> ApiError {
-    ApiError::auth(
+    ApiError::new(
         StatusCode::FORBIDDEN,
         "csrf_failed",
         "The request failed CSRF verification.",
@@ -121,6 +194,14 @@ fn forbidden() -> ApiError {
 }
 fn hash(value: &str) -> String {
     hex::encode(Sha256::digest(value.as_bytes()))
+}
+// Hash the raw high-entropy cookie, never its database lookup hash. The distinct
+// domain keeps a database leak from yielding a usable CSRF token.
+fn session_csrf(token: &str) -> String {
+    let mut digest = Sha256::new();
+    digest.update(b"hima:session-csrf:v1\0");
+    digest.update(token.as_bytes());
+    hex::encode(digest.finalize())
 }
 fn random() -> String {
     CsrfToken::new_random_len(32).secret().clone()
@@ -147,17 +228,9 @@ impl Auth {
         let origin_url = openidconnect::url::Url::parse(origin)
             .map_err(|_| "HIMA_PUBLIC_ORIGIN must be an absolute origin")?;
         let secure = origin_url.scheme() == "https";
-        if (!secure
-            && !(origin_url.scheme() == "http"
-                && matches!(
-                    origin_url.host_str(),
-                    Some("localhost" | "127.0.0.1" | "[::1]")
-                )))
+        if !secure_transport(&origin_url)
             || origin_url.path() != "/"
             || origin_url.query().is_some()
-            || origin_url.fragment().is_some()
-            || !origin_url.username().is_empty()
-            || origin_url.password().is_some()
         {
             return Err(
                 "HIMA_PUBLIC_ORIGIN must be an HTTPS origin (HTTP allowed only on loopback)".into(),
@@ -203,6 +276,7 @@ impl Auth {
                 .map_err(|_| "invalid callback URL")?,
         );
         let auth = Arc::new(Self {
+            cleanup_task: Some(spawn_cleanup(db.pool.clone(), CLEANUP_INTERVAL)),
             signing: Mutex::new(SigningKeys {
                 metadata: signing_metadata,
                 client: client.clone(),
@@ -226,29 +300,70 @@ impl Auth {
         });
         Ok(auth)
     }
-    fn name(&self, login: bool) -> &'static str {
-        match (self.secure, login) {
-            (true, true) => "__Host-hima-login",
-            (true, false) => "__Host-hima-session",
-            (false, true) => "hima-login",
-            (false, false) => "hima-session",
+    fn name(&self, kind: CookieKind) -> &'static str {
+        match (self.secure, kind) {
+            (true, CookieKind::Login) => "__Host-hima-login",
+            (true, CookieKind::Session) => "__Host-hima-session",
+            (false, CookieKind::Login) => "hima-login",
+            (false, CookieKind::Session) => "hima-session",
         }
     }
-    fn cookie(&self, login: bool, value: &str, age: u64) -> String {
+    fn cookie(&self, kind: CookieKind, value: &str, age: u64) -> String {
         format!(
             "{}={value}; Path=/; HttpOnly; SameSite=Lax; Max-Age={age}{}",
-            self.name(login),
+            self.name(kind),
             if self.secure { "; Secure" } else { "" }
         )
     }
-    fn read_cookie<'a>(&self, headers: &'a HeaderMap, login: bool) -> Option<&'a str> {
-        read_cookie(headers, self.name(login))
+    fn read_cookie<'a>(&self, headers: &'a HeaderMap, kind: CookieKind) -> Option<&'a str> {
+        read_cookie(headers, self.name(kind))
     }
     pub(crate) async fn session(&self, headers: &HeaderMap) -> Result<Session, ApiError> {
-        let token = self.read_cookie(headers, false).ok_or_else(unauthorized)?;
-        // Check and touch atomically: expired sessions cannot be revived by activity.
-        // Updating activity never extends the absolute expiration set at login.
-        sqlx::query_as::<_, Session>("UPDATE sessions SET last_seen_at = clock_timestamp() WHERE token_hash = $1 AND expires_at > clock_timestamp() AND last_seen_at > clock_timestamp() - interval '24 hours' RETURNING user_id, csrf_token") .bind(hash(token)).fetch_optional(&self.db.pool).await.map_err(|_| unavailable())?.ok_or_else(unauthorized)
+        let token = self
+            .read_cookie(headers, CookieKind::Session)
+            .ok_or_else(unauthorized)?;
+        let token_hash = hash(token);
+        if let Some(session) = self.recent_session(token).await? {
+            return Ok(session);
+        }
+        // PostgreSQL rechecks these predicates after waiting for a concurrent
+        // updater. Never revive expired sessions or rewrite a concurrent touch.
+        let touched = sqlx::query_as::<_, Session>(
+            "UPDATE sessions SET last_seen_at = clock_timestamp()
+             WHERE token_hash = $1 AND expires_at > clock_timestamp()
+             AND last_seen_at > clock_timestamp() - $2 * interval '1 second'
+             AND last_seen_at < clock_timestamp() - $3 * interval '1 second'
+             RETURNING user_id",
+        )
+        .bind(&token_hash)
+        .bind(SESSION_IDLE_LIFETIME as f64)
+        .bind(SESSION_TOUCH_INTERVAL as f64)
+        .fetch_optional(&self.db.pool)
+        .await
+        .auth_unavailable()?;
+        if let Some(mut session) = touched {
+            session.csrf_token = session_csrf(token);
+            return Ok(session);
+        }
+        // A competing request may have refreshed activity after our first read.
+        self.recent_session(token).await?.ok_or_else(unauthorized)
+    }
+
+    async fn recent_session(&self, token: &str) -> Result<Option<Session>, ApiError> {
+        let session = sqlx::query_as::<_, Session>(
+            "SELECT user_id FROM sessions
+             WHERE token_hash = $1 AND expires_at > clock_timestamp()
+             AND last_seen_at >= clock_timestamp() - $2 * interval '1 second'",
+        )
+        .bind(hash(token))
+        .bind(SESSION_TOUCH_INTERVAL as f64)
+        .fetch_optional(&self.db.pool)
+        .await
+        .auth_unavailable()?;
+        Ok(session.map(|mut session| {
+            session.csrf_token = session_csrf(token);
+            session
+        }))
     }
 }
 
@@ -273,208 +388,10 @@ fn read_cookie<'a>(headers: &'a HeaderMap, cookie_name: &str) -> Option<&'a str>
     found.filter(|v| v.len() >= 32 && v.len() <= 128)
 }
 
-#[cfg(test)]
-mod key_tests {
-    use super::*;
-    use axum::routing::get;
-    use base64::{Engine, engine::general_purpose::URL_SAFE_NO_PAD as B64};
-    use rsa::{
-        RsaPrivateKey,
-        pkcs1v15::SigningKey,
-        signature::{SignatureEncoding, Signer},
-        traits::PublicKeyParts,
-    };
-    use serde_json::json;
-    use std::sync::atomic::{AtomicUsize, Ordering};
-
-    #[tokio::test]
-    async fn refresh_replaces_revoked_keys_and_retains_keys_on_failure_without_redirects() {
-        let key = RsaPrivateKey::new(&mut rand::thread_rng(), 2048).unwrap();
-        let jwks = json!({"keys":[{"kty":"RSA","kid":"rotated","use":"sig","alg":"RS256",
-            "n":B64.encode(key.n().to_bytes_be()),"e":B64.encode(key.e().to_bytes_be())}]});
-        let requests = Arc::new(AtomicUsize::new(0));
-        let mode = Arc::new(AtomicUsize::new(0));
-        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
-        let issuer = format!("http://{}", listener.local_addr().unwrap());
-        let app = Router::new().route(
-            "/keys",
-            get({
-                let requests = requests.clone();
-                let mode = mode.clone();
-                let jwks = jwks.clone();
-                move || {
-                    let requests = requests.clone();
-                    let mode = mode.clone();
-                    let jwks = jwks.clone();
-                    async move {
-                        requests.fetch_add(1, Ordering::SeqCst);
-                        match mode.load(Ordering::SeqCst) {
-                            0 => Json(jwks).into_response(),
-                            1 => StatusCode::SERVICE_UNAVAILABLE.into_response(),
-                            3 => Json(json!({"keys":[]})).into_response(),
-                            _ => Redirect::temporary("/keys").into_response(),
-                        }
-                    }
-                }
-            }),
-        );
-        let task = tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
-        let metadata: CoreProviderMetadata = serde_json::from_value(json!({
-            "issuer":issuer,"authorization_endpoint":format!("{issuer}/authorize"),
-            "token_endpoint":format!("{issuer}/token"),"jwks_uri":format!("{issuer}/keys"),
-            "response_types_supported":["code"],"subject_types_supported":["public"],
-            "id_token_signing_alg_values_supported":["RS256"]
-        }))
-        .unwrap();
-        let metadata = metadata.set_jwks(serde_json::from_value(json!({"keys":[]})).unwrap());
-        let mut signing = SigningKeys {
-            client: CoreClient::from_provider_metadata(
-                metadata.clone(),
-                ClientId::new("test".into()),
-                None,
-            ),
-            metadata,
-            last_attempt: Instant::now() - KEY_REFRESH_MIN_INTERVAL,
-        };
-        let http = openidconnect::reqwest::Client::builder()
-            .redirect(openidconnect::reqwest::redirect::Policy::none())
-            .build()
-            .unwrap();
-        let now = chrono::Utc::now().timestamp();
-        let input = format!("{}.{}", B64.encode(json!({"alg":"RS256","kid":"rotated"}).to_string()),
-            B64.encode(json!({"iss":issuer,"sub":"user","aud":"test","iat":now,"exp":now+300,"nonce":"nonce"}).to_string()));
-        let signature = SigningKey::<Sha256>::new(key).sign(input.as_bytes());
-        let token: openidconnect::core::CoreIdToken =
-            format!("{input}.{}", B64.encode(signature.to_bytes()))
-                .parse()
-                .unwrap();
-        let nonce = Nonce::new("nonce".into());
-        assert!(
-            token
-                .claims(&signing.client.id_token_verifier(), &nonce)
-                .is_err()
-        );
-        let refreshed = signing.verification_client(&token, &nonce, &http).await;
-        assert!(token.claims(&refreshed.id_token_verifier(), &nonce).is_ok());
-        assert!(
-            token
-                .claims(&signing.client.id_token_verifier(), &nonce)
-                .is_ok()
-        );
-        for failure in [1, 2] {
-            mode.store(failure, Ordering::SeqCst);
-            signing.last_attempt = Instant::now() - KEY_REFRESH_MIN_INTERVAL;
-            signing.refresh(&http).await;
-            assert!(
-                token
-                    .claims(&signing.client.id_token_verifier(), &nonce)
-                    .is_ok()
-            );
-            signing.refresh(&http).await;
-            assert_eq!(requests.load(Ordering::SeqCst), failure + 1);
-        }
-        // A successful empty set removes the previously trusted signing key.
-        mode.store(3, Ordering::SeqCst);
-        signing.last_attempt = Instant::now() - KEY_REFRESH_MIN_INTERVAL;
-        signing.refresh(&http).await;
-        assert!(
-            token
-                .claims(&signing.client.id_token_verifier(), &nonce)
-                .is_err()
-        );
-        task.abort();
-    }
-}
-
-#[cfg(test)]
-mod cookie_tests {
-    use super::*;
-    use axum::http::HeaderValue;
-
-    #[test]
-    fn malformed_cookies_do_not_hide_valid_tokens() {
-        let token = "a".repeat(32);
-        for name in [
-            "__Host-hima-session",
-            "__Host-hima-login",
-            "hima-session",
-            "hima-login",
-        ] {
-            for value in [
-                format!("foo; {name}={token}; bar"),
-                format!("{name}={token}; foo"),
-            ] {
-                for invalid_first in [true, false] {
-                    let mut headers = HeaderMap::new();
-                    let invalid = HeaderValue::from_bytes(b"other=\xff").unwrap();
-                    if invalid_first {
-                        headers.append(header::COOKIE, invalid.clone());
-                    }
-                    headers.append(header::COOKIE, value.parse().unwrap());
-                    headers.append(header::COOKIE, invalid);
-                    assert_eq!(read_cookie(&headers, name), Some(token.as_str()));
-                }
-            }
-        }
-    }
-
-    #[test]
-    fn duplicate_tokens_are_rejected_even_with_malformed_cookies() {
-        let name = "__Host-hima-session";
-        let token = "a".repeat(32);
-        for separate_headers in [true, false] {
-            let mut headers = HeaderMap::new();
-            headers.append(
-                header::COOKIE,
-                format!("{name}={token}; foo").parse().unwrap(),
-            );
-            headers.append(
-                header::COOKIE,
-                HeaderValue::from_bytes(b"other=\xff").unwrap(),
-            );
-            if separate_headers {
-                headers.append(header::COOKIE, format!("{name}={token}").parse().unwrap());
-            } else {
-                headers.insert(
-                    header::COOKIE,
-                    format!("{name}={token}; foo; {name}={token}")
-                        .parse()
-                        .unwrap(),
-                );
-            }
-            assert_eq!(read_cookie(&headers, name), None);
-        }
-    }
-
-    #[test]
-    fn missing_and_invalid_length_tokens_are_rejected() {
-        for value in [
-            "foo".to_owned(),
-            "other=value".to_owned(),
-            "hima-session=".to_owned(),
-            format!("hima-session={}", "a".repeat(31)),
-            format!("hima-session={}", "a".repeat(129)),
-        ] {
-            let mut headers = HeaderMap::new();
-            headers.insert(header::COOKIE, value.parse().unwrap());
-            assert_eq!(read_cookie(&headers, "hima-session"), None);
-        }
-        let mut headers = HeaderMap::new();
-        headers.insert(
-            header::COOKIE,
-            format!("hima-session={}", "a".repeat(128)).parse().unwrap(),
-        );
-        assert_eq!(read_cookie(&headers, "hima-session").unwrap().len(), 128);
-    }
-}
-#[derive(sqlx::FromRow)]
+#[derive(Clone, sqlx::FromRow, Serialize)]
 pub(crate) struct Session {
     pub(crate) user_id: i64,
-    csrf_token: String,
-}
-#[derive(Serialize)]
-struct Me {
-    user_id: i64,
+    #[sqlx(default)]
     csrf_token: String,
 }
 #[derive(Deserialize)]
@@ -494,15 +411,22 @@ pub(crate) fn router(auth: Arc<Auth>) -> Router {
         .route("/api/me", get(me))
         .with_state(auth)
 }
-fn response(auth: &Auth, target: &str, cookies: &[(bool, &str, u64)]) -> Response {
+fn response(auth: &Auth, target: &str, cookies: &[(CookieKind, &str, u64)]) -> Response {
     let mut response = Redirect::to(target).into_response();
-    for &(login, value, age) in cookies {
+    for &(kind, value, age) in cookies {
         response.headers_mut().append(
             header::SET_COOKIE,
-            auth.cookie(login, value, age).parse().unwrap(),
+            auth.cookie(kind, value, age).parse().unwrap(),
         );
     }
     response
+}
+fn clear_cookies(auth: &Auth) -> Response {
+    response(
+        auth,
+        "/",
+        &[(CookieKind::Session, "", 0), (CookieKind::Login, "", 0)],
+    )
 }
 async fn login(State(auth): State<Arc<Auth>>) -> Result<Response, ApiError> {
     let (challenge, verifier) = PkceCodeChallenge::new_random_sha256();
@@ -516,17 +440,46 @@ async fn login(State(auth): State<Arc<Auth>>) -> Result<Response, ApiError> {
         .set_pkce_challenge(challenge)
         .url();
     let browser = random();
-    // Bound retention even when callbacks never arrive. No provider tokens are stored.
-    sqlx::query("DELETE FROM login_transactions WHERE expires_at <= clock_timestamp()")
-        .execute(&auth.db.pool)
+    let mut tx = auth.db.pool.begin().await.auth_unavailable()?;
+    // A fresh statement snapshot AFTER the lock sees prior admissions, including
+    // those from other backend processes. A single count/insert CTE would not.
+    sqlx::query("SET TRANSACTION ISOLATION LEVEL READ COMMITTED")
+        .execute(&mut *tx)
         .await
-        .map_err(|_| unavailable())?;
-    sqlx::query("DELETE FROM sessions WHERE expires_at <= clock_timestamp() OR last_seen_at <= clock_timestamp() - interval '24 hours'")
-        .execute(&auth.db.pool)
+        .auth_unavailable()?;
+    sqlx::query("SELECT pg_advisory_xact_lock($1)")
+        .bind(LOGIN_ADMISSION_LOCK)
+        .execute(&mut *tx)
         .await
-        .map_err(|_| unavailable())?;
-    sqlx::query("INSERT INTO login_transactions (state_hash, browser_hash, nonce, verifier, expires_at) VALUES ($1,$2,$3,$4,clock_timestamp() + interval '10 minutes')").bind(hash(state.secret())).bind(hash(&browser)).bind(nonce.secret()).bind(verifier.secret()).execute(&auth.db.pool).await.map_err(|_| unavailable())?;
-    Ok(response(&auth, url.as_str(), &[(true, &browser, 600)]))
+        .auth_unavailable()?;
+    let live: i64 = sqlx::query_scalar(
+        "SELECT count(*) FROM login_transactions WHERE expires_at > clock_timestamp()",
+    )
+    .fetch_one(&mut *tx)
+    .await
+    .auth_unavailable()?;
+    if live >= LOGIN_CAPACITY {
+        tx.rollback().await.auth_unavailable()?;
+        return Err(ApiError::auth_unavailable());
+    }
+    sqlx::query(
+        "INSERT INTO login_transactions (state_hash, browser_hash, nonce, verifier, expires_at)
+         VALUES ($1, $2, $3, $4, clock_timestamp() + $5 * interval '1 second')",
+    )
+    .bind(hash(state.secret()))
+    .bind(hash(&browser))
+    .bind(nonce.secret())
+    .bind(verifier.secret())
+    .bind(LOGIN_LIFETIME as f64)
+    .execute(&mut *tx)
+    .await
+    .auth_unavailable()?;
+    tx.commit().await.auth_unavailable()?;
+    Ok(response(
+        &auth,
+        url.as_str(),
+        &[(CookieKind::Login, &browser, LOGIN_LIFETIME)],
+    ))
 }
 async fn callback(
     State(auth): State<Arc<Auth>>,
@@ -535,9 +488,19 @@ async fn callback(
 ) -> Result<Response, ApiError> {
     let Query(query) = query.map_err(|_| invalid())?;
     let state = query.state.filter(|s| s.len() <= 128).ok_or_else(invalid)?;
-    let browser = auth.read_cookie(&headers, true).ok_or_else(invalid)?;
+    let browser = auth
+        .read_cookie(&headers, CookieKind::Login)
+        .ok_or_else(invalid)?;
     // Atomic consumption prevents callback replay across processes.
-    let row: Option<(String, String)> = sqlx::query_as("DELETE FROM login_transactions WHERE state_hash=$1 AND browser_hash=$2 AND expires_at > clock_timestamp() RETURNING nonce, verifier").bind(hash(&state)).bind(hash(browser)).fetch_optional(&auth.db.pool).await.map_err(|_| unavailable())?;
+    let row: Option<(String, String)> = sqlx::query_as(
+        "DELETE FROM login_transactions WHERE state_hash = $1 AND browser_hash = $2
+         AND expires_at > clock_timestamp() RETURNING nonce, verifier",
+    )
+    .bind(hash(&state))
+    .bind(hash(browser))
+    .fetch_optional(&auth.db.pool)
+    .await
+    .auth_unavailable()?;
     let (nonce, verifier) = row.ok_or_else(invalid)?;
     if query.error.is_some() || query.iss.as_ref().is_some_and(|iss| iss != &auth.issuer) {
         return Err(invalid());
@@ -583,28 +546,22 @@ async fn callback(
     {
         return Err(invalid());
     }
-    if let Some(expected) = claims.access_token_hash() {
-        let actual = AccessTokenHash::from_token(
+    verify_optional_hash(claims.access_token_hash(), || {
+        AccessTokenHash::from_token(
             token.access_token(),
             id_token.signing_alg().map_err(|_| invalid())?,
             id_token.signing_key(&verifier).map_err(|_| invalid())?,
         )
-        .map_err(|_| invalid())?;
-        if expected != &actual {
-            return Err(invalid());
-        }
-    }
-    if let Some(expected) = claims.code_hash() {
-        let actual = AuthorizationCodeHash::from_code(
+        .map_err(|_| invalid())
+    })?;
+    verify_optional_hash(claims.code_hash(), || {
+        AuthorizationCodeHash::from_code(
             &code,
             id_token.signing_alg().map_err(|_| invalid())?,
             id_token.signing_key(&verifier).map_err(|_| invalid())?,
         )
-        .map_err(|_| invalid())?;
-        if expected != &actual {
-            return Err(invalid());
-        }
-    }
+        .map_err(|_| invalid())
+    })?;
     let subject = claims.subject().as_str();
     if subject.trim().is_empty() {
         return Err(invalid());
@@ -613,59 +570,65 @@ async fn callback(
         .db
         .ensure_user(claims.issuer().as_str(), subject)
         .await
-        .map_err(|_| unavailable())?;
+        .auth_unavailable()?;
     let session = random();
-    let mut tx = auth.db.pool.begin().await.map_err(|_| unavailable())?;
-    if let Some(old) = auth.read_cookie(&headers, false) {
-        sqlx::query("DELETE FROM sessions WHERE token_hash=$1")
-            .bind(hash(old))
+    let mut tx = auth.db.pool.begin().await.auth_unavailable()?;
+    if let Some(old) = auth.read_cookie(&headers, CookieKind::Session) {
+        delete_session(old)
             .execute(&mut *tx)
             .await
-            .map_err(|_| unavailable())?;
+            .auth_unavailable()?;
     }
-    sqlx::query("INSERT INTO sessions (token_hash,user_id,csrf_token,expires_at) VALUES ($1,$2,$3,clock_timestamp() + interval '7 days')").bind(hash(&session)).bind(user).bind(random()).execute(&mut *tx).await.map_err(|_| unavailable())?;
-    tx.commit().await.map_err(|_| unavailable())?;
+    sqlx::query(
+        "INSERT INTO sessions (token_hash, user_id, expires_at)
+         VALUES ($1, $2, clock_timestamp() + $3 * interval '1 second')",
+    )
+    .bind(hash(&session))
+    .bind(user)
+    .bind(SESSION_LIFETIME as f64)
+    .execute(&mut *tx)
+    .await
+    .auth_unavailable()?;
+    tx.commit().await.auth_unavailable()?;
     Ok(response(
         &auth,
         "/",
-        &[(true, "", 0), (false, &session, 604800)],
+        &[
+            (CookieKind::Login, "", 0),
+            (CookieKind::Session, &session, SESSION_LIFETIME),
+        ],
     ))
 }
-async fn me(State(auth): State<Arc<Auth>>, headers: HeaderMap) -> Result<Json<Me>, ApiError> {
-    let session = auth.session(&headers).await?;
-    Ok(Json(Me {
-        user_id: session.user_id,
-        csrf_token: session.csrf_token,
-    }))
+async fn me(State(auth): State<Arc<Auth>>, headers: HeaderMap) -> Result<Json<Session>, ApiError> {
+    Ok(Json(auth.session(&headers).await?))
 }
 async fn logout(State(auth): State<Arc<Auth>>, headers: HeaderMap) -> Result<Response, ApiError> {
-    sqlx::query("DELETE FROM sessions WHERE token_hash=$1")
-        .bind(hash(
-            auth.read_cookie(&headers, false).ok_or_else(unauthorized)?,
-        ))
-        .execute(&auth.db.pool)
-        .await
-        .map_err(|_| unavailable())?;
-    Ok(response(&auth, "/", &[(false, "", 0), (true, "", 0)]))
+    delete_session(
+        auth.read_cookie(&headers, CookieKind::Session)
+            .ok_or_else(unauthorized)?,
+    )
+    .execute(&auth.db.pool)
+    .await
+    .auth_unavailable()?;
+    Ok(clear_cookies(&auth))
 }
 
 async fn logout_all(
     State(auth): State<Arc<Auth>>,
-    headers: HeaderMap,
+    Extension(session): Extension<Session>,
 ) -> Result<Response, ApiError> {
-    let session = auth.session(&headers).await?;
     sqlx::query("DELETE FROM sessions WHERE user_id=$1")
         .bind(session.user_id)
         .execute(&auth.db.pool)
         .await
-        .map_err(|_| unavailable())?;
-    Ok(response(&auth, "/", &[(false, "", 0), (true, "", 0)]))
+        .auth_unavailable()?;
+    Ok(clear_cookies(&auth))
 }
 
 /// Applied to every unsafe API request, including subsequently added planner routes.
 pub(crate) async fn protect(
     State(auth): State<Arc<Auth>>,
-    request: Request,
+    mut request: Request,
     next: Next,
 ) -> Result<Response, ApiError> {
     if request.method().is_safe()
@@ -687,5 +650,10 @@ pub(crate) async fn protect(
     if origin != auth.origin || !bool::from(csrf.as_bytes().ct_eq(session.csrf_token.as_bytes())) {
         return Err(forbidden());
     }
+    request.extensions_mut().insert(session);
     Ok(next.run(request).await)
 }
+
+#[cfg(test)]
+#[path = "auth_tests.rs"]
+mod tests;

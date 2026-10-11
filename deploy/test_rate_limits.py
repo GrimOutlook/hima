@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Exercise production nginx rate limits against a counting HTTP upstream."""
 from concurrent.futures import ThreadPoolExecutor
+import gzip
 import http.client
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
@@ -15,6 +16,7 @@ import time
 root = Path(__file__).resolve().parent.parent
 count = 0
 lock = Lock()
+json_body = b'{"document":"' + b'planner data ' * 1000 + b'"}'
 
 
 class Upstream(BaseHTTPRequestHandler):
@@ -23,8 +25,13 @@ class Upstream(BaseHTTPRequestHandler):
         with lock:
             count += 1
         self.send_response(200)
+        body = json_body if self.path.startswith("/api/") else b"upstream"
+        self.send_header("Content-Type", "application/json")
+        self.send_header("Content-Length", str(len(body)))
+        self.send_header("X-Upstream-Accept-Encoding", self.headers.get("Accept-Encoding", "absent"))
+        self.send_header("X-Upstream-CSRF", self.headers.get("X-CSRF-Token", "absent"))
         self.end_headers()
-        self.wfile.write(b"upstream")
+        self.wfile.write(body)
 
     def log_message(self, *args):
         pass
@@ -36,10 +43,17 @@ with tempfile.TemporaryDirectory(prefix="hima-rate-limits-") as directory:
     (tmp / "assets").mkdir()
     for asset in ("index-abc123.js", "index-abc123.css", "font-abc123.woff2", "favicon.svg"):
         (tmp / "assets" / asset).write_text(asset)
+    compressed_assets = {
+        "large-abc123.js": b"console.log('hima');\n" * 1000,
+        "large-abc123.css": b"body { color: blue; }\n" * 1000,
+        "large-abc123.svg": b'<svg xmlns="http://www.w3.org/2000/svg">' + b"<path/>" * 1000 + b"</svg>",
+    }
+    for name, body in compressed_assets.items():
+        (tmp / "assets" / name).write_bytes(body)
     cert, key = tmp / "cert.pem", tmp / "key.pem"
     subprocess.run([
         "openssl", "req", "-x509", "-newkey", "rsa:2048", "-nodes", "-days", "1",
-        "-subj", "/CN=127.0.0.1", "-addext", "subjectAltName=IP:127.0.0.1",
+        "-subj", "/CN=localhost", "-addext", "subjectAltName=DNS:localhost",
         "-keyout", str(key), "-out", str(cert),
     ], check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     upstream = ThreadingHTTPServer(("127.0.0.1", 0), Upstream)
@@ -49,8 +63,12 @@ with tempfile.TemporaryDirectory(prefix="hima-rate-limits-") as directory:
         listener.bind(("127.0.0.1", 0))
         redirect.bind(("127.0.0.1", 0))
         port = listener.getsockname()[1]
+        http_port = redirect.getsockname()[1]
         config = (root / "deploy/nginx.conf").read_text()
         for old, new in [
+            ("listen 80 default_server;", f"listen 127.0.0.1:{http_port} default_server;"),
+            ("listen 443 ssl default_server;", f"listen 127.0.0.1:{port} ssl default_server;"),
+            ("server_name hima.example;", "server_name localhost;"),
             ("listen 80;", f"listen 127.0.0.1:{redirect.getsockname()[1]};"),
             ("listen 443 ssl;", f"listen 127.0.0.1:{port} ssl;"),
             ("/etc/letsencrypt/live/hima.example/fullchain.pem", str(cert)),
@@ -73,13 +91,15 @@ with tempfile.TemporaryDirectory(prefix="hima-rate-limits-") as directory:
 
     def request(path, client="127.0.0.1", forwarded="203.0.113.1", headers=None, metadata=False):
         connection = http.client.HTTPSConnection(
-            "127.0.0.1", port, context=context, timeout=5,
+            "localhost", port, context=context, timeout=5,
             source_address=(client, 0),
         )
         try:
             connection.request("GET", path, headers={"X-Forwarded-For": forwarded, **(headers or {})})
             response = connection.getresponse()
             body = response.read()
+            assert response.getheader("Server") == "nginx"
+            assert b"nginx/" not in body
             assert response.getheader("X-Content-Type-Options") == "nosniff"
             assert response.getheader("Strict-Transport-Security")
             assert response.getheader("Content-Security-Policy")
@@ -100,6 +120,93 @@ with tempfile.TemporaryDirectory(prefix="hima-rate-limits-") as directory:
                 time.sleep(0.1)
         else:
             raise RuntimeError("nginx did not become ready")
+
+        before = count
+        for host in ("unknown.example", "127.0.0.1"):
+            connection = http.client.HTTPConnection("127.0.0.1", http_port, timeout=5)
+            try:
+                connection.request("GET", "/api/me", headers={"Host": host})
+                try:
+                    connection.getresponse()
+                except http.client.RemoteDisconnected:
+                    pass
+                else:
+                    raise AssertionError(f"Unknown HTTP host {host} was accepted")
+            finally:
+                connection.close()
+        connection = http.client.HTTPConnection("127.0.0.1", http_port, timeout=5)
+        try:
+            connection.request("GET", "/planner?check=1", headers={"Host": "localhost"})
+            response = connection.getresponse()
+            assert response.status == 308
+            assert response.getheader("Location") == "https://hima.example/planner?check=1"
+            assert response.getheader("Server") == "nginx"
+        finally:
+            connection.close()
+        for version in (ssl.TLSVersion.TLSv1_2, ssl.TLSVersion.TLSv1_3):
+            rejection_context = ssl.create_default_context(cafile=str(cert))
+            rejection_context.check_hostname = False
+            rejection_context.minimum_version = ssl.TLSVersion.TLSv1_2
+            if version == ssl.TLSVersion.TLSv1_3:
+                rejection_context.minimum_version = ssl.TLSVersion.TLSv1_3
+            rejection_context.maximum_version = version
+            for name in ("unknown.example", None):
+                with socket.create_connection(("127.0.0.1", port), timeout=5) as raw:
+                    try:
+                        with rejection_context.wrap_socket(raw, server_hostname=name):
+                            raise AssertionError(f"TLS {version.name} accepted SNI {name}")
+                    except ssl.SSLError as error:
+                        assert "UNRECOGNIZED_NAME" in str(error), error
+        # Valid SNI cannot bypass HTTP Host routing to the rejecting default.
+        connection = http.client.HTTPSConnection("localhost", port, context=context, timeout=5)
+        try:
+            connection.request("GET", "/api/me", headers={"Host": "unknown.example"})
+            try:
+                connection.getresponse()
+            except http.client.RemoteDisconnected:
+                pass
+            else:
+                raise AssertionError("Unknown HTTPS Host was accepted")
+        finally:
+            connection.close()
+        assert count == before, "Unknown hosts reached upstream"
+
+        # Verify real HTTP/2 requests, not just a configured directive.
+        version = subprocess.check_output([
+            "curl", "--silent", "--show-error", "--fail", "--http2",
+            "--cacert", str(cert), "--output", "/dev/null", "--write-out", "%{http_version}",
+            "--resolve", f"localhost:{port}:127.0.0.1", f"https://localhost:{port}/",
+        ], text=True)
+        assert version == "2", version
+        for name, original in compressed_assets.items():
+            path = f"/assets/{name}"
+            status, body, headers = request(path, headers={"Accept-Encoding": "gzip"}, metadata=True)
+            assert status == 200
+            assert headers["Content-Encoding"] == "gzip"
+            assert "Accept-Encoding" in headers["Vary"]
+            assert gzip.decompress(body) == original
+            assert len(body) < len(original)
+            status, body, headers = request(path, metadata=True)
+            assert (status, body) == (200, original)
+            assert "Content-Encoding" not in headers
+            status, body, headers = request(path, headers={"Accept-Encoding": "gzip;q=0"}, metadata=True)
+            assert (status, body) == (200, original)
+            assert "Content-Encoding" not in headers
+        status, body, headers = request("/assets/index-abc123.js", headers={"Accept-Encoding": "gzip"}, metadata=True)
+        assert (status, body) == (200, b"index-abc123.js")
+        assert "Content-Encoding" not in headers, "Small assets should not be compressed"
+        for path in ("/api/planner", "/api/planner?compression=1", "/api/me", "/api/me?compression=1"):
+            status, body, headers = request(path, client="127.0.0.5", headers={
+                "Accept-Encoding": "gzip", "Via": "1.1 test-proxy", "X-CSRF-Token": "test-token",
+            }, metadata=True)
+            assert status == 200, (path, status, body)
+            assert headers["X-Upstream-Accept-Encoding"] == "absent"
+            assert headers["X-Upstream-CSRF"] == "test-token"
+            assert "Content-Encoding" not in headers
+            assert body == json_body
+        status, body, headers = request("/api/planner", client="127.0.0.5", metadata=True)
+        assert (status, body) == (200, json_body)
+        assert "Content-Encoding" not in headers
 
         for asset in ("index-abc123.js", "index-abc123.css", "font-abc123.woff2"):
             path = f"/assets/{asset}"
@@ -149,7 +256,7 @@ with tempfile.TemporaryDirectory(prefix="hima-rate-limits-") as directory:
         assert request("/auth/login")[0] == 200, "Auth budget did not recover"
         assert request("/api/me", client="127.0.0.3")[0] == 200
         assert (tmp / "api-error.log").read_text() == ""
-        print("HTTPS asset caching, rate limits, upstream exclusion, independent budgets, recovery and headers passed")
+        print("Host rejection, TLS handshake rejection, hidden nginx version, HTTP/2, gzip negotiation, CSRF compression exclusion, HTTPS asset caching, rate limits, independent budgets, recovery and headers passed")
     finally:
         proxy.terminate()
         proxy.wait(timeout=10)

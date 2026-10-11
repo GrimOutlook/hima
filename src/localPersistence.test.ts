@@ -2,7 +2,8 @@
 import { afterEach, expect, it, vi } from "vitest";
 import { emptyStore, STORAGE_KEY } from "./model";
 import { localPersistence, REVISION_KEY, SETTINGS_KEY } from "./localPersistence";
-import { defaultSettings, PersistenceError } from "./plannerPersistence";
+import { PersistenceError } from "./plannerPersistence";
+import { defaultSettings } from "./settings";
 
 const signal = new AbortController().signal;
 const session = { user_id: 1, csrf_token: "local" };
@@ -16,11 +17,18 @@ it("loads an empty draft without writing and returns a stable session", async ()
 
 it("round trips the document and settings with increasing revisions", async () => {
   const document = { ...emptyStore(), settings: defaultSettings };
-  expect(await localPersistence.save(document, 0, session, signal)).toMatchObject({ document, revision: 1 });
+  expect(await localPersistence.save(document, 0, session, signal)).toEqual({ revision: 1, updated_at: expect.any(String) });
   expect(await localPersistence.load(signal)).toMatchObject({ document, revision: 1, updated_at: expect.any(String) });
   expect(JSON.parse(localStorage.getItem(STORAGE_KEY)!)).not.toHaveProperty("settings");
   expect(JSON.parse(localStorage.getItem(SETTINGS_KEY)!)).toEqual(defaultSettings);
   await expect(localPersistence.save(document, 0, session, signal)).rejects.toMatchObject({ code: "revision_conflict", status: 409 });
+});
+
+it("echoes only explicit migration saves and rejects invalid writes without changing storage", async () => {
+  const document = emptyStore();
+  expect(await localPersistence.save(document, 0, session, signal, { echoDocument: true })).toMatchObject({ document, revision: 1 });
+  await expect(localPersistence.save({ ...document, next_id: 0 }, 1, session, signal)).rejects.toMatchObject({ code: "invalid_document" });
+  expect(await localPersistence.load(signal)).toMatchObject({ document, revision: 1 });
 });
 
 it.each([null, "garbage", "0", "-1", "1.5"])("defaults an invalid or absent revision (%s) to one for existing data", async (revision) => {

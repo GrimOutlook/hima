@@ -42,10 +42,151 @@ async fn planner_http_contract(app: &Router, pool: &PgPool) {
             .await
             .unwrap();
         users.push(user);
-        sqlx::query("INSERT INTO sessions (token_hash,user_id,csrf_token,expires_at) VALUES ($1,$2,'planner-csrf',clock_timestamp() + interval '1 hour')")
+        sqlx::query("INSERT INTO sessions (token_hash,user_id,expires_at) VALUES ($1,$2,clock_timestamp() + interval '1 hour')")
             .bind(hex::encode(Sha256::digest(token.as_bytes()))).bind(user).execute(pool).await.unwrap();
     }
+    let mut csrf_tokens = Vec::new();
+    for token in &tokens {
+        let me = request(
+            app,
+            "GET",
+            "/api/me",
+            &format!("__Host-hima-session={token}"),
+            &[],
+        )
+        .await;
+        let me: Value =
+            serde_json::from_slice(&me.into_body().collect().await.unwrap().to_bytes()).unwrap();
+        csrf_tokens.push(me["csrf_token"].as_str().unwrap().to_owned());
+    }
+    let csrf = csrf_tokens[0].as_str();
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    // Polling and parallel tabs must not produce even a no-op row update.
+    let cookie = format!("__Host-hima-session={}", tokens[0]);
+    sqlx::query(
+        "UPDATE sessions SET last_seen_at=clock_timestamp()-interval '4 minutes' WHERE user_id=$1",
+    )
+    .bind(users[0])
+    .execute(pool)
+    .await
+    .unwrap();
+    let row_version =
+        sqlx::query_scalar::<_, String>("SELECT xmin::text FROM sessions WHERE user_id=$1")
+            .bind(users[0])
+            .fetch_one(pool)
+            .await
+            .unwrap();
+    for path in ["/api/me", "/api/planner", "/api/me"] {
+        assert_eq!(
+            request(app, "GET", path, &cookie, &[]).await.status(),
+            StatusCode::OK
+        );
+    }
+    assert_eq!(
+        sqlx::query_scalar::<_, String>("SELECT xmin::text FROM sessions WHERE user_id=$1")
+            .bind(users[0])
+            .fetch_one(pool)
+            .await
+            .unwrap(),
+        row_version
+    );
+
+    // Count physical updates to prove simultaneous stale requests touch once.
+    sqlx::raw_sql(
+        "CREATE TABLE session_touch_audit (user_id bigint);
+        CREATE FUNCTION audit_session_touch() RETURNS trigger LANGUAGE plpgsql AS $$
+        BEGIN INSERT INTO session_touch_audit VALUES (NEW.user_id); RETURN NEW; END $$;
+        CREATE TRIGGER audit_session_touch AFTER UPDATE ON sessions
+        FOR EACH ROW EXECUTE FUNCTION audit_session_touch();",
+    )
+    .execute(pool)
+    .await
+    .unwrap();
+    sqlx::query(
+        "UPDATE sessions SET last_seen_at=clock_timestamp()-interval '6 minutes' WHERE user_id=$1",
+    )
+    .bind(users[0])
+    .execute(pool)
+    .await
+    .unwrap();
+    sqlx::query("TRUNCATE session_touch_audit")
+        .execute(pool)
+        .await
+        .unwrap();
+    let mut requests = tokio::task::JoinSet::new();
+    for _ in 0..12 {
+        let app = app.clone();
+        let cookie = cookie.clone();
+        requests.spawn(async move { request(&app, "GET", "/api/me", &cookie, &[]).await.status() });
+    }
+    while let Some(result) = requests.join_next().await {
+        assert_eq!(result.unwrap(), StatusCode::OK);
+    }
+    assert_eq!(
+        sqlx::query_scalar::<_, i64>("SELECT count(*) FROM session_touch_audit WHERE user_id=$1")
+            .bind(users[0])
+            .fetch_one(pool)
+            .await
+            .unwrap(),
+        1
+    );
+    sqlx::raw_sql("DROP TRIGGER audit_session_touch ON sessions; DROP FUNCTION audit_session_touch(); DROP TABLE session_touch_audit;")
+        .execute(pool).await.unwrap();
+
+    // An expiry changed while the touch waits on a row lock must be rechecked.
+    sqlx::query(
+        "UPDATE sessions SET last_seen_at=clock_timestamp()-interval '6 minutes' WHERE user_id=$1",
+    )
+    .bind(users[1])
+    .execute(pool)
+    .await
+    .unwrap();
+    let mut tx = pool.begin().await.unwrap();
+    sqlx::query("UPDATE sessions SET last_seen_at=clock_timestamp()-interval '6 minutes', expires_at=clock_timestamp()-interval '1 second' WHERE user_id=$1")
+        .bind(users[1]).execute(&mut *tx).await.unwrap();
+    let waiting = tokio::spawn({
+        let app = app.clone();
+        let cookie = format!("__Host-hima-session={}", tokens[1]);
+        async move { request(&app, "GET", "/api/me", &cookie, &[]).await.status() }
+    });
+    tokio::time::timeout(std::time::Duration::from_secs(5), async {
+        loop {
+            let blocked: bool = sqlx::query_scalar("SELECT EXISTS (SELECT 1 FROM pg_stat_activity WHERE datname=current_database() AND wait_event_type='Lock' AND query LIKE 'UPDATE sessions SET last_seen_at =%')")
+                .fetch_one(pool).await.unwrap();
+            if blocked { break; }
+            tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+        }
+    }).await.expect("session touch must wait on the locked row");
+    tx.commit().await.unwrap();
+    assert_eq!(waiting.await.unwrap(), StatusCode::UNAUTHORIZED);
+    let expired_version =
+        sqlx::query_scalar::<_, String>("SELECT xmin::text FROM sessions WHERE user_id=$1")
+            .bind(users[1])
+            .fetch_one(pool)
+            .await
+            .unwrap();
+    assert_eq!(
+        request(
+            app,
+            "GET",
+            "/api/me",
+            &format!("__Host-hima-session={}", tokens[1]),
+            &[]
+        )
+        .await
+        .status(),
+        StatusCode::UNAUTHORIZED
+    );
+    assert_eq!(
+        sqlx::query_scalar::<_, String>("SELECT xmin::text FROM sessions WHERE user_id=$1")
+            .bind(users[1])
+            .fetch_one(pool)
+            .await
+            .unwrap(),
+        expired_version
+    );
+    sqlx::query("UPDATE sessions SET expires_at=clock_timestamp()+interval '1 hour', last_seen_at=clock_timestamp() WHERE user_id=$1")
+        .bind(users[1]).execute(pool).await.unwrap();
     // Check-and-touch renews activity, never the absolute cap.
     sqlx::query(
         "UPDATE sessions SET last_seen_at=clock_timestamp()-interval '23 hours' WHERE user_id=$1",
@@ -103,7 +244,7 @@ async fn planner_http_contract(app: &Router, pool: &PgPool) {
             &format!("__Host-hima-session={}", tokens[2]),
             &[
                 ("origin", "https://app.example"),
-                ("x-csrf-token", "planner-csrf")
+                ("x-csrf-token", csrf_tokens[2].as_str())
             ]
         )
         .await
@@ -112,7 +253,7 @@ async fn planner_http_contract(app: &Router, pool: &PgPool) {
     );
     // Two devices for one account; revocation must leave another account intact.
     let extra_token = "d".repeat(43);
-    sqlx::query("INSERT INTO sessions (token_hash,user_id,csrf_token,expires_at) VALUES ($1,$2,'planner-csrf',clock_timestamp()+interval '1 hour')").bind(hex::encode(Sha256::digest(extra_token.as_bytes()))).bind(users[2]).execute(pool).await.unwrap();
+    sqlx::query("INSERT INTO sessions (token_hash,user_id,expires_at) VALUES ($1,$2,clock_timestamp()+interval '1 hour')").bind(hex::encode(Sha256::digest(extra_token.as_bytes()))).bind(users[2]).execute(pool).await.unwrap();
     sqlx::query("UPDATE sessions SET last_seen_at=clock_timestamp() WHERE user_id=$1")
         .bind(users[2])
         .execute(pool)
@@ -129,7 +270,7 @@ async fn planner_http_contract(app: &Router, pool: &PgPool) {
         vec![],
         vec![
             ("origin", "https://evil.example"),
-            ("x-csrf-token", "planner-csrf"),
+            ("x-csrf-token", csrf_tokens[2].as_str()),
         ],
         vec![("origin", "https://app.example"), ("x-csrf-token", "bad")],
     ] {
@@ -147,7 +288,7 @@ async fn planner_http_contract(app: &Router, pool: &PgPool) {
         &device,
         &[
             ("origin", "https://app.example"),
-            ("x-csrf-token", "planner-csrf"),
+            ("x-csrf-token", csrf_tokens[2].as_str()),
         ],
     )
     .await;
@@ -203,15 +344,9 @@ async fn planner_http_contract(app: &Router, pool: &PgPool) {
         json!({"expected_revision":revision,"document":document}).to_string()
     };
     for method in ["GET", "PUT"] {
-        let r = send(
-            method,
-            "",
-            body(0, &doc),
-            "https://app.example",
-            "planner-csrf",
-        )
-        .await
-        .unwrap();
+        let r = send(method, "", body(0, &doc), "https://app.example", csrf)
+            .await
+            .unwrap();
         assert_eq!(r.status().as_u16(), 401);
         assert_eq!(r.headers()["cache-control"], "no-store");
     }
@@ -221,14 +356,14 @@ async fn planner_http_contract(app: &Router, pool: &PgPool) {
     assert_eq!(empty.status().as_u16(), 200);
     assert_eq!(
         serde_json::from_str::<Value>(&empty.text().await.unwrap()).unwrap(),
-        json!({"document":null,"revision":0,"updated_at":null})
+        json!({"document":null,"revision":0,"updated_at":null,"session":{"user_id":users[0],"csrf_token":csrf}})
     );
     let missing = send(
         "PUT",
         &tokens[0],
         body(1, &doc),
         "https://app.example",
-        "planner-csrf",
+        csrf,
     )
     .await
     .unwrap();
@@ -242,14 +377,14 @@ async fn planner_http_contract(app: &Router, pool: &PgPool) {
                 &tokens[0],
                 body(revision, &a_doc),
                 "https://app.example",
-                "planner-csrf"
+                csrf
             ),
             send(
                 "PUT",
                 &tokens[0],
                 body(revision, &b_doc),
                 "https://app.example",
-                "planner-csrf"
+                csrf
             )
         );
         let a = a.unwrap();
@@ -258,14 +393,38 @@ async fn planner_http_contract(app: &Router, pool: &PgPool) {
             (a.status().as_u16(), b.status().as_u16()),
             (200, 409) | (409, 200)
         ));
-        let winner = if a.status().as_u16() == 200 { a } else { b };
+        let (winner, winner_doc) = if a.status().as_u16() == 200 {
+            (a, a_doc)
+        } else {
+            (b, b_doc)
+        };
         let saved: Value = serde_json::from_str(&winner.text().await.unwrap()).unwrap();
         assert_eq!(saved["revision"], revision + 1);
+        assert_eq!(saved.as_object().unwrap().len(), 2);
+        assert!(saved["updated_at"].is_string());
+        assert!(saved.get("document").is_none());
         assert_eq!(
             db.load(users[0]).await.unwrap().unwrap().document,
-            saved["document"]
+            winner_doc
         );
     }
+    let echo = send(
+        "PUT",
+        &tokens[0],
+        json!({"expected_revision":2,"document":doc,"echo_document":true}).to_string(),
+        "https://app.example",
+        csrf,
+    )
+    .await
+    .unwrap();
+    assert_eq!(echo.status().as_u16(), 200);
+    let echoed: Value = serde_json::from_str(&echo.text().await.unwrap()).unwrap();
+    assert_eq!(echoed["revision"], 3);
+    assert_eq!(echoed["document"], doc);
+    assert_eq!(
+        db.load(users[0]).await.unwrap().unwrap().document,
+        echoed["document"]
+    );
     let before = db.load(users[0]).await.unwrap().unwrap();
     for (content_type, raw, expected_status) in [
         ("text/plain", body(2, &doc), 415),
@@ -275,7 +434,7 @@ async fn planner_http_contract(app: &Router, pool: &PgPool) {
             .put(&url)
             .header("cookie", format!("__Host-hima-session={}", tokens[0]))
             .header("origin", "https://app.example")
-            .header("x-csrf-token", "planner-csrf")
+            .header("x-csrf-token", csrf)
             .header("content-type", content_type)
             .body(raw)
             .send()
@@ -293,9 +452,11 @@ async fn planner_http_contract(app: &Router, pool: &PgPool) {
         .await
         .unwrap();
     assert_eq!(loaded.status().as_u16(), 200);
+    let mut expected = serde_json::to_value(&before).unwrap();
+    expected["session"] = json!({"user_id":users[0],"csrf_token":csrf});
     assert_eq!(
         serde_json::from_str::<Value>(&loaded.text().await.unwrap()).unwrap(),
-        serde_json::to_value(&before).unwrap()
+        expected
     );
     for (raw, status) in [
         (body(1, &doc), 409),
@@ -311,6 +472,10 @@ async fn planner_http_contract(app: &Router, pool: &PgPool) {
         (body(-1, &doc), 422),
         (json!({"document":doc}).to_string(), 422),
         (
+            json!({"document":doc,"expected_revision":3,"echo_document":"true"}).to_string(),
+            422,
+        ),
+        (
             json!({"document":doc,"expected_revision":2,"user_id":users[1]}).to_string(),
             422,
         ),
@@ -320,23 +485,17 @@ async fn planner_http_contract(app: &Router, pool: &PgPool) {
         ),
         ("{".into(), 400),
     ] {
-        let r = send(
-            "PUT",
-            &tokens[0],
-            raw,
-            "https://app.example",
-            "planner-csrf",
-        )
-        .await
-        .unwrap();
+        let r = send("PUT", &tokens[0], raw, "https://app.example", csrf)
+            .await
+            .unwrap();
         assert_eq!(r.status().as_u16(), status);
         let error: Value = serde_json::from_str(&r.text().await.unwrap()).unwrap();
         assert!(error["error"]["code"].is_string());
         assert_eq!(db.load(users[0]).await.unwrap().unwrap(), before);
     }
     for (origin, csrf) in [
-        ("", "planner-csrf"),
-        ("https://evil.example", "planner-csrf"),
+        ("", csrf),
+        ("https://evil.example", csrf),
         ("https://app.example", ""),
         ("https://app.example", "wrong"),
     ] {
@@ -356,7 +515,7 @@ async fn planner_http_contract(app: &Router, pool: &PgPool) {
             &tokens[1],
             body(2, &doc),
             "https://app.example",
-            "planner-csrf"
+            csrf_tokens[1].as_str()
         )
         .await
         .unwrap()
@@ -371,7 +530,7 @@ async fn planner_http_contract(app: &Router, pool: &PgPool) {
             &tokens[1],
             body(0, &doc),
             "https://app.example",
-            "planner-csrf"
+            csrf_tokens[1].as_str()
         )
         .await
         .unwrap()
@@ -400,7 +559,7 @@ async fn planner_http_contract(app: &Router, pool: &PgPool) {
                 &tokens[2],
                 body(0, &doc),
                 "https://app.example",
-                "planner-csrf"
+                csrf_tokens[2].as_str()
             )
             .await
             .unwrap()
@@ -478,7 +637,7 @@ async fn token(
     let header = B64.encode(br#"{"alg":"RS256","kid":"test-key","typ":"JWT"}"#);
     let payload = B64.encode(serde_json::to_vec(&claims).unwrap());
     let input = format!("{header}.{payload}");
-    let mut signature = SigningKey::<Sha256>::new(p.key.clone())
+    let mut signature = SigningKey::<rsa::sha2::Sha256>::new(p.key.clone())
         .sign(input.as_bytes())
         .to_vec();
     if mode == "signature" {
@@ -739,7 +898,7 @@ async fn oidc_and_persistent_browser_sessions(pool: PgPool) {
     let issuer = format!("http://{}", listener.local_addr().unwrap());
     let provider = Arc::new(Provider {
         issuer: issuer.clone(),
-        key: RsaPrivateKey::new(&mut rand::thread_rng(), 2048).unwrap(),
+        key: RsaPrivateKey::new(&mut rsa::rand_core::OsRng, 2048).unwrap(),
         codes: Mutex::new(HashMap::new()),
     });
     let discovery = json!({"issuer":issuer,"authorization_endpoint":format!("{issuer}/authorize"),"token_endpoint":format!("{issuer}/token"),"jwks_uri":format!("{issuer}/jwks"),"response_types_supported":["code"],"subject_types_supported":["public"],"id_token_signing_alg_values_supported":["RS256"],"code_challenge_methods_supported":["S256"]});
@@ -961,13 +1120,17 @@ async fn oidc_and_persistent_browser_sessions(pool: PgPool) {
     )
     .unwrap();
     let db = Database::from_pool(pool.clone());
+    db.save(
+        before_restart["user_id"].as_i64().unwrap(),
+        &json!({"version":1,"pools":[],"events":[],"next_id":7}),
+        0,
+    )
+    .await
+    .unwrap();
     let saved_before_restart = db
-        .save(
-            before_restart["user_id"].as_i64().unwrap(),
-            &json!({"version":1,"pools":[],"events":[],"next_id":7}),
-            0,
-        )
+        .load(before_restart["user_id"].as_i64().unwrap())
         .await
+        .unwrap()
         .unwrap();
     // Recreate the backend state and reconnect: no in-memory session dependency.
     let reopened = Database::from_pool(
@@ -994,11 +1157,37 @@ async fn oidc_and_persistent_browser_sessions(pool: PgPool) {
     assert!(!String::from_utf8_lossy(&bytes).contains("provider-access-token"));
     let csrf = me["csrf_token"].as_str().unwrap();
     assert_eq!(me, before_restart);
+    // A read-only database dump has neither raw session nor usable CSRF token.
+    let raw_session = session.split_once('=').unwrap().1;
+    let stored_hash: String =
+        sqlx::query_scalar("SELECT token_hash FROM sessions WHERE user_id=$1")
+            .bind(me["user_id"].as_i64().unwrap())
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+    assert_ne!(stored_hash, raw_session);
+    assert_ne!(stored_hash, csrf);
+    for leaked in [stored_hash.as_str(), raw_session] {
+        assert_eq!(
+            request(
+                &restored,
+                "POST",
+                "/auth/logout",
+                &session,
+                &[("origin", "https://app.example"), ("x-csrf-token", leaked)]
+            )
+            .await
+            .status(),
+            StatusCode::FORBIDDEN
+        );
+    }
     let planner = request(&restored, "GET", "/api/planner", &session, &[]).await;
     assert_eq!(planner.status(), StatusCode::OK);
     let planner: Value =
         serde_json::from_slice(&planner.into_body().collect().await.unwrap().to_bytes()).unwrap();
-    assert_eq!(planner, serde_json::to_value(saved_before_restart).unwrap());
+    let mut expected_planner = serde_json::to_value(saved_before_restart).unwrap();
+    expected_planner["session"] = me.clone();
+    assert_eq!(planner, expected_planner);
     assert_eq!(
         request(&restored, "POST", "/api/future-mutation", &session, &[])
             .await
@@ -1057,6 +1246,24 @@ async fn oidc_and_persistent_browser_sessions(pool: PgPool) {
     let rotated_me: Value =
         serde_json::from_slice(&response.into_body().collect().await.unwrap().to_bytes()).unwrap();
     assert_eq!(me["user_id"], rotated_me["user_id"]);
+    assert_ne!(me["csrf_token"], rotated_me["csrf_token"]);
+    assert_eq!(
+        request(
+            &restored,
+            "POST",
+            "/auth/logout",
+            &rotated,
+            &[("origin", "https://app.example"), ("x-csrf-token", csrf)]
+        )
+        .await
+        .status(),
+        StatusCode::FORBIDDEN
+    );
+    let response = request(&restored, "GET", "/api/planner", &rotated, &[]).await;
+    let rotated_planner: Value =
+        serde_json::from_slice(&response.into_body().collect().await.unwrap().to_bytes()).unwrap();
+    assert_eq!(rotated_planner["document"], planner["document"]);
+    assert_eq!(rotated_planner["session"], rotated_me);
     let logout = request(
         &restored,
         "POST",

@@ -1,6 +1,10 @@
-use crate::{auth::Auth, db::SaveError, error::ApiError};
+use crate::{
+    auth::{Auth, Session},
+    db::{SaveError, SavedPlanner, StoredPlanner},
+    error::ApiError,
+};
 use axum::{
-    Json, Router,
+    Extension, Json, Router,
     extract::{State, rejection::JsonRejection},
     http::{HeaderMap, StatusCode},
     routing::get,
@@ -14,13 +18,24 @@ use std::sync::Arc;
 struct SaveRequest {
     expected_revision: i64,
     document: Value,
+    #[serde(default)]
+    echo_document: bool,
 }
 
-#[derive(Serialize)]
+#[derive(Default, Serialize)]
 struct PlannerResponse {
     document: Option<Value>,
     revision: i64,
     updated_at: Option<chrono::DateTime<chrono::Utc>>,
+}
+
+#[derive(Serialize)]
+struct LoadResponse {
+    #[serde(flatten)]
+    planner: PlannerResponse,
+    // The exact authenticated session used to select the planner, including
+    // empty accounts. A user ID alone cannot detect same-account re-login.
+    session: Session,
 }
 
 pub(crate) fn router(auth: Arc<Auth>) -> Router {
@@ -29,46 +44,39 @@ pub(crate) fn router(auth: Arc<Auth>) -> Router {
         .with_state(auth)
 }
 
-fn unavailable() -> ApiError {
-    ApiError::auth(
-        StatusCode::SERVICE_UNAVAILABLE,
-        "planner_unavailable",
-        "Planner storage is temporarily unavailable.",
-    )
+impl From<StoredPlanner> for PlannerResponse {
+    fn from(stored: StoredPlanner) -> Self {
+        Self {
+            document: Some(stored.document),
+            revision: stored.revision,
+            updated_at: Some(stored.updated_at),
+        }
+    }
 }
 
 async fn load(
     State(auth): State<Arc<Auth>>,
     headers: HeaderMap,
-) -> Result<Json<PlannerResponse>, ApiError> {
+) -> Result<Json<LoadResponse>, ApiError> {
     let session = auth.session(&headers).await?;
     let stored = auth
         .db
         .load(session.user_id)
         .await
-        .map_err(|_| unavailable())?;
-    Ok(Json(match stored {
-        Some(p) => PlannerResponse {
-            document: Some(p.document),
-            revision: p.revision,
-            updated_at: Some(p.updated_at),
-        },
-        None => PlannerResponse {
-            document: None,
-            revision: 0,
-            updated_at: None,
-        },
+        .map_err(|_| ApiError::planner_unavailable())?;
+    Ok(Json(LoadResponse {
+        planner: stored.map(PlannerResponse::from).unwrap_or_default(),
+        session,
     }))
 }
 
 async fn save(
     State(auth): State<Arc<Auth>>,
-    headers: HeaderMap,
+    Extension(session): Extension<Session>,
     body: Result<Json<SaveRequest>, JsonRejection>,
-) -> Result<Json<PlannerResponse>, ApiError> {
-    let session = auth.session(&headers).await?;
+) -> Result<Json<SavedPlanner>, ApiError> {
     let Json(body) = body.map_err(|e| {
-        ApiError::auth(
+        ApiError::new(
             e.status(),
             "invalid_request",
             "Expected a JSON object with document and nonnegative integer expected_revision.",
@@ -76,24 +84,25 @@ async fn save(
     })?;
     let p = auth
         .db
-        .save(session.user_id, &body.document, body.expected_revision)
+        .save_with_echo(
+            session.user_id,
+            &body.document,
+            body.expected_revision,
+            body.echo_document,
+        )
         .await
         .map_err(|e| match e {
-            SaveError::Invalid(_) => ApiError::auth(
+            SaveError::Invalid(_) => ApiError::new(
                 StatusCode::UNPROCESSABLE_ENTITY,
                 "invalid_document",
                 "The document or expected revision is invalid.",
             ),
-            SaveError::Conflict => ApiError::auth(
+            SaveError::Conflict => ApiError::new(
                 StatusCode::CONFLICT,
                 "revision_conflict",
                 "The planner has changed; load it before saving again.",
             ),
-            SaveError::Database(_) => unavailable(),
+            SaveError::Database(_) => ApiError::planner_unavailable(),
         })?;
-    Ok(Json(PlannerResponse {
-        document: Some(p.document),
-        revision: p.revision,
-        updated_at: Some(p.updated_at),
-    }))
+    Ok(Json(p))
 }

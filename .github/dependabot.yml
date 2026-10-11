@@ -4,11 +4,27 @@ updates:
     directory: /backend
     schedule:
       interval: weekly
+    # Cargo 0.x minor bumps may break APIs: keep those individually reviewable.
+    groups:
+      rust-patches:
+        applies-to: version-updates
+        patterns: ["*"]
+        update-types: [patch]
   - package-ecosystem: npm
     directory: /
     schedule:
       interval: weekly
+    groups:
+      frontend-minor-patch:
+        applies-to: version-updates
+        patterns: ["*"]
+        update-types: [minor, patch]
   - package-ecosystem: github-actions
     directory: /
     schedule:
       interval: weekly
+    groups:
+      actions-minor-patch:
+        applies-to: version-updates
+        patterns: ["*"]
+        update-types: [minor, patch]

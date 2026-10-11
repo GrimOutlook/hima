@@ -1,17 +1,36 @@
+use crate::{
+    auth::{self, Auth},
+    error::ApiError,
+    planner_api,
+};
 use axum::{
     Json, Router,
-    http::Request,
+    body::Body,
+    http::{
+        Request, StatusCode,
+        header::{CACHE_CONTROL, REFERRER_POLICY},
+    },
     middleware::{self, Next},
     response::{IntoResponse, Response},
     routing::{get, post},
 };
+use hyper::server::conn::http1::Builder;
+use hyper_util::{
+    rt::{TokioIo, TokioTimer},
+    server::graceful::GracefulShutdown,
+    service::TowerToHyperService,
+};
 use serde::Serialize;
-use std::time::{Duration, Instant};
+use std::{
+    future::Future,
+    io,
+    sync::Arc,
+    time::{Duration, Instant},
+};
+use tokio::{net::TcpListener, time::timeout};
 
 const REQUEST_TIMEOUT: Duration = Duration::from_secs(15);
 const HEADER_TIMEOUT: Duration = Duration::from_secs(10);
-
-use crate::error::ApiError;
 
 #[derive(Serialize)]
 struct Health {
@@ -19,29 +38,28 @@ struct Health {
 }
 
 pub fn router() -> Router {
-    base_router()
-        .route("/auth/login", get(disabled))
-        .route("/auth/callback", get(disabled))
-        .route("/auth/logout", post(unauthenticated))
-        .route("/auth/logout-all", post(unauthenticated))
-        .route("/api/me", get(unauthenticated))
-        .route("/api/planner", get(unauthenticated).put(unauthenticated))
-        .layer(middleware::from_fn(request_timeout))
-        .layer(middleware::from_fn(no_store))
-        .layer(middleware::from_fn(log_request))
+    with_middleware(
+        base_router()
+            .route("/auth/login", get(disabled))
+            .route("/auth/callback", get(disabled))
+            .route("/auth/logout", post(unauthenticated))
+            .route("/auth/logout-all", post(unauthenticated))
+            .route("/api/me", get(unauthenticated))
+            .route("/api/planner", get(unauthenticated).put(unauthenticated)),
+    )
 }
 
 async fn disabled() -> ApiError {
-    ApiError::auth(
-        axum::http::StatusCode::SERVICE_UNAVAILABLE,
+    ApiError::new(
+        StatusCode::SERVICE_UNAVAILABLE,
         "auth_unavailable",
         "Authentication is not configured.",
     )
 }
 
 async fn unauthenticated() -> ApiError {
-    ApiError::auth(
-        axum::http::StatusCode::UNAUTHORIZED,
+    ApiError::new(
+        StatusCode::UNAUTHORIZED,
         "unauthenticated",
         "Sign in to access this endpoint.",
     )
@@ -54,21 +72,26 @@ fn base_router() -> Router {
         .method_not_allowed_fallback(|| async { ApiError::method_not_allowed() })
 }
 
-pub fn with_auth(auth: std::sync::Arc<crate::auth::Auth>) -> Router {
-    base_router()
-        .merge(crate::auth::router(auth.clone()))
-        .merge(crate::planner_api::router(auth.clone()))
-        .layer(middleware::from_fn_with_state(auth, crate::auth::protect))
-        .layer(middleware::from_fn(request_timeout))
+pub fn with_auth(auth: Arc<Auth>) -> Router {
+    with_middleware(
+        base_router()
+            .merge(auth::router(auth.clone()))
+            .merge(planner_api::router(auth.clone()))
+            .layer(middleware::from_fn_with_state(auth, auth::protect)),
+    )
+}
+
+fn with_middleware(app: Router) -> Router {
+    app.layer(middleware::from_fn(request_timeout))
         .layer(middleware::from_fn(no_store))
         .layer(middleware::from_fn(log_request))
 }
 
-async fn request_timeout(request: Request<axum::body::Body>, next: Next) -> Response {
-    match tokio::time::timeout(REQUEST_TIMEOUT, next.run(request)).await {
+async fn request_timeout(request: Request<Body>, next: Next) -> Response {
+    match timeout(REQUEST_TIMEOUT, next.run(request)).await {
         Ok(response) => response,
-        Err(_) => ApiError::auth(
-            axum::http::StatusCode::SERVICE_UNAVAILABLE,
+        Err(_) => ApiError::new(
+            StatusCode::SERVICE_UNAVAILABLE,
             "request_timeout",
             "The request timed out. Please try again.",
         )
@@ -78,14 +101,14 @@ async fn request_timeout(request: Request<axum::body::Body>, next: Next) -> Resp
 
 /// Apply header deadlines at the transport layer, before a request reaches Axum.
 pub async fn serve(
-    listener: tokio::net::TcpListener,
+    listener: TcpListener,
     app: Router,
-    shutdown: impl std::future::Future<Output = ()>,
-) -> std::io::Result<()> {
-    let mut builder = hyper::server::conn::http1::Builder::new();
-    builder.timer(hyper_util::rt::TokioTimer::new());
+    shutdown: impl Future<Output = ()>,
+) -> io::Result<()> {
+    let mut builder = Builder::new();
+    builder.timer(TokioTimer::new());
     builder.header_read_timeout(HEADER_TIMEOUT);
-    let graceful = hyper_util::server::graceful::GracefulShutdown::new();
+    let graceful = GracefulShutdown::new();
     tokio::pin!(shutdown);
     loop {
         tokio::select! {
@@ -93,8 +116,8 @@ pub async fn serve(
             accepted = listener.accept() => {
                 let (stream, _) = accepted?;
                 let connection = builder.serve_connection(
-                    hyper_util::rt::TokioIo::new(stream),
-                    hyper_util::service::TowerToHyperService::new(app.clone()),
+                    TokioIo::new(stream),
+                    TowerToHyperService::new(app.clone()),
                 );
                 let connection = graceful.watch(connection);
                 tokio::spawn(async move {
@@ -105,29 +128,32 @@ pub async fn serve(
         }
     }
     // Slow bodies must not prevent process shutdown indefinitely.
-    let _ = tokio::time::timeout(REQUEST_TIMEOUT, graceful.shutdown()).await;
+    let _ = timeout(REQUEST_TIMEOUT, graceful.shutdown()).await;
     Ok(())
 }
 
-async fn no_store(request: Request<axum::body::Body>, next: Next) -> Response {
+async fn no_store(request: Request<Body>, next: Next) -> Response {
     let mut response = next.run(request).await;
-    response.headers_mut().insert(
-        axum::http::header::CACHE_CONTROL,
-        "no-store".parse().unwrap(),
-    );
-    response.headers_mut().insert(
-        axum::http::header::REFERRER_POLICY,
-        "no-referrer".parse().unwrap(),
-    );
+    response
+        .headers_mut()
+        .insert(CACHE_CONTROL, "no-store".parse().unwrap());
+    response
+        .headers_mut()
+        .insert(REFERRER_POLICY, "no-referrer".parse().unwrap());
     response
 }
 
-async fn log_request(request: Request<axum::body::Body>, next: Next) -> Response {
+async fn log_request(request: Request<Body>, next: Next) -> Response {
     let start = Instant::now();
     let method = request.method().clone();
     let response = next.run(request).await;
     // Do not log URLs, headers, or bodies: they may contain credentials.
-    tracing::info!(%method, status = response.status().as_u16(), duration_ms = start.elapsed().as_millis() as u64, "request completed");
+    tracing::info!(
+        %method,
+        status = response.status().as_u16(),
+        duration_ms = start.elapsed().as_millis() as u64,
+        "request completed"
+    );
     response
 }
 
