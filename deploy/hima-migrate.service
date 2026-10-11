@@ -12,6 +12,14 @@ EnvironmentFile=/etc/hima/migrate.env
 ExecStart=/opt/hima/current/backend/bin/migrate
 NoNewPrivileges=true
 PrivateTmp=true
+PrivateUsers=true
+ProtectProc=invisible
+ProcSubset=pid
+ProtectKernelLogs=true
+ProtectClock=true
+ProtectHostname=true
+RestrictRealtime=true
+# Local/remote PostgreSQL and DNS policy is configured per host; see deploy/README.md.
 ProtectSystem=strict
 ProtectHome=true
 CapabilityBoundingSet=

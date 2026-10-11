@@ -111,6 +111,80 @@ DDL credentials out of the API environment and away from its Unix user.
 The [README configuration tables](../README.md#oidc-login-and-browser-sessions)
 cover every OIDC variable; `HIMA_BIND_ADDR` and `RUST_LOG` are optional.
 
+## Service sandbox and networking
+
+Both units hide other users' processes (`ProtectProc=invisible`) and remove
+non-process `/proc` entries (`ProcSubset=pid`), isolate user IDs
+(`PrivateUsers=true`), protect kernel logs, the clock and hostname, and prohibit
+realtime scheduling. Ordinary clock reads, Tokio worker threads, TCP/Unix sockets,
+PostgreSQL password authentication and OIDC HTTPS requests still work. Processes
+with the same service UID are not hidden: keep each dedicated account exclusive
+to its service. `RestrictNamespaces=true` restricts the executed program, not
+systemd's setup of these namespaces.
+
+Use systemd 247+ and a kernel supporting user namespaces and procfs
+`hidepid=invisible`/`subset=pid` (Linux 5.8+). Distribution/container policy may
+disable namespace creation; test on the actual deployment host. User isolation
+maps root and the configured service UID/GID, not arbitrary supplementary groups.
+Release binaries, libraries, CA certificates and parent directories must be
+readable/traversable by that identity (including Nix closures). systemd reads
+root-only environment files before dropping privileges. TCP SCRAM authentication
+is unaffected; if switching to PostgreSQL Unix-socket peer authentication, verify
+the server sees the intended host UID. No private network namespace is used:
+nginx must reach the API on host loopback and the API/migrator must reach PostgreSQL.
+
+The generic units intentionally leave IP traffic unrestricted. The API contacts
+the configured OIDC discovery, token and JWKS endpoints, including hourly and
+unknown-key refreshes; these can use different hosts, rotating/CDN IPv4/IPv6
+addresses and DNS resolvers. The migrator can use the documented remote database.
+`RestrictAddressFamilies` limits socket families, **not destinations**; binding the
+API/PostgreSQL to loopback limits inbound exposure, not outbound access.
+
+For the recipe's local database, restrict the migrator with a host drop-in
+`/etc/systemd/system/hima-migrate.service.d/network.conf`:
+
+```ini
+[Service]
+IPAddressDeny=any
+IPAddressAllow=localhost
+```
+
+Use a numeric loopback database address so this policy needs no external DNS.
+For the API, install the same policy in
+`/etc/systemd/system/hima-api.service.d/network.conf` **only after** adding
+`IPAddressAllow=` entries for every provider endpoint's actual address/CIDR and
+any non-loopback DNS resolver (and remote database, if used). These directives
+accept numeric addresses/prefixes, not hostnames, and filter both incoming and
+outgoing IPv4/IPv6 traffic; `localhost` covers 127.0.0.0/8 and ::1. Unix sockets
+are unaffected. With a local provider and database, loopback alone is sufficient.
+Maintain allowlists across provider/DNS address changes; a single issuer IP is
+not necessarily enough. Broad shared-CDN ranges weaken destination isolation.
+Where stable narrow ranges cannot be maintained, retain the documented open
+policy or enforce destination-aware egress at the host/network boundary.
+
+IP filtering requires working cgroup BPF support; systemd can warn and continue
+without enforcement on unsupported hosts. After installing units/drop-ins:
+
+```sh
+sudo systemd-analyze verify /etc/systemd/system/hima-api.service /etc/systemd/system/hima-migrate.service
+sudo systemctl daemon-reload
+sudo systemd-analyze security hima-api.service hima-migrate.service
+sudo systemctl start hima-migrate && sudo systemctl restart hima-api
+sudo journalctl -u hima-api -u hima-migrate -b
+```
+
+Check for namespace/BPF setup warnings, successful migrations, real-provider
+login/token exchange, planner save/restart and signing-key refresh. On a staging
+host, also probe an allowed destination and a denied destination from a transient
+unit with the same IP policy; a security score alone does not prove enforcement.
+For source-only inspection, run `systemd-analyze security --offline=yes
+deploy/hima-api.service deploy/hima-migrate.service`; `verify` requires the
+configured executables to exist (use the installed release on the host).
+`python3 deploy/test_systemd.py` verifies both unmodified units in a temporary
+root with executable/target stubs and checks systemd's assessment of the sandbox
+directives; CI runs this check. It does not execute the application or substitute
+for the host's namespace, network-enforcement and authenticated acceptance checks.
+
 ## Install and start
 
 Create `/opt/hima/releases/RELEASE` and use the following layout (replace RELEASE
