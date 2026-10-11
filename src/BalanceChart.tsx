@@ -44,8 +44,8 @@ interface ChartPoint extends BalancePoint {
 const CHART_HEIGHT = 340;
 const PLOT_LEFT = 68;
 const PLOT_RIGHT = 18;
-const ACTUAL_COLOR = "#4b7955";
-const PROJECTED_COLOR = "#bd856a";
+const ACTUAL_COLOR = "var(--chart-actual)";
+const PROJECTED_COLOR = "var(--chart-projected)";
 const GUIDE_COLOR = "#a6afa5";
 const AXIS_TICK_STYLE = { fill: "var(--muted)", fontSize: 12, fontFamily: "DM Sans, sans-serif" };
 const CHART_MARGIN = { top: 38, right: PLOT_RIGHT, bottom: 0, left: 0 };
@@ -487,12 +487,12 @@ export const BalanceChart = memo(function BalanceChart({
               }}
               aria-label={`Daily ${selectedPool?.name ?? (combinedTotals ? "combined pools" : "selected pools")} balance history and forecast through next year`}
             >
-              <CartesianGrid stroke="#eeefe9" vertical={false} />
+              <CartesianGrid stroke="var(--line)" vertical={false} />
               {visibleEndDate > today && (
                 <ReferenceArea
                   x1={Math.max(visibleStart, todayIndex)}
                   x2={visibleEnd}
-                  fill="#969d95"
+                  fill="var(--muted)"
                   fillOpacity={0.16}
                   strokeOpacity={0}
                   ifOverflow="hidden"
@@ -566,7 +566,7 @@ export const BalanceChart = memo(function BalanceChart({
                 height={42}
                 travellerWidth={10}
                 stroke={GUIDE_COLOR}
-                fill="#f6f7f3"
+                fill="var(--soft)"
                 tickFormatter={formatBrushTick}
               >
                 <AreaChart margin={BRUSH_MARGIN}>

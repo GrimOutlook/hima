@@ -1,8 +1,8 @@
 :root {
   color-scheme: light;
   font-family: 'DM Sans', sans-serif;
-  color: #232d27;
-  background: #f6f5f0;
+  color: var(--ink);
+  background: var(--page);
   font-synthesis: none;
   text-rendering: optimizeLegibility;
   -webkit-font-smoothing: antialiased;
@@ -18,6 +18,12 @@
   --mint: #e5eee8;
   --coral: #e9a38c;
   --surface: #fff;
+  --page: #f6f5f0;
+  --soft: #edf3ee;
+  --accent: #426a4e;
+  --hero: #315844;
+  --chart-actual: #4b7955;
+  --chart-projected: #bd856a;
 }
 
 * { box-sizing: border-box; }
@@ -27,7 +33,7 @@ body {
   margin: 0;
   background:
     radial-gradient(ellipse at 88% 0%, rgba(231, 226, 207, .24), transparent 29rem),
-    #f6f5f0;
+    var(--page);
 }
 
 button, input, select { font: inherit; }
@@ -591,3 +597,110 @@ button:focus-visible, input:focus-visible, select:focus-visible, a:focus-visible
   overflow-wrap: anywhere;
 }
 .history-timeline-heading { width: 52px; }
+
+/* Each palette shares semantic tokens, including portalled calendars and tooltips. */
+:root[data-theme="coast"] {
+  --page: #f0f5f8; --surface: #fff; --ink: #253746; --muted: #586c7b;
+  --line: #dce6ee; --soft: #e8f1f7; --green: #285d7e; --green-dark: #204c68;
+  --accent: #326a90; --hero: #347393; --mint: #e8f1f7; --chart-actual: #326a90;
+}
+:root[data-theme="lavender"] {
+  --page: #f6f2f9; --surface: #fff; --ink: #393044; --muted: #716079;
+  --line: #e8deed; --soft: #f0e8f5; --green: #695080; --green-dark: #554069;
+  --accent: #75558e; --hero: #86659b; --mint: #f0e8f5; --chart-actual: #75558e;
+}
+:root[data-mode="dark"] {
+  color-scheme: dark;
+  --page: #121c18; --surface: #1d2b24; --ink: #e5eee8; --muted: #afbeb3;
+  --line: #35483c; --soft: #293b30; --green: #39644a; --green-dark: #477957;
+  --accent: #a3d2b1; --hero: #294e3b; --mint: #293b30;
+  --text-warm: #edb299; --text-success: #a3d2b1; --text-warning: #e5c181;
+  --chart-actual: #a3d2b1; --chart-projected: #edb299;
+}
+:root[data-theme="midnight"] {
+  --page: #111923; --surface: #1c2938; --ink: #e4edf7; --muted: #aebdd0;
+  --line: #35485d; --soft: #293c50; --green: #365e86; --green-dark: #426f9d;
+  --accent: #9bc8f0; --hero: #294b70; --mint: #293c50;
+  --text-success: #a4d4cd; --chart-actual: #9bc8f0;
+}
+:root[data-theme="plum"] {
+  --page: #201723; --surface: #302337; --ink: #f0e5f4; --muted: #c6b1ce;
+  --line: #503d59; --soft: #422f4b; --green: #745184; --green-dark: #89609b;
+  --accent: #d8afea; --hero: #5d3e6d; --mint: #422f4b;
+  --text-success: #b9d6b7; --chart-actual: #d8afea;
+}
+
+.theme-controls { display: flex; align-items: center; gap: 10px; }
+.theme-picker { display: flex; align-items: center; gap: 8px; color: var(--muted); font-size: 12px; }
+.theme-picker select { max-width: 130px; min-height: 36px; padding: 0 8px; border: 1px solid var(--line); border-radius: 8px; color: var(--ink); background: var(--surface); cursor: pointer; }
+.mode-toggle { min-height: 36px; padding: 0 10px; }
+.mode-toggle > span:first-child { font-size: 19px; }
+.topbar { height: auto; min-height: 76px; gap: 16px; padding-top: 12px; padding-bottom: 12px; border-color: var(--line); }
+.topbar-right { flex-wrap: wrap; justify-content: flex-end; gap: 16px; }
+
+:root :is(.page-intro h1, .section-heading-row h2, .events-panel-header h2,
+  .pool-title-group h3, .pool-balance, .pool-lifetime-metric strong,
+  .event-info > strong, .history-panel-header h2, .balance-chart-tooltip strong,
+  .empty-card h3, .modal-heading h2, .event-review h3) { color: var(--ink); }
+:root :is(.field-label, .date-picker-field > span, .rule-copy, .pool-rules-disclosure > h3,
+  .events-empty p, .history-pool-dropdown, .history-pool-visibility, .pool-visibility-settings,
+  .balance-chart-tooltip-date, .balance-chart-tooltip, .setting-tooltip-content,
+  .event-review, .event-days-heading, .calendar-day,
+  .pool-usage-modal .pool-usage-table tbody td,
+  .pool-usage-modal .pool-usage-table tfoot th) { color: var(--muted); }
+:root :is(.history-panel, .modal-card, .date-picker-calendar, .history-pool-options,
+  .history-timeline-controls, .history-timeline-preset, .balance-chart-tooltip,
+  .setting-tooltip-content, .button-outline, .calendar-selectors select,
+  .calendar-nav-button, .field-label input, .field-label select,
+  .date-picker-field .date-picker-trigger, .segment.is-active,
+  .pool-usage-modal .pool-usage-table thead th) { background: var(--surface); border-color: var(--line); }
+:root :is(.field-label input, .field-label select, .date-picker-calendar,
+  .calendar-selectors select, .calendar-nav-button, .date-picker-field .date-picker-trigger,
+  .button-outline) { color: var(--ink); }
+:root :is(.pool-card, .events-panel, .empty-card, .pool-rules-disclosure,
+  .timeline-list, .event-row, .calendar-footer, .pool-visibility-settings,
+  .event-selected-dates li, .event-day-card, .pool-custom-color-picker,
+  .modal-actions, .pool-usage-modal-table-scroll,
+  .pool-usage-modal .pool-usage-table th, .pool-usage-modal .pool-usage-table td) { border-color: var(--line); }
+:root :is(.pool-lifetime-metrics, .events-panel-footer, .event-day-card,
+  .pool-custom-color-picker, .segmented-control, .event-wizard-steps li,
+  .button-quiet:hover, .icon-button:hover, .calendar-day:hover,
+  .calendar-nav-button:hover, .button-outline:hover:not(:disabled)) { background: var(--soft); }
+:root :is(.button-soft, .pool-icon, .modal-icon, .empty-illustration,
+  .events-empty-mark, .event-date-block, .event-review-clear,
+  .calendar-clear-button, .history-timeline-preset.is-active,
+  .event-wizard-steps li.is-active, .recurring-symbol) { background: var(--soft); color: var(--accent); border-color: var(--line); }
+:root :is(.text-button, .text-button:hover, .footer-brand, .icon-button:hover,
+  .history-change strong, .segment.is-active, .event-selected-dates li,
+  .calendar-today-button, .calendar-today-button:hover,
+  .pool-usage-modal .pool-usage-table tfoot td) { color: var(--accent); }
+:root :is(.button-primary:hover:not(:disabled), .calendar-done-button:hover) { background: var(--green-dark); }
+:root :is(.calendar-day.is-selected, .calendar-day.is-selected:hover, .calendar-done-button) { background: var(--green); color: #fff; border-color: var(--green); }
+:root .calendar-day.is-today { border-color: var(--accent); color: var(--accent); }
+:root .calendar-day.is-today.is-selected { color: #fff; }
+:root .balance-card { background: linear-gradient(112deg, var(--green-dark), var(--hero)); }
+:root .event-row-selected { background: var(--soft); box-shadow: 0 0 0 6px var(--soft); }
+:root :is(.pool-card:hover, .pool-card.pool-card-selected, .pool-card.pool-card-dragging,
+  .history-timeline-preset:hover) { border-color: var(--accent); }
+:root .timeline-list { --scroll-surface: var(--surface); }
+:root .pools-column { --scroll-surface: var(--page); }
+:root :is(.pool-event-subtraction, .event-review-warnings) { background: color-mix(in srgb, var(--text-warm) 12%, var(--surface)); color: var(--text-warm); }
+:root :is(.pool-event-subtraction-icon, .pool-event-subtraction-track, .one-time-symbol,
+  .cap-symbol, .modal-icon-add, .modal-icon-event) { background: color-mix(in srgb, var(--text-warm) 18%, var(--surface)); color: var(--text-warm); }
+:root :is(.event-amount, .pool-usage-modal .pool-usage-table tbody td:last-child) { color: var(--text-warm); }
+:root .pool-usage-modal .pool-usage-table tbody td:nth-child(2) { color: var(--ink); }
+:root .pool-visibility-settings input { accent-color: var(--accent); }
+:root .privacy-dot { background: var(--accent); box-shadow: 0 0 0 3px var(--soft); }
+:root .event-pool-bar { background: var(--soft); }
+:root[data-mode="dark"] :is(.form-error, .calendar-date-error, .pool-balance-negative,
+  .pool-balance-change, .pool-time-used, .modal-actions .modal-delete) { color: #f19c93; }
+:root[data-mode="dark"] :is(.pool-time-added, .pool-balance-change-added) { color: #9bc8f0; }
+:root[data-mode="dark"] body { background: var(--page); }
+
+@media (max-width: 560px) {
+  .topbar { min-height: 66px; padding-top: 10px; padding-bottom: 10px; }
+  .topbar-right { gap: 8px; }
+  .theme-controls { gap: 6px; }
+  .theme-picker > span, .mode-toggle > span:last-child { display: none; }
+  .theme-picker select { max-width: 104px; }
+}

@@ -3,6 +3,7 @@ import { closestCenter, defaultDropAnimationSideEffects, DndContext, DragOverlay
 import { defaultAnimateLayoutChanges, SortableContext, sortableKeyboardCoordinates, useSortable, verticalListSortingStrategy } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import { CalendarPicker } from "./CalendarPicker";
+import { ThemeControls } from "./themes";
 import { poolColor } from "./poolColors";
 import { parseBackupJson } from "./backup";
 import { errorMessage } from "./errors";
@@ -355,6 +356,7 @@ function Planner({ planner }: { planner: ReturnType<typeof useStoredPlanner> }) 
           <span className="brand-name">hima</span>
         </a>
         <div className="topbar-right">
+          <ThemeControls />
           <span className="privacy-note" role="status">
             {saveStatus === "saved" && <span className="privacy-dot" />}
             {saveStatusLabel(saveStatus, planner.revision, local)}
