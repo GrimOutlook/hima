@@ -170,7 +170,7 @@ jobs:
       - name: Install frontend dependencies
         run: pnpm install --frozen-lockfile
       - name: Install Nix for the pinned HTTP/2-capable nginx
-        uses: cachix/install-nix-action@13d8dd58da0234aa297dedd986986ccb8e7f3e24 # v31
+        uses: cachix/install-nix-action@448cde739abec1eaf0646249e3d25bb8d9bc7702 # v31
       - name: Test production HTTPS reverse proxy and restart persistence
         run: |
           pnpm run build
@@ -185,7 +185,7 @@ jobs:
         with:
           persist-credentials: false
       - name: Install Nix for the pinned HTTP/2-capable nginx
-        uses: cachix/install-nix-action@13d8dd58da0234aa297dedd986986ccb8e7f3e24 # v31
+        uses: cachix/install-nix-action@448cde739abec1eaf0646249e3d25bb8d9bc7702 # v31
       - name: Test production nginx rate limits
         run: nix shell --inputs-from . nixpkgs#nginx nixpkgs#curl --command python3 deploy/test_rate_limits.py
       - name: Verify systemd units and sandbox assessments
@@ -198,7 +198,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - uses: cachix/install-nix-action@13d8dd58da0234aa297dedd986986ccb8e7f3e24 # v31
+      - uses: cachix/install-nix-action@448cde739abec1eaf0646249e3d25bb8d9bc7702 # v31
       - name: Restore and save Nix store
         uses: nix-community/cache-nix-action@7df957e333c1e5da7721f60227dbba6d06080569 # v7
         with:
@@ -293,7 +293,7 @@ jobs:
       - name: Set up Rust
         uses: dtolnay/rust-toolchain@686976e191b89faba57d3206551f0f330d8cb249 # stable
       - name: Install cargo-audit
-        uses: taiki-e/install-action@ab6895351a88b908e96a4697860d4ffea5e57dbe # v2.87.27
+        uses: taiki-e/install-action@1168f6810a3cb30a3514bf5756a3b7f0422c6df8 # v2.87.28
         with:
           tool: cargo-audit@0.22.2
       - name: Audit Rust dependencies
