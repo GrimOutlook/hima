@@ -91,7 +91,7 @@ jobs:
           workspaces: backend
           shared-key: backend-test
           save-if: false
-      - run: cargo test --locked --test postgres -- --ignored
+      - run: cargo test --locked --test postgres --test local_auth -- --ignored
       - run: cargo test --locked --lib -- --ignored
       - name: Test signed OIDC, unauthorized access, and concurrent planner saves
         run: cargo test --locked --test auth -- --ignored

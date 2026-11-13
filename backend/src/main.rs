@@ -17,20 +17,29 @@ async fn main() -> ExitCode {
 
 async fn run() -> Result<(), String> {
     let config = Config::from_env()?;
+    let local = hima_api::config::local_enabled()?;
     let app = match OidcConfig::from_env()? {
         Some(oidc) => {
             let db = hima_api::db::Database::connect(&oidc.database_url)
                 .await
                 .map_err(|_| "could not connect to authentication database")?;
-            let auth = hima_api::auth::Auth::new(
+            let auth = hima_api::auth::Auth::new_with_local(
                 db,
                 &oidc.issuer,
                 oidc.client_id,
                 oidc.client_secret,
                 &oidc.public_origin,
+                local,
             )
             .await?;
             server::with_auth(auth)
+        }
+        None if local => {
+            let (url, origin) = hima_api::config::local_environment()?;
+            let db = hima_api::db::Database::connect(&url)
+                .await
+                .map_err(|_| "could not connect to authentication database")?;
+            server::with_auth(hima_api::auth::Auth::new_local(db, &origin).await?)
         }
         None => server::router(),
     };

@@ -40,6 +40,13 @@ struct Health {
 pub fn router() -> Router {
     with_middleware(
         base_router()
+            .route(
+                "/auth/options",
+                get(|| async { Json(serde_json::json!({"local": false, "oidc": false})) }),
+            )
+            .route("/auth/local/login", post(disabled))
+            .route("/auth/local/account", get(unauthenticated))
+            .route("/auth/local/password", post(unauthenticated))
             .route("/auth/login", get(disabled))
             .route("/auth/callback", get(disabled))
             .route("/auth/logout", post(unauthenticated))

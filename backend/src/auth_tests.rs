@@ -126,12 +126,13 @@ fn login_test_auth(pool: sqlx::PgPool) -> Arc<Auth> {
     let client =
         CoreClient::from_provider_metadata(metadata.clone(), ClientId::new("test".into()), None);
     Arc::new(Auth {
-        signing: Mutex::new(SigningKeys {
+        local: None,
+        signing: Some(Mutex::new(SigningKeys {
             metadata,
             client: client.clone(),
             last_attempt: Instant::now(),
-        }),
-        client,
+        })),
+        client: Some(client),
         http: openidconnect::reqwest::Client::new(),
         db: Database::from_pool(pool),
         origin: "https://app.example".into(),
@@ -403,13 +404,14 @@ async fn unsafe_handlers_reuse_the_middleware_session(pool: sqlx::PgPool) {
     let client =
         CoreClient::from_provider_metadata(metadata.clone(), ClientId::new("test".into()), None);
     let auth = Arc::new(Auth {
+        local: None,
         cleanup_task: None,
-        signing: Mutex::new(SigningKeys {
+        signing: Some(Mutex::new(SigningKeys {
             metadata,
             client: client.clone(),
             last_attempt: Instant::now(),
-        }),
-        client,
+        })),
+        client: Some(client),
         http: openidconnect::reqwest::Client::new(),
         db: Database::from_pool(pool.clone()),
         origin: "https://app.example".into(),

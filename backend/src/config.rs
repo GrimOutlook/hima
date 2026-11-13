@@ -21,7 +21,7 @@ impl OidcConfig {
         let secret = read("HIMA_OIDC_CLIENT_SECRET")?;
         let origin = read("HIMA_PUBLIC_ORIGIN")?;
         let Some(issuer) = issuer else {
-            if id.is_some() || secret.is_some() || origin.is_some() {
+            if id.is_some() || secret.is_some() || (origin.is_some() && !local_enabled()?) {
                 return Err(
                     "HIMA_OIDC_ISSUER is required when OIDC configuration is supplied".into(),
                 );
@@ -66,6 +66,25 @@ impl Config {
     }
 }
 
+pub fn local_enabled() -> Result<bool, String> {
+    parse_local(read("HIMA_LOCAL_AUTH")?.as_deref())
+}
+fn parse_local(value: Option<&str>) -> Result<bool, String> {
+    match value {
+        None | Some("false") => Ok(false),
+        Some("true") => Ok(true),
+        _ => Err("HIMA_LOCAL_AUTH must be true or false".into()),
+    }
+}
+pub fn local_environment() -> Result<(String, String), String> {
+    let required = |name| {
+        read(name)?
+            .filter(|v| !v.is_empty())
+            .ok_or_else(|| format!("{name} is required for local authentication"))
+    };
+    Ok((required("DATABASE_URL")?, required("HIMA_PUBLIC_ORIGIN")?))
+}
+
 fn read(name: &str) -> Result<Option<String>, String> {
     match env::var(name) {
         Ok(value) => Ok(Some(value)),
@@ -77,6 +96,16 @@ fn read(name: &str) -> Result<Option<String>, String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn local_configuration_is_explicit() {
+        assert!(!parse_local(None).unwrap());
+        assert!(!parse_local(Some("false")).unwrap());
+        assert!(parse_local(Some("true")).unwrap());
+        for value in ["", "1", "TRUE", "yes"] {
+            assert!(parse_local(Some(value)).is_err());
+        }
+    }
 
     #[test]
     fn defaults_and_overrides() {

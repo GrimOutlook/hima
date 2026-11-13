@@ -17,6 +17,7 @@ let planner: ReturnType<typeof useStoredPlanner>;
 function Probe() { planner = useStoredPlanner(); return <span>{planner.phase}</span>; }
 beforeEach(() => {
   vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
+  vi.stubGlobal("fetch", vi.fn(async (url: string) => new Response(JSON.stringify(url === "/auth/options" ? { local: false, oidc: true } : { local: false }), { status: 200, headers: { "Content-Type": "application/json" } })));
   vi.useFakeTimers();
   container = document.createElement("div"); document.body.append(container); root = createRoot(container);
   vi.spyOn(plannerApi, "session").mockResolvedValue({ user_id: 1, csrf_token: "a" });
