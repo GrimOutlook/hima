@@ -924,15 +924,20 @@ async fn oidc_and_persistent_browser_sessions(pool: PgPool) {
         axum::serve(listener, routes).await.unwrap();
     });
     let make = || {
-        Auth::new(
+        Auth::new_with_local(
             Database::from_pool(pool.clone()),
             &issuer,
             "hima-test".into(),
             None,
             "https://app.example",
+            true,
         )
     };
     let app = server::with_auth(make().await.unwrap());
+    let options = request(&app, "GET", "/auth/options", "", &[]).await;
+    let options: Value =
+        serde_json::from_slice(&options.into_body().collect().await.unwrap().to_bytes()).unwrap();
+    assert_eq!(options, json!({"local":true,"oidc":true}));
     // TLS terminates at a proxy; neither its HTTP upstream nor spoofed forwarding
     // headers may downgrade cookies or change the registered public callback.
     let proxy_login = request(

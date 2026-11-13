@@ -2,6 +2,7 @@ import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState, type
 import { closestCenter, defaultDropAnimationSideEffects, DndContext, DragOverlay, KeyboardSensor, PointerSensor, useSensor, useSensors } from "@dnd-kit/core";
 import { defaultAnimateLayoutChanges, SortableContext, sortableKeyboardCoordinates, useSortable, verticalListSortingStrategy } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
+import { SignIn, ChangePassword } from "./LocalAuth";
 import { CalendarPicker } from "./CalendarPicker";
 import { ThemeControls } from "./themes";
 import { poolColor } from "./poolColors";
@@ -109,7 +110,7 @@ function App() {
           </>}
         </> : <>
           <p>Sign in to load and save your planner.</p>
-          <a className="button button-primary" href="/auth/login">Sign in</a>
+          <SignIn />
         </>}
       </>}
     </main>}
@@ -364,6 +365,7 @@ function Planner({ planner }: { planner: ReturnType<typeof useStoredPlanner> }) 
           {(saveStatus === "failed" || saveStatus === "conflict") && <button className="button" type="button" onClick={() => downloadBackup(store)}>Export backup</button>}
           {saveStatus === "failed" && <button className="button" type="button" onClick={planner.retry}>Retry save</button>}
           {!local && <button className="button" type="button" onClick={() => { void planner.logout(); }}>Sign out</button>}
+          {!local && <ChangePassword saved={saveStatus === "saved"} session={planner.session} />}
           <button ref={settingsButtonRef} className="icon-button" type="button" title="Settings" aria-label="Open settings" aria-haspopup="dialog" onClick={() => setModal({ type: "settings" })}>
             <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
               <path d="m9 3-.5 2-2 1.2-2-.6-2 3.5L4 10.5v3l-1.5 1.4 2 3.5 2-.6 2 1.2.5 2h6l.5-2 2-1.2 2 .6 2-3.5-1.5-1.4v-3l1.5-1.4-2-3.5-2 .6-2-1.2L15 3Z" />

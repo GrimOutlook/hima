@@ -32,8 +32,9 @@ type Client = CoreClient<
     EndpointMaybeSet,
 >;
 pub struct Auth {
-    client: Client,
-    signing: Mutex<SigningKeys>,
+    client: Option<Client>,
+    signing: Option<Mutex<SigningKeys>>,
+    local: Option<local::Local>,
     http: openidconnect::reqwest::Client,
     pub(crate) db: Database,
     origin: String,
@@ -225,6 +226,17 @@ impl Auth {
         secret: Option<String>,
         origin: &str,
     ) -> Result<Arc<Self>, String> {
+        Self::new_with_local(db, issuer, id, secret, origin, false).await
+    }
+
+    pub async fn new_with_local(
+        db: Database,
+        issuer: &str,
+        id: String,
+        secret: Option<String>,
+        origin: &str,
+        local: bool,
+    ) -> Result<Arc<Self>, String> {
         let origin_url = openidconnect::url::Url::parse(origin)
             .map_err(|_| "HIMA_PUBLIC_ORIGIN must be an absolute origin")?;
         let secure = origin_url.scheme() == "https";
@@ -275,14 +287,20 @@ impl Auth {
             RedirectUrl::new(format!("{origin}/auth/callback"))
                 .map_err(|_| "invalid callback URL")?,
         );
+        let local = if local {
+            Some(local::Local::new().await?)
+        } else {
+            None
+        };
         let auth = Arc::new(Self {
             cleanup_task: Some(spawn_cleanup(db.pool.clone(), CLEANUP_INTERVAL)),
-            signing: Mutex::new(SigningKeys {
+            local,
+            signing: Some(Mutex::new(SigningKeys {
                 metadata: signing_metadata,
                 client: client.clone(),
                 last_attempt: Instant::now() - KEY_REFRESH_MIN_INTERVAL,
-            }),
-            client,
+            })),
+            client: Some(client),
             http,
             db,
             origin,
@@ -295,7 +313,9 @@ impl Auth {
             loop {
                 tokio::time::sleep(KEY_REFRESH_INTERVAL).await;
                 let Some(auth) = weak.upgrade() else { break };
-                auth.signing.lock().await.refresh(&auth.http).await;
+                if let Some(signing) = &auth.signing {
+                    signing.lock().await.refresh(&auth.http).await;
+                }
             }
         });
         Ok(auth)
@@ -404,6 +424,7 @@ struct Callback {
 
 pub(crate) fn router(auth: Arc<Auth>) -> Router {
     Router::new()
+        .merge(local::router())
         .route("/auth/login", get(login))
         .route("/auth/callback", get(callback))
         .route("/auth/logout", post(logout))
@@ -432,6 +453,8 @@ async fn login(State(auth): State<Arc<Auth>>) -> Result<Response, ApiError> {
     let (challenge, verifier) = PkceCodeChallenge::new_random_sha256();
     let (url, state, nonce) = auth
         .client
+        .as_ref()
+        .ok_or_else(ApiError::auth_unavailable)?
         .authorize_url(
             openidconnect::core::CoreAuthenticationFlow::AuthorizationCode,
             CsrfToken::new_random,
@@ -512,6 +535,8 @@ async fn callback(
     let code = AuthorizationCode::new(code);
     let token = auth
         .client
+        .as_ref()
+        .ok_or_else(ApiError::auth_unavailable)?
         .exchange_code(code.clone())
         .map_err(|_| invalid())?
         .set_pkce_verifier(PkceCodeVerifier::new(verifier))
@@ -519,7 +544,12 @@ async fn callback(
         .await
         .map_err(|_| invalid())?;
     let id_token = token.id_token().ok_or_else(invalid)?;
-    let mut signing = auth.signing.lock().await;
+    let mut signing = auth
+        .signing
+        .as_ref()
+        .ok_or_else(ApiError::auth_unavailable)?
+        .lock()
+        .await;
     let nonce = Nonce::new(nonce);
     let verification_client = signing
         .verification_client(id_token, &nonce, &auth.http)
@@ -633,7 +663,10 @@ pub(crate) async fn protect(
 ) -> Result<Response, ApiError> {
     if request.method().is_safe()
         || !(request.uri().path().starts_with("/api/")
-            || matches!(request.uri().path(), "/auth/logout" | "/auth/logout-all"))
+            || matches!(
+                request.uri().path(),
+                "/auth/logout" | "/auth/logout-all" | "/auth/local/password"
+            ))
     {
         return Ok(next.run(request).await);
     }
@@ -653,6 +686,8 @@ pub(crate) async fn protect(
     request.extensions_mut().insert(session);
     Ok(next.run(request).await)
 }
+
+pub mod local;
 
 #[cfg(test)]
 #[path = "auth_tests.rs"]

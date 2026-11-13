@@ -173,7 +173,7 @@ normal revision-conflict protection.
 
 ### Build with Nix
 
-With Nix flakes enabled, run `nix build .#frontend` (or `nix build`) to build the production site using the pinned Node.js and pnpm dependencies. The static site is available in `result/dist/`, ready to serve with a static web server. `nix build .#backend --out-link result-backend` builds release executables `result-backend/bin/hima-api` and `result-backend/bin/migrate`, including embedded migrations. Package outputs support `x86_64-linux` and `aarch64-linux`.
+With Nix flakes enabled, run `nix build .#frontend` (or `nix build`) to build the production site using the pinned Node.js and pnpm dependencies. The static site is available in `result/dist/`, ready to serve with a static web server. `nix build .#backend --out-link result-backend` builds release executables `result-backend/bin/hima-api`, `result-backend/bin/migrate`, and the interactive `result-backend/bin/hima-admin`, including embedded migrations. Package outputs support `x86_64-linux` and `aarch64-linux`.
 
 Run `nix develop` for the Node.js, pnpm, and Rust development shell, or `nix run` to start the development server after installing dependencies with `pnpm install --frozen-lockfile`.
 
@@ -189,7 +189,7 @@ When updating `pnpm-lock.yaml`, also update the `pnpmDeps` hash in `flake.nix`: 
 
 Tests use Node for pure model, settings, and store mutation checks. Component and hook test files opt into jsdom with `@vitest-environment jsdom`. Regression coverage includes fractional-hour balances, shared per-pool history dates, independent graph visibility and total exclusion, modal validation and focus, and calendar selection and keyboard navigation. Run a focused suite with, for example, `pnpm test src/App.test.tsx src/CalendarPicker.test.tsx`.
 
-The self-hosted variant requires the API and an authenticated account. On first login, existing `hima.store.v1` and `hima.settings.v1` data triggers an explicit choice before editing. Upload the local planner/settings, or use the remote copy and cancel migration. Both copies can be exported before replacement. Unversioned planners and older event formats use the supported backup importer; any repair warnings are displayed before confirmation. Invalid/unsupported local data blocks upload and remains available as a raw original backup (containing the exact browser key values). Settings-only storage can also migrate. Failure or cancellation never changes the originals. After a confirmed successful upload, choose to remove the browser originals, recovery `.backup` keys, and migration acknowledgements, or keep them. Kept copies remain readable to anyone using this browser and are offered to other accounts. Removal refuses to delete originals changed since the upload. Per-account acknowledgements store only a SHA-256 digest; old raw acknowledgements are upgraded when local data is read. Cancelling offers migration again on the next page load; local data never uploads automatically.
+The self-hosted variant requires the API and an authenticated account (OIDC or optional local login). On first login, existing `hima.store.v1` and `hima.settings.v1` data triggers an explicit choice before editing. Upload the local planner/settings, or use the remote copy and cancel migration. Both copies can be exported before replacement. Unversioned planners and older event formats use the supported backup importer; any repair warnings are displayed before confirmation. Invalid/unsupported local data blocks upload and remains available as a raw original backup (containing the exact browser key values). Settings-only storage can also migrate. Failure or cancellation never changes the originals. After a confirmed successful upload, choose to remove the browser originals, recovery `.backup` keys, and migration acknowledgements, or keep them. Kept copies remain readable to anyone using this browser and are offered to other accounts. Removal refuses to delete originals changed since the upload. Per-account acknowledgements store only a SHA-256 digest; old raw acknowledgements are upgraded when local data is read. Cancelling offers migration again on the next page load; local data never uploads automatically.
 
 Account data loads before editing is enabled. An account with no planner starts with an empty draft and defaults (Monday, weekends included, ±6 month); loading alone never creates or overwrites a server planner. First day of week, ignore weekends, default timeline, and planner visibility flags synchronize with account data. Temporary selections and open dialogs remain session UI state.
 
@@ -198,6 +198,15 @@ Edits are debounced for 500 ms, with one write in flight and newer edits queued 
 Sessions are checked on focus, when the page becomes visible, and every 30 seconds while visible. Loads verify the session again before accepting data; writes use that session's CSRF token. Account changes and logout invalidate queued work and late responses. Unsaved drafts from an expired or changed session remain exportable in this page under their original account ID, and are never uploaded to the next account. Export retained backups before closing or navigating away; this is not offline persistence. Sign out ends the application session, not the provider's SSO session.
 
 Saved planner data and JSON backups carry a numeric `version` (currently `1`). Unversioned backups are treated as the legacy schema and migrated to version 1 on import, including older event formats. Unsupported versions are rejected on import. Remote responses are validated without repairing or dropping fields; unsupported or malformed data blocks editing rather than being saved back.
+
+### Local username/password login (no OIDC provider required)
+
+For admin-managed self-hosted accounts, set `HIMA_LOCAL_AUTH=true` along with
+`DATABASE_URL` and `HIMA_PUBLIC_ORIGIN`, apply migrations, and create an account
+with the new `hima-admin` CLI. Local authentication is off by default and can run
+alone or alongside OIDC. There is no public registration or email recovery.
+See [local authentication setup and recovery](backend/LOCAL_AUTH.md) for complete
+commands, password rules, security limits, and production guidance.
 
 ### Full local development workflow
 
@@ -310,7 +319,7 @@ cargo run --locked --manifest-path backend/Cargo.toml
 curl http://127.0.0.1:3000/health
 ```
 
-The health response is HTTP 200 with `Content-Type: application/json` and `{"status":"ok"}`. This is a liveness check; no database is required in the unconfigured service. Configure OIDC and PostgreSQL for frontend login and persistence. The SQLx `db` module provides PostgreSQL persistence and the `planner` module validates documents. The backend supports OIDC authentication and authenticated GET/PUT `/api/planner`; see [the HTTP contract](backend/DOCUMENT.md#authenticated-http-contract).
+The health response is HTTP 200 with `Content-Type: application/json` and `{"status":"ok"}`. This is a liveness check; no database is required in the unconfigured service. Configure OIDC and PostgreSQL for frontend login and persistence. The SQLx `db` module provides PostgreSQL persistence and the `planner` module validates documents. The backend supports OIDC and optional [local authentication](backend/LOCAL_AUTH.md), plus authenticated GET/PUT `/api/planner`; see [the HTTP contract](backend/DOCUMENT.md#authenticated-http-contract).
 
 Configuration is read from the process environment (no automatic `.env` loading):
 
@@ -372,7 +381,7 @@ URL fallback) and applies embedded SQLx
 migrations from `backend/migrations/`; rerunning is safe. The database must exist,
 and the migration role needs schema/table creation privileges. Deployment should
 run migrations before starting services that use storage. The HTTP liveness service
-does not automatically migrate; it reads `DATABASE_URL` when OIDC is enabled. Production connection URLs
+does not automatically migrate; it reads `DATABASE_URL` when OIDC or local authentication is enabled. Production connection URLs
 should use the deployment's database credentials and TLS configuration.
 
 Storage callers use `Database::connect`, then the per-user `ensure_user`, `load`,
@@ -420,7 +429,7 @@ Database tests are explicitly enabled with `--ignored`; a normal offline
 Run the database suites together against a disposable PostgreSQL 17 instance:
 
 ```sh
-DATABASE_URL=postgres://TEST_ROLE:TEST_PASSWORD@127.0.0.1:5432/TEST_DB cargo test --locked --manifest-path backend/Cargo.toml --test postgres --test auth -- --ignored
+DATABASE_URL=postgres://TEST_ROLE:TEST_PASSWORD@127.0.0.1:5432/TEST_DB cargo test --locked --manifest-path backend/Cargo.toml --test postgres --test auth --test local_auth -- --ignored
 ```
 
 SQLx creates isolated databases; the test role needs `CREATEDB`. The auth fixture

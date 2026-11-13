@@ -18,7 +18,7 @@ nix build .#backend --out-link result-backend
 ```
 
 `frontend/dist/` contains the site; `backend/bin/hima-api` and
-`backend/bin/migrate` are optimized release programs. The backend package runs
+`backend/bin/migrate`, and `backend/bin/hima-admin` are optimized release programs. The backend package runs
 offline tests during its build; database tests require a disposable PostgreSQL
 instance and run separately in CI. Both packages are exported for x86_64-linux
 and aarch64-linux. Build on the deployment architecture (or configure a suitable
@@ -43,11 +43,21 @@ cargo test --manifest-path backend/Cargo.toml --locked
 cargo build --manifest-path backend/Cargo.toml --release --locked --bins
 ```
 
-Install `dist/` as `frontend/dist/` and the two programs from
+Install `dist/` as `frontend/dist/` and the three programs from
 `backend/target/release/` as `backend/bin/` within each versioned release. Native
 builds require compatible runtime libraries on the deployment host. Migrations
 are embedded at compile time: always use the migrator from the same release as
 the API. Never edit an already-applied migration or its checksum.
+
+## Optional local accounts
+
+An OIDC provider is not required when `HIMA_LOCAL_AUTH=true`. See
+[local authentication](../backend/LOCAL_AUTH.md) for account provisioning, password
+reset, coexistence with OIDC, shared rate limits and backup/recovery implications.
+Use `backend/bin/hima-admin` with `MIGRATION_DATABASE_URL` for interactive account
+creation/reset after migrations. Local-only services need `DATABASE_URL` and
+`HIMA_PUBLIC_ORIGIN` but no `HIMA_OIDC_*` settings. Existing nginx routes and
+per-client authentication rate limits also cover local login/password changes.
 
 ## Database, provider, and secrets
 
